@@ -11,32 +11,37 @@ Keys left out take the base's value. Lists, sets and maps are written whole, nev
 
 ## The matrix
 
-| Kind | Read | Write also takes | TS type | Test |
-|---|---|---|---|---|
-| Struct | object of its fields | a partial object, merged | interface, fields optional | `every_kind_round_trips` |
-| Newtype (one-field tuple struct) | its inner value; a whole newtype component is `{ value }` | `{ value }` for a component | the inner type | `newtype_components_are_value` |
-| Tuple struct, tuple | array | | `readonly [A, B]` | `every_kind_round_trips` |
-| Array `[T; N]` | array of N | | a tuple type for N ≤ 4, else `readonly T[]` | `every_kind_round_trips` |
-| List (`Vec`, `VecDeque`) | array | written whole | `readonly T[]` | `a_list_is_replaced_not_merged` |
-| Set (`HashSet`; `BTreeSet` is opaque in Bevy 0.20, so it takes its serde) | array, sorted by each element's JSON text | written whole | `readonly T[]` | `every_kind_round_trips` |
-| Map, string keys | object | written whole | `Record<string, V>` | `every_kind_round_trips` |
-| Map, other keys | `[key, value]` pairs, sorted like sets | written whole | `readonly (readonly [K, V])[]` | `a_map_with_entity_keys` |
-| Enum | `"Unit"`, `{ Newtype: inner }`, `{ Tuple: [a, b] }`, `{ Struct: {...} }` | a new variant starts from its default | a union | `shapes_of_each_kind` |
-| `Option<T>` | `null` or `T` | | `T \| null` | `options_take_null_and_a_value` |
-| `Color` | Bevy's shape, `{ Srgba: { red, green, blue, alpha } }` and every other space | `"#rrggbb[aa]"`, `[r, g, b, a?]`, any space with `alpha` left out | `ColorValue` | `colours_in_any_form` |
-| glam vectors and `Quat` (`Vec*`, `IVec*`, `UVec*`, `DVec*`, `BVec*`, the 8-, 16- and 64-bit ones) | array of lanes | an object of lanes, merged | a lane tuple | `every_kind_round_trips` |
-| glam matrices and affines (`Mat2`, `Mat3`, `Mat3A`, `Mat4`, `Affine2`, `Affine3A`) | flat array, column-major | | a number tuple | `every_kind_round_trips` |
-| `Dir2`, `Dir3`, `Rot2`, `Isometry2d`, `Isometry3d` | inner vector, or their reflected struct | | tuple or interface | `every_kind_round_trips` |
-| `Duration` | seconds | `{ secs, nanos }` | `number` | `durations_take_seconds_or_secs_and_nanos` |
-| `f32`, `f64` | number; `"Infinity"`, `"-Infinity"`, `"NaN"` when not finite | | `number` | `shapes_of_each_kind` |
-| `i64`, `u64`, `i128`, `u128`, `isize`, `usize` | number within ±(2^53 − 1), else a decimal string | either | `number \| string` | `big_integers_from_strings_and_numbers` |
-| `Handle<T>` | a script-made asset's ref `{ $asset, type }`, else its asset path, else `null` | `null` keeps the default handle; a ref or `T.of(props)` for a reflected asset type ([assets](assets.md)) | `string \| AssetRef<T> \| AssetValue<T> \| null`, `string \| null` for a type with no `ReflectAsset` | `reflect_values.rs`, `reflect_assets.rs` |
-| `Range<T>`, `RangeInclusive<T>` of a number type | `{ start, end }` | | `{ start: number; end: number }` | `colour_grading_round_trips_with_its_midtones_range` |
-| `Exposure` (opaque in Bevy 0.20) | `{ ev100 }` | | `{ ev100?: number }` | `exposure_is_ev100` |
-| `Entity` | `Entity::to_bits` as a number | | `Entity` | `a_map_with_entity_keys` |
-| `Name` | its string | | `string` | `reflect_coverage.rs` |
-| Opaque with reflected serde (`String`, `char`, paths, `NonZero*`) | its serde JSON | | `string`, or `unknown` with no shape | `every_kind_round_trips` |
-| Dynamic values | by the kind they represent | only when they represent a registered type | as represented | `reflect_coverage.rs` |
+| Kind | Read | Write also takes | TS type | Read in a TS system | Test |
+|---|---|---|---|---|---|
+| Struct | object of its fields | a partial object, merged | interface, fields optional | every field present | `every_kind_round_trips` |
+| Newtype (one-field tuple struct) | its inner value; a whole newtype component is `{ value }` | `{ value }` for a component | the inner type | as the TS type | `newtype_components_are_value` |
+| Tuple struct, tuple | array | | `readonly [A, B]` | `[A, B]` | `every_kind_round_trips` |
+| Array `[T; N]` | array of N | | a tuple type for N ≤ 4, else `readonly T[]` | `[T, T]`, or `T[]` | `every_kind_round_trips` |
+| List (`Vec`, `VecDeque`) | array | written whole | `readonly T[]` | `T[]` | `a_list_is_replaced_not_merged` |
+| Set (`HashSet`; `BTreeSet` is opaque in Bevy 0.20, so it takes its serde) | array, sorted by each element's JSON text | written whole | `readonly T[]` | `T[]` | `every_kind_round_trips` |
+| Map, string keys | object | written whole | `Record<string, V>` | as the TS type | `every_kind_round_trips` |
+| Map, other keys | `[key, value]` pairs, sorted like sets | written whole | `readonly (readonly [K, V])[]` | `[K, V][]` | `a_map_with_entity_keys` |
+| Enum | `"Unit"`, `{ Newtype: inner }`, `{ Tuple: [a, b] }`, `{ Struct: {...} }` | a new variant starts from its default | a union | as the TS type | `shapes_of_each_kind` |
+| `Option<T>` | `null` or `T` | | `T \| null` | as the TS type | `options_take_null_and_a_value` |
+| `Color` | Bevy's shape, `{ Srgba: { red, green, blue, alpha } }` and every other space | `"#rrggbb[aa]"`, `[r, g, b, a?]`, any space with `alpha` left out | `ColorValue` | `ColorRead` | `colours_in_any_form` |
+| glam vectors and `Quat` (`Vec*`, `IVec*`, `UVec*`, `DVec*`, `BVec*`, the 8-, 16- and 64-bit ones) | array of lanes | an object of lanes, merged | a lane tuple | a lane tuple, not `readonly` | `every_kind_round_trips` |
+| glam matrices and affines (`Mat2`, `Mat3`, `Mat3A`, `Mat4`, `Affine2`, `Affine3A`) | flat array, column-major | | a number tuple | a number tuple, not `readonly` | `every_kind_round_trips` |
+| `Dir2`, `Dir3`, `Rot2`, `Isometry2d`, `Isometry3d` | inner vector, or their reflected struct | | tuple or interface | as the TS type | `every_kind_round_trips` |
+| `Duration` | seconds | `{ secs, nanos }` | `number` | as the TS type | `durations_take_seconds_or_secs_and_nanos` |
+| `f32`, `f64` | number; `"Infinity"`, `"-Infinity"`, `"NaN"` when not finite | | `number` | as the TS type | `shapes_of_each_kind` |
+| `i64`, `u64`, `i128`, `u128`, `isize`, `usize` | number within ±(2^53 − 1), else a decimal string | either | `number \| string` | `number` | `big_integers_from_strings_and_numbers` |
+| `Handle<T>` | a script-made asset's ref `{ $asset, type }`, else its asset path, else `null` | `null` keeps the default handle; a ref or `T.of(props)` for a reflected asset type ([assets](assets.md)) | `string \| AssetRef<T> \| AssetValue<T> \| null`, `string \| null` for a type with no `ReflectAsset` | `string \| AssetRef<T> \| null` | `reflect_values.rs`, `reflect_assets.rs` |
+| `Range<T>`, `RangeInclusive<T>` of a number type | `{ start, end }` | | `{ start: number; end: number }` | as the TS type | `colour_grading_round_trips_with_its_midtones_range` |
+| `Exposure` (opaque in Bevy 0.20) | `{ ev100 }` | | `{ ev100?: number }` | `{ ev100: number }` | `exposure_is_ev100` |
+| `Entity` | `Entity::to_bits` as a number | | `Entity` | as the TS type | `a_map_with_entity_keys` |
+| `Name` | its string | | `string` | as the TS type | `reflect_coverage.rs` |
+| Opaque with reflected serde (`String`, `char`, paths, `NonZero*`) | its serde JSON | | `string`, or `unknown` with no shape | as the TS type | `every_kind_round_trips` |
+| Dynamic values | by the kind they represent | only when they represent a registered type | as represented | as the TS type | `reflect_coverage.rs` |
+
+A TS system's row reads the narrower shape `read` gives ([native](native.md#reflected-rows-in-ts-systems));
+"as the TS type" means it reads as it is written. `bevy-ts-cli/src/types.rs` checks the read types:
+`every_kind_reads_as_read_gives_it`, and `color_read_is_bevys_color` for `ColorRead` against Bevy's
+registry.
 
 The tests named are in `crates/bevy-ts/src/reflect_value.rs` unless a file is given;
 `reflect_values.rs` and `reflect_assets.rs` are in `crates/bevy-ts-cli/tests/it/`.

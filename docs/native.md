@@ -176,7 +176,7 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
 
 A reflect-tier component is query data (`Query<[Projection]>`, `Mut<Projection>`,
 `Option<Projection>`) and a reflect-tier resource is `Res`/`ResMut` data. Its row has `value`, the
-whole value in the shape TSX takes (`{ Perspective: { fov, ... } }`), and a struct's fields too
+whole value in Bevy's shape (`{ Perspective: { fov, ... } }`), and a struct's fields too
 (`weapon.name`). A layout-tier row has a getter and setter per hole (`light.color`). Neither is
 ever a column: `q.tables` refuses them.
 
@@ -187,6 +187,27 @@ export function ortho(q: Query<[Mut<Projection>], With<Camera3d>>) {
   });
 }
 ```
+
+A reflected member reads in the shape `bevy_ts::reflect_value::read` gives
+([reflection](reflection.md#the-matrix)), and takes every shape `write` takes. Where the two differ
+the generated type is a getter and setter pair, so a read needs no cast and an assignment takes any
+form:
+
+| Tier | Member | Reads as | Assignment takes |
+|---|---|---|---|
+| Layout | a column (`light.illuminance`, `t.translation`) | its column type | the same |
+| Layout | a hole (`sprite.texture_atlas`, `light.color`) | `read`'s shape: struct fields present, `Color` as `ColorRead`, a wide integer a `number` | `write`'s: fields optional, `ColorValue`, a number or a string |
+| TS component | a heap field (`tag.label`, `tag.scores`) | `string`, a frozen `readonly T[]` (an array of the run's on `Mut`) | `string`, `T[]` |
+| Reflect | `value`, and a struct's fields (`p.value`, `weapon.name`) | `read`'s shape (`ProjectionRead`) | `write`'s shape (`ProjectionValue`) |
+| Rust message or event | its fields | the written shape (not yet split) | read-only |
+
+On a read row (`C`, `Ref<C>`, `Option<C>`, `Res<R>`, `ref.get`) every member is `readonly`; on
+`Mut<C>` and `ResMut<R>` it is assignable. TSX props and `.of()` take the written shape. `Res` and
+`ResMut` of a layout-tier resource (`GlobalAmbientLight`) have its holes too.
+
+Two reads fall outside the type: a 64-bit integer beyond ±(2^53 − 1) reads as a decimal string, and
+a non-finite float in a reflected value as `"NaN"`, `"Infinity"` or `"-Infinity"`. Both are typed
+`number`: an index, a count or an id in a game is never near 2^53.
 
 - A read is cached across runs, keyed by the component's changed tick: a row nothing changed
   returns the cached value with no call into Rust. A row the system never reads costs nothing.

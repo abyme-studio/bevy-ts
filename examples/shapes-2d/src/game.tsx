@@ -44,12 +44,10 @@ export class Frames extends Component {
 export function animate(time: Res<Time>, sheets: Query<[Mut<Sprite>, Mut<Frames>]>) {
   for (const [sprite, frames] of sheets) {
     if (!frames.timer.tick(time.delta_secs).just_finished) continue;
-    // A copy of the hole; changing it on a Mut row writes it back. `index` is typed as TSX takes
-    // it (a usize may be a string), so read it as a number.
+    // A copy of the hole; changing it on a Mut row writes it back.
     const atlas = sprite.texture_atlas;
     if (!atlas) continue;
-    const index = Number(atlas.index);
-    atlas.index = index === frames.last ? 0 : index + 1;
+    atlas.index = atlas.index === frames.last ? 0 : atlas.index + 1;
   }
 }
 app.addSystems(FixedUpdate, animate);
