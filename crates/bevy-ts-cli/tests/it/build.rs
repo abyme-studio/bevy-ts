@@ -290,3 +290,39 @@ fn a_linked_engine_ships_as_a_real_file() {
     assert!(meta.file_type().is_file(), "{}", shipped.display());
     assert_eq!(meta.len(), std::fs::metadata(BIN).unwrap().len());
 }
+
+/// A native module (`bevy-ts/input`, `bevy-ts/camera`) registers while the engine's app builds,
+/// and the build compiles the scripts first: it must build that app before it resolves imports.
+#[test]
+fn a_build_imports_the_native_modules() {
+    let project = common::project(
+        "build-native-modules",
+        &[("tsconfig.json", "{}"), ("src/game.ts", "import \"bevy-ts/input\";\nimport type { Cameras } from \"bevy-ts/camera\";\nexport const a: Cameras | number = 1;\n")],
+    );
+    let out = project.join("dist/here");
+    let (code, events) = build(&[project.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{events:#?}");
+    let (engine, rx) = play(&out.join("game"));
+    wait_for(&rx, &["generation 1 applied"], LAUNCH);
+    drop(engine);
+}
+
+/// Every module `types` declares is one `build` resolves, so a new module cannot regress this.
+#[test]
+fn a_build_imports_every_module_types_lists() {
+    let project = common::project("build-every-module", &[("tsconfig.json", "{}"), ("src/game.ts", "export const a = 1;\n")]);
+    let dts = project.join("native.d.ts");
+    let st = Command::new(BIN).arg("types").arg("--out").arg(&dts).current_dir(&project).status().unwrap();
+    assert!(st.success());
+    let text = std::fs::read_to_string(project.join("native-modules.d.ts")).unwrap();
+    // A module with a value export has JS to import; one of only types (`bevy-ts/camera`) is imported
+    // with `import type`, which the compile erases.
+    let blocks: Vec<&str> = text.split("declare module \"").skip(1).collect();
+    let modules: Vec<&str> = blocks.iter().filter(|b| b.contains("\n  export const ") || b.contains("\n  export function ") || b.contains("\n  export enum ")).filter_map(|b| b.split('"').next()).collect();
+    assert!(modules.contains(&"bevy-ts/input"), "{modules:?}");
+    let src: String = modules.iter().map(|m| format!("import \"{m}\";\n")).collect::<String>() + "export const a = 1;\n";
+    common::write(&project, "src/game.ts", &src);
+    let out = project.join("dist/here");
+    let (code, events) = build(&[project.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{modules:?}\n{events:#?}");
+}

@@ -217,7 +217,7 @@ pub fn resolve_out(root: &Path, flag: Option<&str>, target: &str) -> Result<Path
 }
 
 /// `bevy-ts build …`; returns the exit code.
-pub fn run(raw: &[String]) -> i32 {
+pub fn run(engine: &crate::cli::Engine, extra: impl bevy::prelude::Plugin, raw: &[String]) -> i32 {
     let json = raw.iter().any(|a| a == "--json");
     let report = Reporter { json };
     let args = match parse(raw) {
@@ -245,6 +245,14 @@ pub fn run(raw: &[String]) -> i32 {
             report.failed(&format!("{target}: not a target bevy-ts ships engines for; see bevy-ts build --targets"));
             return 1;
         }
+    }
+    // The native modules (`bevy-ts/input`, `bevy-ts/camera`, ...) register while the app builds,
+    // the same app `types` walks: build it before the scripts compile, so their imports resolve.
+    let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::types::types_app(engine, extra)));
+    if let Err(p) = built {
+        let msg = p.downcast_ref::<String>().cloned().or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
+        report.failed(&format!("a plugin failed to build without a GPU device, so the native modules are unavailable: {msg}"));
+        return 1;
     }
     match build(&args, target, &report) {
         Ok(()) => 0,
