@@ -1,0 +1,156 @@
+main at 3344f314, branch at e3fa34bb
+21:11  up 2 days,  1:13, 2 users, load averages: 50.40 78.46 69.66
+main | plain column (Plain.hp) | 14 ns a row
+main | despawn, plain | 31 ns a row
+branch | plain column (Plain.hp) | 13 ns a row
+branch | despawn, plain | 28 ns a row
+branch | heap component's plain field (Tag.hp) | 13 ns a row
+branch | string hit (Tag.label) | 52 ns a row
+branch | string miss | 196 ns a row
+branch | string write | 591 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 53 ns a row
+branch | 8-item f32[] miss | 203 ns a row
+branch | 8-item f32[] write | 663 ns a row
+branch | empty system, µs a run (subtracted) | 22
+branch | despawn, a string and an 8-item list | 68 ns a row
+21:11  up 2 days,  1:13, 2 users, load averages: 49.09 77.72 69.45
+main | plain column (Plain.hp) | 18 ns a row
+main | despawn, plain | 30 ns a row
+branch | plain column (Plain.hp) | 15 ns a row
+branch | despawn, plain | 32 ns a row
+branch | heap component's plain field (Tag.hp) | 15 ns a row
+branch | string hit (Tag.label) | 59 ns a row
+branch | string miss | 181 ns a row
+branch | string write | 671 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 53 ns a row
+branch | 8-item f32[] miss | 211 ns a row
+branch | 8-item f32[] write | 744 ns a row
+branch | empty system, µs a run (subtracted) | 24
+branch | despawn, a string and an 8-item list | 61 ns a row
+21:11  up 2 days,  1:13, 2 users, load averages: 56.29 78.74 69.86
+main | plain column (Plain.hp) | 14 ns a row
+main | despawn, plain | 35 ns a row
+branch | plain column (Plain.hp) | 14 ns a row
+branch | despawn, plain | 30 ns a row
+branch | heap component's plain field (Tag.hp) | 12 ns a row
+branch | string hit (Tag.label) | 49 ns a row
+branch | string miss | 182 ns a row
+branch | string write | 595 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 49 ns a row
+branch | 8-item f32[] miss | 234 ns a row
+branch | 8-item f32[] write | 706 ns a row
+branch | empty system, µs a run (subtracted) | 44
+branch | despawn, a string and an 8-item list | 62 ns a row
+main at e0755172, branch at e3fa34bb
+21:27  up 2 days,  1:29, 2 users, load averages: 60.32 45.38 47.59
+main | plain column (Plain.hp) | 12 ns a row
+main | despawn, plain | 32 ns a row
+branch | plain column (Plain.hp) | 12 ns a row
+branch | despawn, plain | 36 ns a row
+branch | heap component's plain field (Tag.hp) | 16 ns a row
+branch | string hit (Tag.label) | 55 ns a row
+branch | string miss | 195 ns a row
+branch | string write | 650 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 65 ns a row
+branch | 8-item f32[] miss | 222 ns a row
+branch | 8-item f32[] write | 635 ns a row
+branch | empty system, µs a run (subtracted) | 25
+branch | despawn, a string and an 8-item list | 53 ns a row
+21:27  up 2 days,  1:29, 2 users, load averages: 58.29 45.21 47.51
+main | plain column (Plain.hp) | 12 ns a row
+main | despawn, plain | 26 ns a row
+branch | plain column (Plain.hp) | 9 ns a row
+branch | despawn, plain | 32 ns a row
+branch | heap component's plain field (Tag.hp) | 17 ns a row
+branch | string hit (Tag.label) | 60 ns a row
+branch | string miss | 228 ns a row
+branch | string write | 760 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 70 ns a row
+branch | 8-item f32[] miss | 299 ns a row
+branch | 8-item f32[] write | 866 ns a row
+branch | empty system, µs a run (subtracted) | 23
+branch | despawn, a string and an 8-item list | 51 ns a row
+21:27  up 2 days,  1:29, 2 users, load averages: 58.27 45.64 47.64
+main | plain column (Plain.hp) | 12 ns a row
+main | despawn, plain | 23 ns a row
+branch | plain column (Plain.hp) | 8 ns a row
+branch | despawn, plain | 22 ns a row
+branch | heap component's plain field (Tag.hp) | 9 ns a row
+branch | string hit (Tag.label) | 28 ns a row
+branch | string miss | 107 ns a row
+branch | string write | 372 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 31 ns a row
+branch | 8-item f32[] miss | 115 ns a row
+branch | 8-item f32[] write | 419 ns a row
+branch | empty system, µs a run (subtracted) | 16
+branch | despawn, a string and an 8-item list | 37 ns a row
+21:27  up 2 days,  1:29, 2 users, load averages: 58.27 45.64 47.64
+main | plain column (Plain.hp) | 8 ns a row
+main | despawn, plain | 21 ns a row
+branch | plain column (Plain.hp) | 8 ns a row
+branch | despawn, plain | 20 ns a row
+branch | heap component's plain field (Tag.hp) | 8 ns a row
+branch | string hit (Tag.label) | 29 ns a row
+branch | string miss | 111 ns a row
+branch | string write | 334 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 29 ns a row
+branch | 8-item f32[] miss | 110 ns a row
+branch | 8-item f32[] write | 359 ns a row
+branch | empty system, µs a run (subtracted) | 16
+branch | despawn, a string and an 8-item list | 38 ns a row
+21:27  up 2 days,  1:29, 2 users, load averages: 55.05 45.19 47.47
+main | plain column (Plain.hp) | 8 ns a row
+main | despawn, plain | 22 ns a row
+branch | plain column (Plain.hp) | 8 ns a row
+branch | despawn, plain | 21 ns a row
+branch | heap component's plain field (Tag.hp) | 8 ns a row
+branch | string hit (Tag.label) | 31 ns a row
+branch | string miss | 99 ns a row
+branch | string write | 390 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 27 ns a row
+branch | 8-item f32[] miss | 104 ns a row
+branch | 8-item f32[] write | 378 ns a row
+branch | empty system, µs a run (subtracted) | 15
+branch | despawn, a string and an 8-item list | 38 ns a row
+21:27  up 2 days,  1:29, 2 users, load averages: 55.05 45.19 47.47
+main | plain column (Plain.hp) | 9 ns a row
+main | despawn, plain | 22 ns a row
+branch | plain column (Plain.hp) | 8 ns a row
+branch | despawn, plain | 21 ns a row
+branch | heap component's plain field (Tag.hp) | 8 ns a row
+branch | string hit (Tag.label) | 29 ns a row
+branch | string miss | 96 ns a row
+branch | string write | 334 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 27 ns a row
+branch | 8-item f32[] miss | 109 ns a row
+branch | 8-item f32[] write | 356 ns a row
+branch | empty system, µs a run (subtracted) | 15
+branch | despawn, a string and an 8-item list | 36 ns a row
+21:27  up 2 days,  1:29, 2 users, load averages: 51.68 44.65 47.26
+main | plain column (Plain.hp) | 8 ns a row
+main | despawn, plain | 19 ns a row
+branch | plain column (Plain.hp) | 8 ns a row
+branch | despawn, plain | 20 ns a row
+branch | heap component's plain field (Tag.hp) | 8 ns a row
+branch | string hit (Tag.label) | 29 ns a row
+branch | string miss | 105 ns a row
+branch | string write | 353 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 28 ns a row
+branch | 8-item f32[] miss | 106 ns a row
+branch | 8-item f32[] write | 415 ns a row
+branch | empty system, µs a run (subtracted) | 15
+branch | despawn, a string and an 8-item list | 35 ns a row
+21:27  up 2 days,  1:29, 2 users, load averages: 51.68 44.65 47.26
+main | plain column (Plain.hp) | 8 ns a row
+main | despawn, plain | 21 ns a row
+branch | plain column (Plain.hp) | 9 ns a row
+branch | despawn, plain | 20 ns a row
+branch | heap component's plain field (Tag.hp) | 8 ns a row
+branch | string hit (Tag.label) | 26 ns a row
+branch | string miss | 112 ns a row
+branch | string write | 461 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 33 ns a row
+branch | 8-item f32[] miss | 110 ns a row
+branch | 8-item f32[] write | 367 ns a row
+branch | empty system, µs a run (subtracted) | 15
+branch | despawn, a string and an 8-item list | 37 ns a row

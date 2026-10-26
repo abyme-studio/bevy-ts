@@ -105,9 +105,18 @@ export class Tag extends Component { label: string = "crate"; scores: u32[] = []
 - `q.tables` gives no raw arrays for a component with a heap field; read it on `q.each` rows.
   Its plain fields stay columns on those rows.
 
-What a row costs, in ns, 1,000 rows, against a column (`bench/ts-heap-fields`, TBD-BENCH):
+What a row costs, in ns, 1,000 rows, against a column (`bench/ts-heap-fields`, release, medians of
+8 rounds, `results/runs.txt`):
 
-TBD-TABLE
+| Per row | Column (`f32`) | `string` | 8-item `f32[]` |
+| --- | --- | --- | --- |
+| Read, unchanged row (cached) | 8 | 29 | 30 |
+| Read, changed row (host call) | 8 | 109 | 110 |
+| Write on `Mut` (host call) | not measured (a typed-array store) | 381 | 397 |
+| Despawn | 21 | 38 (the whole row, both fields) | |
+
+A plain field of a heap component still reads as a column (8 ns). A component with no heap field
+matches main: column read 8.5 on main against 8 here, despawn 22 against 21.
 
 Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
 fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).
