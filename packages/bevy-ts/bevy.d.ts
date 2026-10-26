@@ -2,7 +2,7 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components and resources TS can name.
 import { Component, EntityEvent, Event, Message, Resource } from "bevy-ts";
-import type { AssetClass, AssetFields, AssetLoad, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
+import type { AssetClass, AssetFields, AssetLoad, AssetProps, AssetRef, AssetType, AssetValue, bool, ColorValue, Entity, f32, f64, Holes, i16, i32, i8, Loadable, Option, Quat, ReflectClass, ReflectValue, RustClass, RustEnum, RustGeneric, RustStruct, u16, u32, u8, Vec2, Vec3, Vec4 } from "bevy-ts";
 
 export { Time, Transform } from "bevy-ts";
 
@@ -20,8 +20,17 @@ export type AnimatedBy = InstanceType<typeof AnimatedBy>;
 export declare const AnimationPlayer: ReflectClass<{ active_animations?: readonly (readonly [number, { weight?: number; repeat?: "Never" | { Count: number } | "Forever"; speed?: number; elapsed?: number; seek_time?: number; last_seek_time?: number | null; completions?: number; just_completed?: boolean; paused?: boolean }])[] }, { active_animations: readonly (readonly [number, { weight?: number; repeat?: "Never" | { Count: number } | "Forever"; speed?: number; elapsed?: number; seek_time?: number; last_seek_time?: number | null; completions?: number; just_completed?: boolean; paused?: boolean }])[] }>;
 export type AnimationPlayer = InstanceType<typeof AnimationPlayer>;
 
-/** `AnimationTargetId.of(...)` in commands: the value written over its default. */
-export declare const AnimationTargetId: ReflectClass<string, { value: string }>;
+/** A target: `{ names }`, the names from the animation root down to it (Bevy's `from_names`), or a UUID string. */
+export type AnimationTarget = string | { readonly names: readonly string[] };
+/** Bevy's `AnimationTargetId`; its statics name a target for a graph's mask groups or a clip's curves. */
+export declare const AnimationTargetId: ReflectClass<string, { value: string }> & {
+  /** The target at `names`, from the animation root down (`["root", "b_Hip_01"]`). */
+  fromNames(names: readonly string[]): AnimationTarget;
+  /** `fromNames([name])`. */
+  fromName(name: string): AnimationTarget;
+  /** The animation root itself: `fromNames([])`. */
+  readonly root: AnimationTarget;
+};
 export type AnimationTargetId = InstanceType<typeof AnimationTargetId>;
 
 /** `AnimationGraphHandle.of(...)` in commands: the value written over its default. */
@@ -1284,18 +1293,18 @@ export declare class Save extends Component {
 export declare const TsSaved: ReflectClass<Record<string, string>, { value: Record<string, string> }>;
 export type TsSaved = InstanceType<typeof TsSaved>;
 
-/** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
+/** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); graph: an enum with data (bevy_asset::handle::Handle<bevy_animation::graph::AnimationGraph>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
   static readonly path: "bevy_ts_animation::PlayAnimation";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; repeat: "Never" | { Count: number } | "Forever"; speed: number; transition_secs: number; paused: boolean; cull: boolean };
+  static readonly __element: { clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; graph: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null; repeat: "Never" | { Count: number } | "Forever"; speed: number; transition_secs: number; paused: boolean; cull: boolean };
   declare speed: f32;
   declare transition_secs: f32;
   declare paused: bool;
   declare cull: bool;
 }
-export interface PlayAnimation extends Holes<{ clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; repeat: "Never" | { Count: number } | "Forever" }> {}
+export interface PlayAnimation extends Holes<{ clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> | null; graph: string | AssetRef<AnimationGraph> | AssetValue<AnimationGraph> | null; repeat: "Never" | { Count: number } | "Forever" }> {}
 
 /** `MissingComponents.of(...)` in commands: the value written over its default. */
 export declare const MissingComponents: ReflectClass<readonly ({ component?: string; reason?: "Unregistered" | "Failed" | "Mismatch"; message?: string; fields?: Record<string, string>; location?: { file?: string; line?: number; column?: number }; expected?: { file?: string; line?: number; column?: number } | null; misfit?: Record<string, string>; overrides?: readonly ({ path?: readonly string[]; fields?: Record<string, string> })[]; scene?: boolean })[], { value: readonly ({ component?: string; reason?: "Unregistered" | "Failed" | "Mismatch"; message?: string; fields?: Record<string, string>; location?: { file?: string; line?: number; column?: number }; expected?: { file?: string; line?: number; column?: number } | null; misfit?: Record<string, string>; overrides?: readonly ({ path?: readonly string[]; fields?: Record<string, string> })[]; scene?: boolean })[] }>;
@@ -1892,11 +1901,195 @@ export type DynamicWorldRoot = InstanceType<typeof DynamicWorldRoot>;
 export declare const WorldAssetRoot: ReflectClass<string | null, { value: string | null }>;
 export type WorldAssetRoot = InstanceType<typeof WorldAssetRoot>;
 
-export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { events: readonly (readonly ["Root" | { Node: string }, readonly ({ time?: number; event?: {  } })[]])[]; duration: number }>;
-export declare const AnimationClip: AssetClass<AnimationClip>;
+export type AnimationClip = AssetFields<"bevy_animation::AnimationClip", { curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number }>;
+/** Bevy's `interval(start, end)`, `[start, end]`; `null` or `Infinity` for an unbounded end. */
+export type CurveInterval = readonly [number | null, number | null];
+export declare function interval(start: number, end: number | null): CurveInterval;
+/** A value a curve holds, as its field's JSON: a number, a bool, `[x, y, z]`, `[x, y, z, w]`. */
+export type CurveValue<T> = T extends number ? number : T extends boolean ? boolean : T extends ReadonlyQuatLike ? readonly [number, number, number, number] : T extends ReadonlyVec3Like ? readonly [number, number, number] : T;
+interface ReadonlyVec3Like { readonly x: number; readonly y: number; readonly z: number }
+interface ReadonlyQuatLike extends ReadonlyVec3Like { readonly w: number }
+/** The fields of a component Bevy can animate: numbers, bools, vectors and quaternions. */
+export type AnimatableKeys<C> = { [K in keyof C & string]: C[K] extends number | boolean | ReadonlyVec3Like ? K : never }[keyof C & string];
+/** Bevy's `animated_field!(Component::field)`. */
+export interface AnimatedField<T> {
+  readonly component: string;
+  readonly field: string;
+  readonly __value?: T;
+}
+export declare function animatedField<C extends abstract new (...args: never[]) => object, K extends AnimatableKeys<InstanceType<C>>>(
+  component: C,
+  field: K,
+): AnimatedField<CurveValue<InstanceType<C>[K]>>;
+/** Bevy's `EaseFunction`, by its variant names. */
+export type EaseFunction =
+  | "Linear" | "QuadraticIn" | "QuadraticOut" | "QuadraticInOut" | "CubicIn" | "CubicOut" | "CubicInOut"
+  | "QuarticIn" | "QuarticOut" | "QuarticInOut" | "QuinticIn" | "QuinticOut" | "QuinticInOut"
+  | "SmoothStepIn" | "SmoothStepOut" | "SmoothStep" | "SmootherStepIn" | "SmootherStepOut" | "SmootherStep"
+  | "SineIn" | "SineOut" | "SineInOut" | "CircularIn" | "CircularOut" | "CircularInOut"
+  | "ExponentialIn" | "ExponentialOut" | "ExponentialInOut" | "ElasticIn" | "ElasticOut" | "ElasticInOut"
+  | "BackIn" | "BackOut" | "BackInOut" | "BounceIn" | "BounceOut" | "BounceInOut"
+  | { readonly Steps: readonly [number, "Start" | "End" | "None" | "Both"] }
+  | { readonly Elastic: number };
+/**
+ * A curve of values `T`: Bevy's constructor or adaptor, as the JSON Rust builds it from. Each
+ * constructor infers `T` as written (`[0, 2, 0]` a 3-tuple), so it fits the field it animates.
+ */
+export declare class Curve<T> {
+  protected constructor();
+  readonly json: unknown;
+  private readonly __value?: T;
+  /** This curve over `domain`: how an ease over 0..1 becomes N seconds. */
+  reparametrizeLinear(domain: CurveInterval): Curve<T>;
+  reverse(): Curve<T>;
+  /** Plays the curve `count` more times after the first. */
+  repeat(count: number): Curve<T>;
+  /** Repeats without end: a clip of it needs `setDuration`. */
+  forever(): Curve<T>;
+  /** There and back. */
+  pingPong(): Curve<T>;
+  /** This curve, then `other`. */
+  chain(other: Curve<T>): Curve<T>;
+  /** This curve, then `other` offset to start where this one ends (vector values). */
+  chainContinue(other: Curve<T>): Curve<T>;
+}
+export declare class EasingCurve<const T> extends Curve<T> {
+  constructor(start: T, end: T, ease: EaseFunction);
+}
+export declare class ConstantCurve<const T> extends Curve<T> {
+  constructor(domain: CurveInterval, value: T);
+}
+export declare class SampleAutoCurve<const T> extends Curve<T> {
+  constructor(domain: CurveInterval, samples: Iterable<T>);
+}
+export declare class UnevenSampleAutoCurve<const T> extends Curve<T> {
+  constructor(keyframes: Iterable<readonly [number, T]>);
+}
+export declare class AnimatableKeyframeCurve<const T> extends Curve<T> {
+  constructor(keyframes: Iterable<readonly [number, T]>);
+}
+export declare class SteppedKeyframeCurve<const T> extends Curve<T> {
+  constructor(keyframes: Iterable<readonly [number, T]>);
+}
+export declare class CubicKeyframeCurve<const T> extends Curve<T> {
+  /** `values` holds three per time: in-tangent, value, out-tangent. */
+  constructor(times: Iterable<number>, values: Iterable<T>);
+}
+export declare class CubicRotationCurve extends Curve<readonly [number, number, number, number]> {
+  constructor(times: Iterable<number>, values: Iterable<readonly [number, number, number, number]>);
+}
+/** A spline: `toCurve()` and `toCurveCyclic()` make its curve, as Bevy's generators do. */
+export declare class Spline<T> {
+  protected constructor();
+  toCurve(): Curve<T>;
+  toCurveCyclic(): Curve<T>;
+}
+export declare class CubicBezier<const T> extends Spline<T> {
+  /** Each segment is four control points. */
+  constructor(controlPoints: Iterable<readonly [T, T, T, T]>);
+}
+export declare class CubicHermite<const T> extends Spline<T> {
+  constructor(controlPoints: Iterable<T>, tangents: Iterable<T>);
+}
+export declare class CubicCardinalSpline<const T> extends Spline<T> {
+  constructor(tension: number, controlPoints: Iterable<T>);
+  static newCatmullRom<const T>(controlPoints: Iterable<T>): CubicCardinalSpline<T>;
+}
+export declare class CubicBSpline<const T> extends Spline<T> {
+  constructor(controlPoints: Iterable<T>);
+}
+export declare class CubicNurbs<const T> extends Spline<T> {
+  constructor(controlPoints: Iterable<T>, weights?: Iterable<number> | null, knots?: Iterable<number> | null);
+}
+export declare class LinearSpline<const T> extends Spline<T> {
+  constructor(points: Iterable<T>);
+}
+/** Bevy's `AnimatableCurve::new(animated_field!(...), curve)`: the curve's values are the field's type. */
+export declare class AnimatableCurve<T> {
+  constructor(property: AnimatedField<T>, curve: Curve<NoInfer<T>>);
+  readonly property: AnimatedField<T>;
+  readonly curve: Curve<T>;
+}
+/**
+ * `new AnimationClip()`: Bevy's `AnimationClip` as a builder, holding the JSON (`AnimationClip`,
+ * the type) Rust builds the clip from. An asset value: `PlayAnimation.clip`, a graph's `addClip`,
+ * `assets.add(clip)` and `assets.set(ref, clip)` take it.
+ */
+export interface AnimationClipBuilder extends AssetValue<AnimationClip> {
+  readonly $of: "bevy_animation::AnimationClip";
+  readonly props: AnimationClip;
+  /** Adds `curve` on `target`; the duration grows to the curve's end. */
+  addCurveToTarget<T>(target: AnimationTarget, curve: AnimatableCurve<T>): this;
+  /** Fixes the clip's length in seconds; a clip with an unbounded curve needs one. */
+  setDuration(secs: number): this;
+  /** The length set with `setDuration`; `undefined` until then (Rust takes the longest curve). */
+  readonly duration: number | undefined;
+}
+export declare const AnimationClip: AssetType<AnimationClip> & {
+  readonly typePath: "bevy_animation::AnimationClip";
+  /** An empty clip. */
+  new (): AnimationClipBuilder;
+  /** An asset value from the clip's JSON. */
+  of(props?: AssetProps<AnimationClip>): AssetValue<AnimationClip>;
+};
 
-export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", {  }>;
-export declare const AnimationGraph: AssetType<AnimationGraph>;
+export type AnimationGraph = AssetFields<"bevy_animation::graph::AnimationGraph", { graph: { nodes: { node_type: "Blend" | "Add" | { Clip: string | AssetRef<AnimationClip> | AssetValue<AnimationClip> }; mask: number; weight: number }[]; node_holes: never[]; edge_property: "directed"; edges: [number, number, null][] }; root: number; mask_groups: [string | { readonly names: readonly string[] }, number][] }>;
+/** A clip in a graph: an asset path with a label, or an `AnimationClip` ref or value. */
+export type ClipSource = string | AssetRef<AnimationClip> | AssetValue<AnimationClip>;
+/** One node of a graph's JSON. */
+export type AnimationGraphNodeJson = AnimationGraph["graph"]["nodes"][number];
+/**
+ * `new AnimationGraph()`: Bevy's `AnimationGraph` as a builder, Bevy's methods camelCased, holding
+ * the JSON (`AnimationGraph`, the type) Rust reads and writes. An asset value: a
+ * `Handle<AnimationGraph>` slot (`<PlayAnimation graph={g} />`), `assets.add(g)` and
+ * `assets.set(ref, g)` take it. Node numbers are this graph's own.
+ */
+export interface AnimationGraphBuilder extends AssetValue<AnimationGraph> {
+  readonly $of: "bevy_animation::graph::AnimationGraph";
+  readonly props: AnimationGraph;
+  root: number;
+  readonly graph: AnimationGraph["graph"];
+  readonly mask_groups: AnimationGraph["mask_groups"];
+  addClip(clip: ClipSource, weight: number, parent: number): number;
+  addClipWithMask(clip: ClipSource, mask: number, weight: number, parent: number): number;
+  addClips(clips: Iterable<ClipSource>, weight: number, parent: number): number[];
+  /** A blend node: its children's weights are normalized to 1. */
+  addBlend(weight: number, parent: number): number;
+  addBlendWithMask(mask: number, weight: number, parent: number): number;
+  /** An additive node: each child is added, scaled by its weight. */
+  addAdditiveBlend(weight: number, parent: number): number;
+  addAdditiveBlendWithMask(mask: number, weight: number, parent: number): number;
+  /** Makes `to` a child of `from` too. */
+  addEdge(from: number, to: number): void;
+  /** Removes the edge from `from` to `to`; false when there was none. */
+  removeEdge(from: number, to: number): boolean;
+  /** A live view of node `n`: `weight` and `mask` write through. */
+  get(n: number): AnimationGraphNode | undefined;
+  /** Every node number, in order. */
+  nodes(): number[];
+  /** Puts `target` in mask group `group` (0 to 52). */
+  addTargetToMaskGroup(target: AnimationTarget, group: number): void;
+}
+export declare const AnimationGraph: AssetType<AnimationGraph> & {
+  readonly typePath: "bevy_animation::graph::AnimationGraph";
+  /** A graph with one blend node, its root. */
+  new (): AnimationGraphBuilder;
+  /** A graph playing one clip under its root, and the clip's node. */
+  fromClip(clip: ClipSource): [AnimationGraphBuilder, number];
+  /** A graph playing each clip under its root, and their nodes. */
+  fromClips(clips: Iterable<ClipSource>): [AnimationGraphBuilder, number[]];
+};
+/** One node of a graph, as `AnimationGraph.get(n)` gives it. */
+export interface AnimationGraphNode {
+  readonly node_type: AnimationGraphNodeJson["node_type"];
+  weight: number;
+  /** The mask groups this node and its descendants do not animate, one bit each. */
+  mask: number;
+  addMask(mask: number): this;
+  removeMask(mask: number): this;
+  addMaskGroup(group: number): this;
+  removeMaskGroup(group: number): this;
+}
 
 export type Image = AssetFields<"bevy_image::image::Image", { sampler: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } } }>;
 export type ImageLoadSettings = { sampler?: "Default" | { Descriptor: { label?: string | null; address_mode_u?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_v?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; address_mode_w?: "ClampToEdge" | "Repeat" | "MirrorRepeat" | "ClampToBorder"; mag_filter?: "Nearest" | "Linear"; min_filter?: "Nearest" | "Linear"; mipmap_filter?: "Nearest" | "Linear"; lod_min_clamp?: number; lod_max_clamp?: number; compare?: "Never" | "Less" | "Equal" | "LessEqual" | "Greater" | "NotEqual" | "GreaterEqual" | "Always" | null; anisotropy_clamp?: number; border_color?: "TransparentBlack" | "OpaqueBlack" | "OpaqueWhite" | "Zero" | null } }; is_srgb?: boolean };
