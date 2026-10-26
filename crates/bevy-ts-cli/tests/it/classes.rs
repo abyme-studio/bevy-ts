@@ -71,8 +71,8 @@ fn two_classes_with_one_name_fail_the_load_naming_both() {
 }
 
 #[test]
-fn a_string_field_fails_at_its_line() {
-    let e = load_errors("classes-string", "import { Component } from \"bevy-ts\";\n\nexport class Tagged extends Component { label: string = \"x\" }\n");
+fn a_field_of_no_field_type_fails_at_its_line() {
+    let e = load_errors("classes-number", "import { Component } from \"bevy-ts\";\n\nexport class Tagged extends Component { label: number = 1 }\n");
     let e = &e[0];
-    assert!(e.message.contains("game.ts:3:") && e.message.contains("Tagged field label: strings are not supported"), "{e:?}");
+    assert!(e.message.contains("game.ts:3:") && e.message.contains("Tagged field label: number is not a field type"), "{e:?}");
 }
