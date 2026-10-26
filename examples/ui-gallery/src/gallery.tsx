@@ -1,7 +1,7 @@
 // Every bevy_ui element bevy-ts reaches from TSX, one panel per stage of the bevy-ui-coverage change.
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
-import { app, Show, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled, vec2 } from "bevy-ts";
+import { app, Show, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
 import { AutoDirectionalNavigation, Camera3d, Checked, GlobalZIndex, Pressed, ScrollPosition, Transform, ZIndex } from "bevy-ts/bevy";
 import { CompassOctant, KeyCode, type DirectionalNavigation, type InputFocusVisible, type Keys } from "bevy-ts/input";
 import type { Child } from "bevy-ts/jsx-runtime";
@@ -348,7 +348,7 @@ app.scene("gallery", () => (
     </entity>
     <node key="gallery" style={{ position: "absolute", top: px(12), left: px(12), right: px(12), bottom: px(12), flexWrap: "wrap", alignContent: "flex-start", columnGap: px(12), rowGap: px(12), overflow: { x: "clip", y: "scroll" } }}
       onPointerScroll={({ unit, y }) => setScrollY(Math.max(0, scrollY() - y * (unit === "line" ? 24 : 1)))}>
-      <ScrollPosition value={() => vec2(0, scrollY())} />
+      <ScrollPosition value={() => [0, scrollY()] as const} />
       <Basics />
       <Style />
       <Text />
