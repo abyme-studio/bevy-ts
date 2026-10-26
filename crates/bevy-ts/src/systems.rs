@@ -377,13 +377,19 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
     match r.source {
         ComponentSource::Ts => ts(&r.name).ok_or_else(|| format!("no component named {}", r.name)),
         ComponentSource::Rust => {
-            if let Some(n) = native.get(&r.name).or_else(|| native.iter().find(|n| n.type_path == r.name)) {
+            // A short name is looked up among every registered component, not only the tiered
+            // ones, so a tiered and an untiered type that share it are refused too.
+            let id = match native.iter().find(|n| n.type_path == r.name) {
+                Some(n) => Some(n.id),
+                None => rust_component_by_name(world, &r.name)?.or_else(|| native.get(&r.name).map(|n| n.id)),
+            };
+            let id = id.ok_or_else(|| format!("no Rust component named {} is registered in this engine", r.name))?;
+            if let Some(n) = native.by_id(id) {
                 if n.resource {
                     return Err(format!("{} is a resource, not a component; take Res<{}>", r.name, r.name));
                 }
                 return Ok((n.id, n.layout.size));
             }
-            let id = rust_component_by_name(world, &r.name)?.ok_or_else(|| format!("no Rust component named {} is registered in this engine", r.name))?;
             if data {
                 let why = native.reflect_tier(&r.name).map(|t| format!(" ({})", t.reason)).unwrap_or_default();
                 return Err(format!(
