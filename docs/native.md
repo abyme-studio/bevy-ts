@@ -232,7 +232,10 @@ change tick, so a Rust system's `Res<R>::is_changed()` sees the write that frame
 `GlobalAmbientLight.color`) are read and written through reflection, as on query rows. A
 reflect-tier resource is a reflected handle in `bevy-ts/bevy` (`GlobalVolume`, `ClearColor`), typed
 with its fields and read and written whole through reflection (see below); one a built-in module's
-param stands for (`GizmoConfigStore`, `bevy-ts/gizmos`) is that module's, and has none. A name resolves to a TS resource first, then to a Rust resource by type path or
+param stands for (`GizmoConfigStore`, `bevy-ts/gizmos`) is that module's, and has none. Nor has
+one on `types.rs`'s `NO_HANDLE`, each with its reason: one that is never a resource
+(`ButtonInput<GamepadButton>`, a `Gamepad` field), bevy-ts's and Bevy's internals
+(`TsSavedResources`, `UiStack`, `PointerState`, ...). A name resolves to a TS resource first, then to a Rust resource by type path or
 unambiguous short name. A Rust resource is never query data. The load fails, naming the system,
 the param and the resource, for a layout class of a reflect-tier resource (with its reason), a
 component that is not a resource, `ResMut` of an immutable type, a short name several types share (with their paths), or
@@ -267,6 +270,12 @@ What reaches TS, by resource (tiers from `bevy-ts types` on the prebuilt engine)
 | `ClearColor` | reflect (`Color` only) | `Res`/`ResMut`, `value` | reflect-coverage stage 3 |
 | `DirectionalLightShadowMap`, `PointLightShadowMap` | reflect (`usize` is opaque) | `Res`/`ResMut` | reflect-coverage stage 3 |
 | `GlobalVolume`, `DefaultSpatialScale` | reflect | `Res`/`ResMut` | script-audio (docs/audio.md) |
+| `FpsOverlayConfig`, `TransformGizmoSettings` | reflect | `Res`/`ResMut` | script-audio-stage-2 |
+| `InputFocus`, `AutoNavigationConfig`, `DirectionalNavigationMap` | reflect | `Res`/`ResMut` | script-audio-stage-2 |
+| `HoverMap`, `PreviousHoverMap`, `PointerMap`, `RayMap` | reflect | `Res` (Bevy's picking writes them each frame) | script-audio-stage-2 |
+| `DefaultCursor`, `OverrideCursor` | reflect | `Res`/`ResMut` | script-audio-stage-2 |
+| `GizmoConfigStore` | reflect | the `bevy-ts/gizmos` param | script-gizmos |
+| `NO_HANDLE` in `types.rs` (`ButtonInput<GamepadButton>`, `TsSavedResources`, `UiStack`, ...) | reflect | none, each with its reason | script-audio-stage-2 |
 | `Time` | per-run value | `Res<Time>` | script-time |
 | `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | `Duration`s | not on this path | script-time |
 | `ButtonInput<*>`, `Touches`, gamepads | not plain data | exported params | script-input-devices |

@@ -7,8 +7,6 @@ import { array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeCompo
 
 export { Time, Transform } from "bevy-ts";
 
-export const AccessibilityRequested = reflectClass("AccessibilityRequested");
-
 export class ManageAccessibilityUpdates extends nativeResource("ManageAccessibilityUpdates", { value: bool }) {}
 
 export const AnimatedBy = reflectClass("AnimatedBy");
@@ -140,8 +138,6 @@ export class GlobalRenderDebugOverlay extends nativeResource("GlobalRenderDebugO
 
 export class RenderDebugOverlay extends nativeComponent("RenderDebugOverlay", { enabled: bool, opacity: f32 }) {}
 
-export const DefaultQueryFilters = reflectClass("DefaultQueryFilters");
-
 export const Disabled = reflectClass("Disabled");
 
 export class ChildOf extends nativeComponent("ChildOf", { value: entity }) {}
@@ -172,8 +168,6 @@ export const TransformGizmoSettings = reflectClass("TransformGizmoSettings");
 
 export class TransformGizmoState extends nativeResource("TransformGizmoState", { active: bool, drag_start_world: vec3, gizmo_origin: vec3 }) {}
 
-export const LineGizmoEntities = reflectClass("LineGizmoEntities");
-
 export const GltfExtras = reflectClass("GltfExtras");
 
 export const GltfMaterialExtras = reflectClass("GltfMaterialExtras");
@@ -187,8 +181,6 @@ export const GltfMeshName = reflectClass("GltfMeshName");
 export const GltfSceneExtras = reflectClass("GltfSceneExtras");
 
 export const GltfSceneName = reflectClass("GltfSceneName");
-
-export const ButtonInputGamepadButton = reflectClass("ButtonInput<GamepadButton>");
 
 export const Gamepad = reflectClass("Gamepad");
 
@@ -336,8 +328,6 @@ export const EntityCursor = reflectClass("EntityCursor");
 
 export const OverrideCursor = reflectClass("OverrideCursor");
 
-export const PointerState = reflectClass("PointerState");
-
 export class DirectlyHovered extends nativeComponent("DirectlyHovered", { value: bool }) {}
 
 export const HoverMap = reflectClass("HoverMap");
@@ -379,8 +369,6 @@ export class ChromaticAberration extends nativeComponent("ChromaticAberration", 
 export class Vignette extends nativeComponent("Vignette", { intensity: f32, radius: f32, smoothness: f32, roundness: f32, center: vec2, edge_compensation: f32 }) {}
 
 export class MotionBlur extends nativeComponent("MotionBlur", { shutter_angle: f32, samples: u32 }) {}
-
-export const SchemaTypesMetadata = reflectClass("SchemaTypesMetadata");
 
 export const CameraRenderGraph = reflectClass("CameraRenderGraph");
 
@@ -436,8 +424,6 @@ export class Wireframe2dConfig extends nativeResource("Wireframe2dConfig", { glo
 
 export const TilemapChunk = reflectClass("TilemapChunk");
 
-export const TilemapChunkMeshCache = reflectClass("TilemapChunkMeshCache");
-
 export const TilemapChunkTileData = reflectClass("TilemapChunkTileData");
 
 export const TextBounds = reflectClass("TextBounds");
@@ -482,8 +468,6 @@ export class Save extends nativeComponent("Save", {  }) {}
 
 export const TsSaved = reflectClass("TsSaved");
 
-export const TsSavedResources = reflectClass("TsSavedResources");
-
 export class PlayAnimation extends nativeComponent("PlayAnimation", { speed: f32, transition_secs: f32, paused: bool, cull: bool }) {}
 
 export const MissingComponents = reflectClass("MissingComponents");
@@ -527,8 +511,6 @@ export const UiPickingCamera = reflectClass("UiPickingCamera");
 export class UiPickingSettings extends nativeResource("UiPickingSettings", { require_markers: bool }) {}
 
 export class ComputedStackIndex extends nativeComponent("ComputedStackIndex", { value: u32 }) {}
-
-export const UiStack = reflectClass("UiStack");
 
 export const BackgroundColor = reflectClass("BackgroundColor");
 
@@ -661,8 +643,6 @@ export const SelectedTab = reflectClass("SelectedTab");
 export const Tab = reflectClass("Tab");
 
 export class TabList extends nativeComponent("TabList", { orientation: enumOf("Horizontal", "Vertical"), activation: enumOf("Manual", "Automatic") }) {}
-
-export const QueuedSelectAll = reflectClass("QueuedSelectAll");
 
 export const SelectAllOnFocus = reflectClass("SelectAllOnFocus");
 

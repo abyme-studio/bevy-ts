@@ -582,6 +582,20 @@ fn bevy_ts_imports(decls: &str) -> (BTreeSet<&str>, Vec<&str>) {
     (names, rest)
 }
 
+/// Reflect-tier resources that get no TS handle, each with why: a game never takes them as `Res`.
+const NO_HANDLE: &[(&str, &str)] = &[
+    ("bevy_input::button_input::ButtonInput<bevy_input::gamepad::GamepadButton>", "a field of the Gamepad component, never a resource"),
+    ("bevy_ts::saves::TsSavedResources", "bevy-ts's own save carrier"),
+    ("bevy_a11y::AccessibilityRequested", "an opaque Arc<AtomicBool>, with no TS value"),
+    ("bevy_picking::events::PointerState", "picking's internal state, not plain data"),
+    ("bevy_ecs::entity_disabling::DefaultQueryFilters", "the ECS's own query filters"),
+    ("bevy_gizmos_render::LineGizmoEntities", "the gizmo renderer's entities"),
+    ("bevy_remote::schemas::SchemaTypesMetadata", "the remote protocol's schema metadata"),
+    ("bevy_sprite_render::tilemap_chunk::TilemapChunkMeshCache", "a render cache"),
+    ("bevy_ui::stack::UiStack", "Bevy's UI order, rebuilt every frame"),
+    ("bevy_ui_widgets::text_input::QueuedSelectAll", "private to bevy_ui_widgets"),
+];
+
 /// The types params stand for (`stands_for`'s `Res<GizmoConfigStore>`): `GizmoConfigStore`.
 fn claimed(world: &World) -> BTreeSet<String> {
     let Some(host) = world.get_resource::<bevy_ts::host::HostParams>() else { return BTreeSet::new() };
@@ -596,7 +610,7 @@ fn claimed(world: &World) -> BTreeSet<String> {
 
 /// Every reflected component (and resource of either tier) with a TS identifier: its short name,
 /// prefixed by its crate when two types share one. Sorted by type path. A reflect-tier resource a
-/// param stands for (`claimed`) is the param's, so it has none.
+/// param stands for (`claimed`) is the param's, so it has none, and so has one on [`NO_HANDLE`].
 fn named<'r>(registry: &'r bevy::reflect::TypeRegistry, native: &NativeLayouts, claimed: &BTreeSet<String>) -> Vec<(String, String, &'r TypeRegistration)> {
     let mut entries: BTreeMap<String, (String, &TypeRegistration)> = BTreeMap::new();
     for reg in registry.iter().filter(|r| r.data::<bevy::ecs::reflect::ReflectComponent>().is_some()) {
@@ -604,9 +618,12 @@ fn named<'r>(registry: &'r bevy::reflect::TypeRegistry, native: &NativeLayouts, 
         let short = reg.type_info().type_path_table().short_path();
         if is_resource(reg)
             && native.get(&path).is_none_or(|n| n.type_path != path)
-            && (native.reflect_tier(&path).is_none() || claimed.contains(short) || claimed.contains(&path))
+            && (native.reflect_tier(&path).is_none()
+                || claimed.contains(short)
+                || claimed.contains(&path)
+                || NO_HANDLE.iter().any(|(p, _)| *p == path))
         {
-            // A resource in neither tier, or one a param stands for, has no TS handle.
+            // A resource in neither tier, one a param stands for, or one on NO_HANDLE has no TS handle.
             continue;
         }
         entries.insert(path, (ident(DEFAULT_ARGUMENTS.iter().find(|(full, _)| *full == short).map_or(short, |(_, bare)| bare)), reg));
@@ -1074,6 +1091,19 @@ mod tests {
         let block = out.split_once("declare module").map(|(_, b)| format!("declare module{b}")).unwrap();
         let fixture = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/bevy-ts/test/claims.ts")).unwrap();
         assert!(fixture.contains(&block), "packages/bevy-ts/test/claims.ts no longer holds what claims_ts emits:\n{block}");
+    }
+
+    /// `bevy-ts/bevy` as generated (`scripts/gen-bevy-types.sh --check` keeps it current): the
+    /// audio resources ship, and what `NO_HANDLE` and `claimed` skip does not.
+    #[test]
+    fn reflect_tier_resources_ship_but_not_the_skipped() {
+        let dts = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/bevy-ts/bevy.d.ts")).unwrap();
+        for name in ["GlobalVolume", "DefaultSpatialScale", "ClearColor"] {
+            assert!(dts.contains(&format!("export declare const {name}: ReflectClass<")), "{name} ships");
+        }
+        for name in ["ButtonInputGamepadButton", "TsSavedResources", "UiStack", "GizmoConfigStore"] {
+            assert!(!dts.contains(&format!("export declare const {name}:")), "{name} has no handle");
+        }
     }
 
     #[test]
