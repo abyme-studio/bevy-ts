@@ -16,7 +16,7 @@ A TS system that takes `images: ResMut<Assets<Image>>` SHALL get Bevy's image as
 - **THEN** the image's `sampler` is that descriptor, and `assets.get(ref).sampler` reads it back in the same shape
 
 ### Requirement: An image is rewritten in place
-`images.getMut(ref)` SHALL return the live image, or `undefined` when it is gone. `setData(bytes)` SHALL copy a `Uint8Array` of the image's exact length into the image's own data in one host call, with no allocation. `writeRect(x, y, w, h, packedRows)` SHALL copy `w × h` pixels of tightly packed rows into the rect at `x`, `y` in one host call, with no allocation. A length that does not match, or a rect outside the image, SHALL throw naming the image's size and the rect or length, and leave the image as it was. Several writes in one frame SHALL send one `AssetEvent::Modified`. A rewrite SHALL keep the image's size, format and sampler, so Bevy keeps its GPU texture.
+`images.getMut(ref)` SHALL return the live image, or `undefined` when it is gone. `setData(bytes)` SHALL copy a `Uint8Array` of the image's exact length into the image's own data in one host call, with no allocation. `writeRect(x, y, w, h, packedRows)` SHALL copy `w × h` pixels of tightly packed rows into the rect at `x`, `y` in one host call, with no allocation. A length that does not match, or a rect outside the image, SHALL throw naming the image's size and the rect or length, and leave the image as it was. Several writes to one image by one system in one frame SHALL send one `AssetEvent::Modified`. A rewrite SHALL keep the image's size, format and sampler, so Bevy keeps its GPU texture.
 
 #### Scenario: The whole image
 - **WHEN** a system calls `images.getMut(ref)!.setData(next)` on a 4×2 RGBA image

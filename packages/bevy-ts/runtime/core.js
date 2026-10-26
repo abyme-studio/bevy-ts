@@ -1986,6 +1986,7 @@ export function imageNew(size, format, data, options) {
   if (FORMAT_NAMES[format] === undefined) throw new TypeError(`Image.new: ${format} is not a TextureFormat (${FORMAT_NAMES.join(", ")})`);
   if (!(data instanceof Uint8Array)) throw new TypeError(`Image.new: the data is a Uint8Array, not ${data && data.constructor ? data.constructor.name : typeof data}`);
   const [width, height] = size;
+  if (width < 1 || height < 1 || width > 8192 || height > 8192) throw new RangeError(`Image.new: ${width}×${height} is not a size: each side is 1 to 8192`);
   const want = width * height * FORMAT_BYTES[format];
   if (data.length !== want) {
     throw new RangeError(`Image.new: a ${width}×${height} ${FORMAT_NAMES[format]} image takes ${want} bytes, not ${data.length}`);
