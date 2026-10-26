@@ -805,3 +805,115 @@ branch | 8-item Vec3[] miss | 476 ns a row
 branch | On<Remove> value's string read (Tag.label) | 28 ns an event
 branch | string message written and read (Chat.text), whole frame | 1523 ns a message
 branch | string event triggered and observed (Shout.text), whole frame | 3833 ns an event
+main at 75757677f, branch at 4ad64dde3
+ 7:33  up 2 days, 11:35, 2 users, load averages: 32.51 43.74 52.96
+main | plain column (Plain.hp) | 10 ns a row
+main | despawn, plain | 25 ns a row
+main | plain Res read (Score.value) | 12 ns a read
+main | plain Local read (n) | 11 ns a read
+main | plain message written and read (Ping.n), whole frame | 725 ns a message
+main | plain event triggered and observed (Hit.n), whole frame | 2559 ns an event
+branch | plain column (Plain.hp) | 12 ns a row
+branch | despawn, plain | 26 ns a row
+branch | plain Res read (Score.value) | 10 ns a read
+branch | plain Local read (n) | 9 ns a read
+branch | plain message written and read (Ping.n), whole frame | 607 ns a message
+branch | plain event triggered and observed (Hit.n), whole frame | 2255 ns an event
+branch | heap component's plain field (Tag.hp) | 9 ns a row
+branch | string hit (Tag.label) | 35 ns a row
+branch | string miss | 151 ns a row
+branch | string write | 477 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 39 ns a row
+branch | 8-item f32[] miss | 161 ns a row
+branch | 8-item f32[] write | 691 ns a row
+branch | heap Res string read (Title.text, cached) | 12 ns a row
+branch | Local string read (text, cached) | 11 ns a row
+branch | empty system, µs a run (subtracted) | 18
+branch | despawn, a string and an 8-item list | 53 ns a row
+branch | 8-item Vec3[] hit (Trail.points) | 67 ns a row
+branch | 8-item Vec3[] miss | 587 ns a row
+branch | 8-item f32[] push or pop in place | 1212 ns a row
+branch | 8-item f32[] push or pop, whole assignment | 1161 ns a row
+branch | 8-item f32[] [3] = in place | 940 ns a row
+branch | 8-item f32[] [3] =, whole assignment | 1240 ns a row
+branch | 64-item f32[] push or pop in place | 1854 ns a row
+branch | 64-item f32[] push or pop, whole assignment | 4014 ns a row
+branch | 64-item f32[] [3] = in place | 1893 ns a row
+branch | 64-item f32[] [3] =, whole assignment | 3704 ns a row
+branch | On<Remove> value's string read (Tag.label) | 0 ns an event
+branch | string message written and read (Chat.text), whole frame | 1570 ns a message
+branch | string event triggered and observed (Shout.text), whole frame | 3855 ns an event
+ 7:33  up 2 days, 11:35, 2 users, load averages: 27.77 42.15 52.24
+main | plain column (Plain.hp) | 12 ns a row
+main | despawn, plain | 33 ns a row
+main | plain Res read (Score.value) | 13 ns a read
+main | plain Local read (n) | 14 ns a read
+main | plain message written and read (Ping.n), whole frame | 746 ns a message
+main | plain event triggered and observed (Hit.n), whole frame | 3061 ns an event
+branch | plain column (Plain.hp) | 13 ns a row
+branch | despawn, plain | 30 ns a row
+branch | plain Res read (Score.value) | 12 ns a read
+branch | plain Local read (n) | 11 ns a read
+branch | plain message written and read (Ping.n), whole frame | 636 ns a message
+branch | plain event triggered and observed (Hit.n), whole frame | 2228 ns an event
+branch | heap component's plain field (Tag.hp) | 11 ns a row
+branch | string hit (Tag.label) | 49 ns a row
+branch | string miss | 191 ns a row
+branch | string write | 485 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 47 ns a row
+branch | 8-item f32[] miss | 164 ns a row
+branch | 8-item f32[] write | 817 ns a row
+branch | heap Res string read (Title.text, cached) | 12 ns a row
+branch | Local string read (text, cached) | 13 ns a row
+branch | empty system, µs a run (subtracted) | 19
+branch | despawn, a string and an 8-item list | 53 ns a row
+branch | 8-item Vec3[] hit (Trail.points) | 64 ns a row
+branch | 8-item Vec3[] miss | 487 ns a row
+branch | 8-item f32[] push or pop in place | 1124 ns a row
+branch | 8-item f32[] push or pop, whole assignment | 1447 ns a row
+branch | 8-item f32[] [3] = in place | 1719 ns a row
+branch | 8-item f32[] [3] =, whole assignment | 2406 ns a row
+branch | 64-item f32[] push or pop in place | 2162 ns a row
+branch | 64-item f32[] push or pop, whole assignment | 3847 ns a row
+branch | 64-item f32[] [3] = in place | 1970 ns a row
+branch | 64-item f32[] [3] =, whole assignment | 3229 ns a row
+branch | On<Remove> value's string read (Tag.label) | 0 ns an event
+branch | string message written and read (Chat.text), whole frame | 2018 ns a message
+branch | string event triggered and observed (Shout.text), whole frame | 4490 ns an event
+ 7:34  up 2 days, 11:36, 2 users, load averages: 30.61 41.83 51.88
+main | plain column (Plain.hp) | 13 ns a row
+main | despawn, plain | 29 ns a row
+main | plain Res read (Score.value) | 13 ns a read
+main | plain Local read (n) | 13 ns a read
+main | plain message written and read (Ping.n), whole frame | 704 ns a message
+main | plain event triggered and observed (Hit.n), whole frame | 2424 ns an event
+branch | plain column (Plain.hp) | 9 ns a row
+branch | despawn, plain | 21 ns a row
+branch | plain Res read (Score.value) | 9 ns a read
+branch | plain Local read (n) | 9 ns a read
+branch | plain message written and read (Ping.n), whole frame | 576 ns a message
+branch | plain event triggered and observed (Hit.n), whole frame | 2054 ns an event
+branch | heap component's plain field (Tag.hp) | 8 ns a row
+branch | string hit (Tag.label) | 33 ns a row
+branch | string miss | 123 ns a row
+branch | string write | 426 ns a row
+branch | 8-item f32[] hit (Tag.scores) | 54 ns a row
+branch | 8-item f32[] miss | 188 ns a row
+branch | 8-item f32[] write | 841 ns a row
+branch | heap Res string read (Title.text, cached) | 15 ns a row
+branch | Local string read (text, cached) | 12 ns a row
+branch | empty system, µs a run (subtracted) | 15
+branch | despawn, a string and an 8-item list | 46 ns a row
+branch | 8-item Vec3[] hit (Trail.points) | 44 ns a row
+branch | 8-item Vec3[] miss | 381 ns a row
+branch | 8-item f32[] push or pop in place | 869 ns a row
+branch | 8-item f32[] push or pop, whole assignment | 1021 ns a row
+branch | 8-item f32[] [3] = in place | 842 ns a row
+branch | 8-item f32[] [3] =, whole assignment | 1072 ns a row
+branch | 64-item f32[] push or pop in place | 1496 ns a row
+branch | 64-item f32[] push or pop, whole assignment | 3236 ns a row
+branch | 64-item f32[] [3] = in place | 1754 ns a row
+branch | 64-item f32[] [3] =, whole assignment | 3548 ns a row
+branch | On<Remove> value's string read (Tag.label) | 650 ns an event
+branch | string message written and read (Chat.text), whole frame | 1270 ns a message
+branch | string event triggered and observed (Shout.text), whole frame | 2869 ns an event

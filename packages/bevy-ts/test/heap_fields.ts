@@ -1,5 +1,6 @@
 // Type tests for heap fields on TS components (ts-component-heap-fields): a `string` field reads as
-// a string and a `T[]` as `readonly T[]`, assigned whole on a `Mut` row, read-only on a read row. `tsc -p test` must
+// a string and a `T[]` as `readonly T[]` on a read row; on a `Mut` row a list is an array edited in
+// place or assigned whole (ts-heap-fields-2 stage 5). `tsc -p test` must
 // pass, and every `@ts-expect-error` must be an error.
 import { Component, type Entity, type f32, type Mut, type Query, type u32, vec3, type Vec3 } from "bevy-ts";
 
@@ -13,8 +14,9 @@ export function rename(q: Query<[Mut<Tag>]>) {
   q.each((t) => {
     if (t.label === "door") t.label = "open";
     t.scores = [...t.scores, 1];
-    // @ts-expect-error a list is assigned whole, never edited in place
     t.scores.push(2);
+    t.scores[0] = 3;
+    t.scores.length = 1;
   });
 }
 
@@ -24,7 +26,7 @@ export function look(q: Query<[Tag]>) {
     const n: number = t.scores[0];
     // @ts-expect-error a read row is read-only
     t.label = "x";
-    // @ts-expect-error a list is never edited in place
+    // @ts-expect-error a list on a read row is never edited in place
     t.scores.push(3);
     void [s, n];
   });
@@ -55,6 +57,8 @@ export function walk(q: Query<[Mut<Trail>]>) {
     // @ts-expect-error its vector member too
     h.at.x = 3;
     t.points = [...t.points, vec3(1, 2, 3)];
+    t.points.push(vec3(4, 5, 6));
+    t.hits[0] = { ...h, hp: 2 };
     t.hits = [{ at: vec3(), by: t.who[0], kind: "hit", hp: 1 }];
     void [len, k, by];
   });

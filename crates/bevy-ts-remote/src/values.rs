@@ -336,11 +336,28 @@ fn write_ts(world: &mut World, entity: Entity, c: &TsComponent, path: &str, v: &
     let mut m = e
         .get_mut_by_id(c.id)
         .map_err(|_| invalid(format!("entity {entity} has no {}", c.decl.name)))?;
+    if let Some(item) = &target.item {
+        return write_item(m.bypass_change_detection().as_ptr(), item, path, v).map(|()| m.set_changed());
+    }
     // Marks the component changed for watchers and `Changed`.
     let ptr = m.as_mut();
     // SAFETY: `target` lies inside the component's live value.
     unsafe { fv.write_at(ptr.as_ptr(), target.offset) };
     Ok(())
+}
+
+/// Sets one item of a heap list, or its member, in place (`.scores[i]`, `.hits[i].hp`): one
+/// `set` edit, as an in-place edit from a script.
+fn write_item(p: *mut u8, item: &bevy_ts::value::ListItem, path: &str, v: &Value) -> Result<(), BrpError> {
+    let kind = bevy_ts::heap::HeapKind::of(&item.list).ok_or_else(|| invalid(format!("{path}: not a list")))?;
+    // SAFETY: the slot holds a live list of `kind` (the component's layout).
+    let old = bevy_ts::value::heap_json(&unsafe { bevy_ts::heap::read(p, item.slot, kind) });
+    let len = old.as_array().map_or(0, Vec::len);
+    let new = item.set(&old, v).ok_or_else(|| invalid(format!("{path}: [{}] is past the end: the list has {len} items", item.index)))?;
+    let one = json!([new[item.index]]);
+    let set = bevy_ts::value::heap_value(path, &item.list, &one).map_err(|e| invalid(e.to_string()))?;
+    // SAFETY: as above; `apply` checks the index.
+    unsafe { bevy_ts::heap::apply(p, item.slot, kind, vec![bevy_ts::heap::Edit::Set(item.index, set)]) }.map_err(|e| invalid(format!("{path}: {e}")))
 }
 
 pub(crate) fn mutate_components(In(p): In<Option<Value>>, world: &mut World) -> BrpResult {

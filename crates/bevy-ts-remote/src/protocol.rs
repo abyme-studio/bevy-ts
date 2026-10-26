@@ -2,7 +2,7 @@
 #![allow(clippy::all, clippy::pedantic, dead_code, missing_docs, unused_imports)]
 
 /// The protocol version this build speaks.
-pub const VERSION: &str = "1.35.0";
+pub const VERSION: &str = "1.36.0";
 
 /// One method of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1192,7 +1192,7 @@ pub struct FieldRoutes {
     pub scale: EditRoute,
     pub translation: EditRoute,
 }
-///A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`). `string` and `list` are heap fields (protocol 1.33.0), Rust's `String` and `Vec<T>` in the component's own bytes: a JSON string, or an array of the list's item type `of` (a number kind, `bool`, `string`, a vector, `entity`, `enum`, or (protocol 1.34.0) `struct`), each written whole by `.field` (`.field[i]` on a list is refused). A `struct` is only a list's item: an object of its `fields`, each `{ name, type }` of a plain type (a number kind, `bool`, a vector, `entity`, `enum`), laid out with C rules as a `#[repr(C)]` Rust struct; a value gives every member. A component with one starts with an 8-byte header the layout's offsets and `size` include.
+///A field's type. `timer` is Bevy's `Timer` (24 bytes, align 8) and `stopwatch` its `Stopwatch` (16, align 8), each read and written as an object of their fields: a timer's `elapsed`, `duration` (seconds), `times_finished_this_tick`, `mode` (`Once` or `Repeating`), `paused`, `finished`; a stopwatch's `elapsed` and `paused`. Writing a whole one sets every field: a field left out is zero; write one field by its path (`.cooldown.duration`). `string` and `list` are heap fields (protocol 1.33.0), Rust's `String` and `Vec<T>` in the component's own bytes: a JSON string, or an array of the list's item type `of` (a number kind, `bool`, `string`, a vector, `entity`, `enum`, or (protocol 1.34.0) `struct`), each written whole by `.field`; from protocol 1.36.0 `.field[i]` writes one item in place, and `.field[i].member` one member of an object or vector item (an index past the end fails naming the length). A `struct` is only a list's item: an object of its `fields`, each `{ name, type }` of a plain type (a number kind, `bool`, a vector, `entity`, `enum`), laid out with C rules as a `#[repr(C)]` Rust struct; a value gives every member. A component with one starts with an 8-byte header the layout's offsets and `size` include.
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 pub struct FieldType {
     #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -3521,7 +3521,7 @@ pub struct Modifiers {
 pub struct MutateComponentsParams {
     pub component: ::std::string::String,
     pub entity: Entity,
-    ///.field, .field.x|y|z|w or .field[i] for TS components; a reflect path for Rust ones.
+    ///.field, .field.x|y|z|w, .field[i] (an array's or, from 1.36.0, a list's item) or .field[i].member for TS components; a reflect path for Rust ones.
     pub path: ::std::string::String,
     pub value: ::serde_json::Value,
 }

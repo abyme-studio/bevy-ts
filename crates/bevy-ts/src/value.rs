@@ -381,36 +381,82 @@ pub struct PathTarget {
     pub ty: FieldType,
     /// The top-level field the path is in.
     pub field: String,
+    /// In a list's item (`.points[i]`, `.hits[i].hp`): `offset` and `ty` are inside the item.
+    pub item: Option<ListItem>,
 }
 
-/// Resolves `.field`, `.field.x|y|z|w`, `.field[i]` and a timer's or stopwatch's `.field.elapsed`.
+/// Where a path into a list goes: its slot, the item, and the steps inside the item's JSON.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListItem {
+    pub slot: usize,
+    pub list: FieldType,
+    pub index: usize,
+    pub steps: Vec<Step>,
+}
+
+/// One step into an item's JSON: an object's member or a vector's lane.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Step {
+    Key(String),
+    Lane(usize),
+}
+
+impl ListItem {
+    /// The list `old` with this item, or its member, set to `v`; `None` past the end.
+    pub fn set(&self, old: &Value, v: &Value) -> Option<Value> {
+        let mut list = old.clone();
+        let mut at = list.as_array_mut()?.get_mut(self.index)?;
+        for s in &self.steps {
+            at = match s {
+                Step::Key(k) => at.get_mut(k)?,
+                Step::Lane(i) => at.get_mut(*i)?,
+            };
+        }
+        *at = v.clone();
+        Some(list)
+    }
+}
+
+/// Resolves `.field`, `.field.x|y|z|w`, `.field[i]` (an array's or a list's item), a list item's
+/// member or lane (`.hits[i].hp`) and a timer's or stopwatch's `.field.elapsed`.
 pub fn resolve_path(layout: &ComponentLayout, path: &str) -> Result<PathTarget, ValueError> {
     let bad = |message: String| ValueError { path: path.to_string(), expected: "a field path".into(), message };
     let rest = path.strip_prefix('.').ok_or_else(|| bad("paths start with '.'".into()))?;
     let end = rest.find(['.', '[']).unwrap_or(rest.len());
     let (name, mut rest) = rest.split_at(end);
     let f = layout.field(name).ok_or_else(|| bad(format!("no field {name}")))?;
-    let mut target = PathTarget { offset: f.offset, ty: f.ty.clone(), field: name.to_string() };
+    let mut target = PathTarget { offset: f.offset, ty: f.ty.clone(), field: name.to_string(), item: None };
     while !rest.is_empty() {
         if let Some(r) = rest.strip_prefix('.') {
             let end = r.find(['.', '[']).unwrap_or(r.len());
             let (lane, r2) = r.split_at(end);
-            if let Some(sub) = target.ty.fields() {
+            if let Some(sub) = target.ty.fields().cloned().or_else(|| target.ty.struct_layout()) {
                 let f = sub.field(lane).ok_or_else(|| bad(format!("no field {lane} on {}", target.ty.ts_name())))?;
-                target = PathTarget { offset: target.offset + f.offset, ty: f.ty.clone(), field: target.field };
+                let item = target.item.map(|mut it| {
+                    it.steps.push(Step::Key(lane.to_string()));
+                    it
+                });
+                target = PathTarget { offset: target.offset + f.offset, ty: f.ty.clone(), field: target.field, item };
                 rest = r2;
                 continue;
             }
             let lanes = target.ty.lanes().ok_or_else(|| bad(format!("{} has no lanes", target.ty.ts_name())))?;
             let i = ["x", "y", "z", "w"].iter().position(|x| *x == lane).filter(|i| *i < lanes);
             let i = i.ok_or_else(|| bad(format!("no lane {lane} on {}", target.ty.ts_name())))?;
-            target = PathTarget { offset: target.offset + i * 4, ty: FieldType::F32, field: target.field };
+            let item = target.item.map(|mut it| {
+                it.steps.push(Step::Lane(i));
+                it
+            });
+            target = PathTarget { offset: target.offset + i * 4, ty: FieldType::F32, field: target.field, item };
             rest = r2;
         } else if let Some(r) = rest.strip_prefix('[') {
             let close = r.find(']').ok_or_else(|| bad("unclosed [".into()))?;
             let i: usize = r[..close].parse().map_err(|_| bad(format!("bad index {}", &r[..close])))?;
-            if let FieldType::List { .. } = &target.ty {
-                return Err(bad(format!("{0} is a list: write it whole, with the path .{0}", target.field)));
+            if let FieldType::List { of } = &target.ty {
+                let item = ListItem { slot: target.offset, list: target.ty.clone(), index: i, steps: Vec::new() };
+                target = PathTarget { offset: 0, ty: (**of).clone(), field: target.field, item: Some(item) };
+                rest = &r[close + 1..];
+                continue;
             }
             let FieldType::Array { of, len } = &target.ty else {
                 return Err(bad(format!("{} is not an array", target.ty.ts_name())));
@@ -419,7 +465,7 @@ pub fn resolve_path(layout: &ComponentLayout, path: &str) -> Result<PathTarget, 
                 return Err(bad(format!("index {i} out of 0..{len}")));
             }
             let of = (**of).clone();
-            target = PathTarget { offset: target.offset + i * of.size(), ty: of, field: target.field };
+            target = PathTarget { offset: target.offset + i * of.size(), ty: of, field: target.field, item: target.item };
             rest = &r[close + 1..];
         } else {
             return Err(bad(format!("unexpected {rest}")));
@@ -470,9 +516,18 @@ mod tests {
             ("xs", &FieldType::Array { of: Box::new(FieldType::U16), len: 4 }),
         ]);
         assert_eq!(resolve_path(&l, ".p.y").unwrap().offset, 8);
-        assert_eq!(resolve_path(&l, ".xs[2]").unwrap(), PathTarget { offset: 20, ty: FieldType::U16, field: "xs".into() });
+        assert_eq!(resolve_path(&l, ".xs[2]").unwrap(), PathTarget { offset: 20, ty: FieldType::U16, field: "xs".into(), item: None });
         assert!(resolve_path(&l, ".p.w").is_err());
         assert!(resolve_path(&l, ".nope").is_err());
+        let hit = FieldType::Struct { fields: vec![crate::layout::StructField { name: "hp".into(), ty: FieldType::F32 }, crate::layout::StructField { name: "at".into(), ty: FieldType::Vec3 }] };
+        let hits = FieldType::List { of: Box::new(hit) };
+        let l = ComponentLayout::c_layout([("hits", &hits)]);
+        let t = resolve_path(&l, ".hits[2].at.y").unwrap();
+        let item = ListItem { slot: l.fields[0].offset, list: hits.clone(), index: 2, steps: vec![Step::Key("at".into()), Step::Lane(1)] };
+        assert_eq!((t.ty, t.item), (FieldType::F32, Some(item.clone())));
+        let old = json!([{ "hp": 1, "at": [0, 0, 0] }, {}, { "hp": 2, "at": [1, 2, 3] }]);
+        assert_eq!(item.set(&old, &json!(9)).unwrap()[2], json!({ "hp": 2, "at": [1, 9, 3] }));
+        assert_eq!(ListItem { index: 3, ..item }.set(&old, &json!(9)), None, "past the end");
     }
 
     #[test]
@@ -515,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn a_list_field_checks_its_items_and_is_written_whole() {
+    fn a_list_field_checks_its_items_and_one_item_is_a_path() {
         let list = |of: FieldType| FieldType::List { of: Box::new(of) };
         let d = ComponentDecl {
             name: "value::tests::Scores".into(),
@@ -530,7 +585,8 @@ mod tests {
         assert_eq!(b.decode(&l), json!({"scores": [1, 2], "names": ["a", "b"]}));
         let e = encode_component(&d, &l, json!({"scores": [1, -1]}).as_object().unwrap()).unwrap_err();
         assert_eq!(e.path, ".scores[1]");
-        assert!(resolve_path(&l, ".scores[0]").unwrap_err().message.contains("write it whole, with the path .scores"));
+        let t = resolve_path(&l, ".scores[0]").unwrap();
+        assert_eq!((t.ty, t.item.map(|i| i.index)), (FieldType::U32, Some(0)));
         assert_eq!(zero(&list(FieldType::F32)), json!([]));
     }
 

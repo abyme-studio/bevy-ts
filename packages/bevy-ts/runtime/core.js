@@ -3023,14 +3023,23 @@ function localPair(fields, index) {
     const path = `Local.${f.name}`;
     const encode = heapEncoder(f.type);
     const decode = heapDecoder(f.type);
+    const node = heapNode(f.type);
+    const enc = node.k === "list" ? { list: encode, item: codecEncoder(node.of) } : null;
+    const key = `L${index}:${i}`;
     Object.defineProperty(T.Write.prototype, f.name, {
       configurable: true,
       get() {
         const c = (this[LOCAL_CACHE] ??= []);
-        if (!(i in c)) c[i] = localFetch(index, i, decode);
-        return c[i];
+        const read = () => {
+          if (!(i in c)) c[i] = localFetch(index, i, decode);
+          return c[i];
+        };
+        // A list is the run's own array, its edits sent at the end of the run.
+        if (enc) return heapMutGet(key, path, node, enc, PLACE_LOCAL, index, i, read, () => delete c[i]);
+        return read();
       },
       set(v) {
+        if (enc) heapMutDrop(key);
         localSet(index, i, encode, v, path);
         if (this[LOCAL_CACHE]) delete this[LOCAL_CACHE][i];
       },
@@ -4321,14 +4330,117 @@ function reflectFlush() {
   REFLECT.pendingByKey.clear();
   let failed;
   for (const p of list) {
-    if (p.done || reflectSame(p.v, p.orig)) continue;
+    if (p.done || (!p.edit && reflectSame(p.v, p.orig))) continue;
     try {
-      reflectSet(p.t, p.entity, p.v);
+      if (p.edit) heapEditFlush(p);
+      else reflectSet(p.t, p.entity, p.v);
     } catch (e) {
       failed ??= e;
     }
   }
   if (failed !== undefined) throw failed;
+}
+
+// ---------------------------------------------------------------------------------------------
+// In-place list edits (ts-heap-fields-2 design decision 7). A heap list read through a writable
+// accessor (`Mut`, `ResMut`, `Local`) is a plain array made for this run, beside the frozen value
+// it was copied from. At the end of the run (or before a read of the same field from elsewhere in
+// it) the array is diffed against that value into `heap::Edit`s, one `WRITE_EDIT` host call per
+// changed list; an unchanged one sends nothing and marks nothing.
+
+const REFLECT_EDIT = 0xffff0003;
+const EDIT_TRUNCATE = 0, EDIT_SET = 1, EDIT_APPEND = 2, EDIT_REPLACE = 3;
+
+/**
+ * The run's array for the list at `key`: `read()` gives its frozen value, `place`/`id`/`t` the
+ * host call's slots 0-2, `enc` its list and item encoders, `after()` drops what caches it.
+ */
+function heapMutGet(key, path, node, enc, place, id, t, read, after) {
+  const p = REFLECT.pendingByKey.get(key);
+  if (p) return p.v;
+  const orig = read();
+  const e = { edit: true, key, path, node, enc, place, id, t, after, v: [...orig], orig, done: false };
+  REFLECT.pending.push(e);
+  REFLECT.pendingByKey.set(key, e);
+  return e.v;
+}
+
+/** A whole assignment to the list at `key`: edits made to the run's array are dropped. */
+function heapMutDrop(key) {
+  const p = REFLECT.pendingByKey.get(key);
+  if (!p) return;
+  p.done = true;
+  REFLECT.pendingByKey.delete(key);
+}
+
+/** Sends the edits pending on the list at `key` now, before a read of it from elsewhere. */
+function heapMutFlushKey(key) {
+  const p = REFLECT.pendingByKey.get(key);
+  if (p && p.edit && !p.done) heapEditFlush(p);
+}
+
+/** Whether two items are the same: `Object.is`, vectors lane by lane, objects member by member. */
+function heapSame(node, a, b) {
+  if (Object.is(a, b)) return true;
+  // A non-finite float reads as its string ("NaN"), so a NaN written over it is no change.
+  if (node.k === "num") return typeof a !== typeof b && String(a) === String(b);
+  if (node.k === "lanes") {
+    const x = lanesOf(a, node.n), y = lanesOf(b, node.n);
+    if (!x || !y) return false;
+    for (let i = 0; i < node.n; i++) if (!Object.is(x[i], y[i])) return false;
+    return true;
+  }
+  if (node.k === "struct") {
+    if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+    for (const [name, f] of node.fields) if (!heapSame(f, a[name], b[name])) return false;
+    return true;
+  }
+  return false;
+}
+
+/** Diffs a run's array against what it was copied from and sends the edits; then it is the base. */
+function heapEditFlush(p) {
+  const v = p.v, o = p.orig, n0 = o.length, n1 = v.length;
+  for (let i = 0; i < n1; i++) {
+    if (!(i in v) || v[i] === undefined) throw new TypeError(`${p.path}[${i}] is a hole: every item of a list up to its length (${n1}) is set`);
+  }
+  const m = Math.min(n0, n1);
+  const sets = [];
+  for (let i = 0; i < m; i++) if (!heapSame(p.node.of, v[i], o[i])) sets.push(i);
+  const w = new Writer();
+  if (sets.length > m / 2) {
+    // Most items moved (a sort, a shift, a splice): the whole list, as an assignment writes it.
+    w.u8(EDIT_REPLACE);
+    p.enc.list(w, v, p.path);
+  } else {
+    if (n1 < n0) {
+      w.u8(EDIT_TRUNCATE);
+      w.u32(n1);
+    }
+    for (const i of sets) {
+      w.u8(EDIT_SET);
+      w.u32(i);
+      p.enc.item(w, v[i], `${p.path}[${i}]`);
+    }
+    if (n1 > n0) {
+      w.u8(EDIT_APPEND);
+      w.u32(n1 - n0);
+      for (let i = n0; i < n1; i++) p.enc.item(w, v[i], `${p.path}[${i}]`);
+    }
+  }
+  if (w.n === 0) return;
+  if (!core) throw new Error("heap fields need the engine");
+  const bytes = w.bytes();
+  const H = HOST;
+  H.slots[0] = p.place;
+  H.slots[1] = p.id;
+  H.slots[2] = p.t;
+  H.slots[3] = bytes.length;
+  REFLECT.calls++;
+  const n = core.ops.op_bevyts_host(REFLECT_EDIT, H.slotBytes, H.resultBytes, bytes, H.EMPTY, H.EMPTY, H.EMPTY);
+  if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
+  p.after();
+  p.orig = v.slice();
 }
 
 /**
@@ -4412,17 +4524,29 @@ function addHoles(Acc, holes, name, write, C) {
       });
       continue;
     }
+    const list = heap && h.codec.node.k === "list";
+    const enc = list ? { list: encode, item: codecEncoder(h.codec.node.of) } : null;
+    const path = `${name}.${h.name}`;
     Object.defineProperty(Acc.prototype, h.name, {
       configurable: true,
       get() {
         const tick = this[TICKS] === DUMMY_TICKS ? -1 : this[TICKS][this[ROW]];
+        const e = rowEntity(this);
+        if (list) {
+          // A list on a writable row is the run's own array, its edits sent at the end of the run.
+          const read = () => (tick === -1 ? reflectFetch(t, e) : reflectGet(t, e, tick));
+          if (write) return heapMutGet(`${t}:${e}`, path, h.codec.node, enc, e, 0, t, read, () => REFLECT.caches[t].delete(e));
+          if (REFLECT.pending.length) heapMutFlushKey(`${t}:${e}`);
+          return read();
+        }
         // A row without its ticks (a read-only resource) is fetched every time.
-        if (tick === -1) return reflectFetch(t, rowEntity(this));
-        return (write && !heap ? reflectMutGet : reflectGet)(t, rowEntity(this), tick);
+        if (tick === -1) return reflectFetch(t, e);
+        return (write && !heap ? reflectMutGet : reflectGet)(t, e, tick);
       },
       set(v) {
-        if (!write) throw new TypeError(`${name}.${h.name} is read-only here; take Mut<${name}>`);
-        if (heap) heapSet(t, rowEntity(this), encode, v, `${name}.${h.name}`);
+        if (!write) throw new TypeError(`${path} is read-only here; take Mut<${name}>`);
+        if (list) heapMutDrop(`${t}:${rowEntity(this)}`);
+        if (heap) heapSet(t, rowEntity(this), encode, v, path);
         else reflectSet(t, rowEntity(this), v);
       },
     });
@@ -4542,8 +4666,10 @@ function codecEncoder(node) {
   }
   if (node.k === "struct") {
     const fs = node.fields.map(([name, f]) => [name, codecEncoder(f)]);
+    const names = new Set(node.fields.map(([name]) => name));
     return (w, v, path) => {
       if (!v || typeof v !== "object") throw new TypeError(`${path} expects an object, got ${typeof v}`);
+      for (const k in v) if (!names.has(k)) throw new TypeError(`${path} has no member ${k}`);
       for (const [name, f] of fs) {
         if (v[name] === undefined) throw new TypeError(`${path}.${name} is missing: a list's object item gives every member`);
         f(w, v[name], `${path}.${name}`);

@@ -56,6 +56,7 @@ import type { Commands, f32, Local, Mut, Query, Res, Vec3 } from "bevy-ts";
 import { Resource, vec3 } from "bevy-ts";
 export class Tag extends Component { label: string = "crate"; hp: f32 = 1; scores: f32[] = [] }
 export class Trail extends Component { points: Vec3[] = [] }
+export class Wide extends Component { scores: f32[] = [] }
 export class Title extends Resource { text: string = "a title" }
 app.insertResource(Title.of({ text: "a title" }));
 const REPEAT = __REPEAT__;
@@ -65,7 +66,20 @@ export function make(commands: Commands) {
   for (let i = 0; i < __ROWS__; i++) commands.spawn(Tag.of({ label: "tag " + i, hp: i, scores: [1, 2, 3, 4, 5, 6, 7, i] }));
   const points = [1, 2, 3, 4, 5, 6, 7, 8].map((k) => vec3(k, 0, 1));
   for (let i = 0; i < __ROWS__; i++) commands.spawn(Trail.of({ points }));
+  const wide = Array.from({ length: 64 }, (_, k) => k);
+  for (let i = 0; i < __ROWS__; i++) commands.spawn(Wide.of({ scores: wide }));
 }
+// In-place edits against whole assignment: a push one frame, a pop the next, so the list keeps
+// its length; or one item set.
+export function emptyWide(q: Query<[Wide]>) { q.each(() => { sink++; }); }
+export function pushTag(q: Query<[Mut<Tag>]>) { n++; q.each((t) => { if (n % 2) t.scores.push(n); else t.scores.pop(); }); }
+export function pushTagWhole(q: Query<[Mut<Tag>]>) { n++; q.each((t) => { t.scores = n % 2 ? [...t.scores, n] : t.scores.slice(0, -1); }); }
+export function setTag(q: Query<[Mut<Tag>]>) { n++; q.each((t) => { t.scores[3] = n; }); }
+export function setTagWhole(q: Query<[Mut<Tag>]>) { n++; q.each((t) => { const s = [...t.scores]; s[3] = n; t.scores = s; }); }
+export function pushWide(q: Query<[Mut<Wide>]>) { n++; q.each((t) => { if (n % 2) t.scores.push(n); else t.scores.pop(); }); }
+export function pushWideWhole(q: Query<[Mut<Wide>]>) { n++; q.each((t) => { t.scores = n % 2 ? [...t.scores, n] : t.scores.slice(0, -1); }); }
+export function setWide(q: Query<[Mut<Wide>]>) { n++; q.each((t) => { t.scores[3] = n; }); }
+export function setWideWhole(q: Query<[Mut<Wide>]>) { n++; q.each((t) => { const s = [...t.scores]; s[3] = n; t.scores = s; }); }
 export function empty(q: Query<[Tag]>) { q.each(() => { sink++; }); }
 export function emptyTrail(q: Query<[Trail]>) { q.each(() => { sink++; }); }
 export function vecHit(q: Query<[Trail]>) {
@@ -284,6 +298,14 @@ fn main() {
     let empty_trail = run(HEAP, "emptyTrail", None);
     println!("{tree} | 8-item Vec3[] hit (Trail.points) | {} ns a row", per_row(run(HEAP, "vecHit", None), empty_trail, REPEAT));
     println!("{tree} | 8-item Vec3[] miss | {} ns a row", per_row(run(HEAP, "vecMiss", Some("game::Trail")), empty_trail, 1));
+    let empty_wide = run(HEAP, "emptyWide", None);
+    for (items, c, base) in [(8, "Tag", empty), (64, "Wide", empty_wide)] {
+        for (what, system) in [("push or pop", "push"), ("[3] =", "set")] {
+            let (edit, whole) = (run(HEAP, &format!("{system}{c}"), None), run(HEAP, &format!("{system}{c}Whole"), None));
+            println!("{tree} | {items}-item f32[] {what} in place | {} ns a row", per_row(edit, base, 1));
+            println!("{tree} | {items}-item f32[] {what}, whole assignment | {} ns a row", per_row(whole, base, 1));
+        }
+    }
     let (read, skip) = (frames("read"), frames("skip"));
     println!("{tree} | On<Remove> value's string read (Tag.label) | {} ns an event", per_row(read, skip, 1));
     println!("{tree} | string message written and read (Chat.text), whole frame | {} ns a message", payload_ns(HEAP_PAYLOADS, MESSAGES));

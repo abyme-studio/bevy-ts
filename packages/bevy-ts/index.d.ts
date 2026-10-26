@@ -169,8 +169,11 @@ export type ReadView<T> = {
   readonly [K in keyof T as K extends symbol ? never : K]: T[K] extends Vec3 ? ReadonlyVec3 : T[K] extends Quat ? ReadonlyQuat
     : T[K] extends Timer ? ReadonlyTimer : T[K] extends Stopwatch ? ReadonlyStopwatch : HeapList<T[K]>;
 };
-/** Write access: list fields are frozen arrays, assigned whole (`tag.scores = [1, 2]`). */
-type MutView<T> = { [K in keyof T]: HeapList<T[K]> };
+/** A list field on `Mut`: the run's own array, edited in place (`push`, `[i] =`) or assigned whole;
+ * its items stay read-only (replace one, `points[0] = vec3(...)`). */
+type MutList<V> = V extends readonly (infer E)[] ? (number extends V["length"] ? HeapItem<E>[] : V) : V;
+/** Write access: list fields are arrays edited in place, sent at the end of the run. */
+type MutView<T> = { [K in keyof T]: MutList<T[K]> };
 /** Initial values, as Rust's `Health { hp: 3.0, ..default() }`: vectors take a tuple or a vector. */
 export type Init<T> = {
   [K in keyof T as K extends symbol ? never : K]?: T[K] extends Vec3 ? Vec3Like : T[K] extends Quat ? readonly [number, number, number, number] | ReadonlyQuat : T[K];

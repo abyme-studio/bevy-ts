@@ -96,8 +96,9 @@ export class Chat extends Message { text: string = ""; to: u32[] = [] }
   member and an object field outside a list fail the load with the file and line. A `declare`d
   field starts as `""` or `[]`.
 - A row reads a vector item as a frozen `Vec3` (a `Vec2` with z 0) or `Quat` (`Vec4` too), an
-  entity as `Entity`, a union as its name and an object as a frozen object of its members. A list
-  is written whole, and an object item gives every member.
+  entity as `Entity`, a union as its name and an object as a frozen object of its members. An
+  object item, written, gives every member; a list item is replaced, never edited member by member
+  (`hits[0] = { ...hits[0], hp: 2 }`).
 - A Rust system reads a list of them as Bevy keeps one: `Vec<Vec2>`, `Vec<Vec3>`, `Vec<Entity>`,
   `Vec<[f32; 4]>` for `Vec4` and `Quat` (glam's are 16-aligned, a column's are not), `Vec<u8>`
   (or `u16`, `u32`, by the union's size) of the variant index, and an object as a `Vec<T>` of a
@@ -114,11 +115,27 @@ export class Chat extends Message { text: string = ""; to: u32[] = [] }
   offsets skip it), registers a drop fn and deep-copies on `cloneAndSpawn`. A component with no
   heap field is laid out, dropped and cloned as before.
 - A row reads a heap field through the host, cached by the row's changed tick: the first read of a
-  row costs a host call, later reads of an unchanged row cost none. A list reads as a frozen
-  `readonly T[]`; `tag.scores.push(1)` throws a `TypeError`.
+  row costs a host call, later reads of an unchanged row cost none. On a read row a list is a
+  frozen `readonly T[]`; `tag.scores.push(1)` throws a `TypeError`.
 - A `Mut<Tag>` row assigns a whole field: `tag.label = "open"`, `tag.scores = [...tag.scores, 4]`.
   The write is a host call that applies at once and marks the row changed, so the same system,
   a later Rust system and `Changed<Tag>` see it this frame.
+- On a `Mut<Tag>` row, `ResMut` or `Local` a list is also a plain array the system edits in place:
+  `tag.scores.push(4)`, `tag.scores[0] = 1`, `sort`, `length = 2`. It is the run's own copy, the
+  same array all run. At the end of the run (or before another accessor in the same run reads that
+  row's field) it is compared with what it was copied from, items by `Object.is` (vectors lane by
+  lane, objects member by member; a non-finite float reads as its string, `"NaN"`, and a `NaN`
+  written over it is no change), and sent as item edits: a truncate, a set per changed item, an
+  append. When more than half the items changed (a `sort`, a `shift`) the whole list is sent
+  instead. Rust applies them to its `Vec` in place and marks the row changed once. A list read
+  and left unchanged sends nothing and marks nothing, as Bevy's `set_if_neq`.
+- The same system sees its edits at once (it holds the array); a later Rust system, a later TS
+  system and `Changed<Tag>` see them after the run. An observer's edits are sent as a system's.
+  An assignment drops the edits made before it in that run; edits after it are compared with it.
+  An array kept past its run is no longer the row's: editing it writes nothing.
+- An item left unset at the end of the run (`a[10] = x` past the end, `length = 9` grown and not
+  filled) fails the run with a `TypeError` naming the field and the first such index, and writes
+  nothing for that list.
 - `Tag.of({ label: "lamp" })` spawns and inserts carry the values in the same command; a value the
   command leaves out takes its default, built in Rust for each entity.
 - `q.tables` gives no raw arrays for a component with a heap field; read it on `q.each` rows.
@@ -181,6 +198,20 @@ A list of vectors (3 rounds against main at f0f02fa5c, load about 90, medians): 
 in the same rounds: a changed read builds 8 frozen `Vec3`s. The plain arms match main in those
 rounds (column 15 against 16, despawn 33 against 38, message 901 against 944, event 3418 against
 3469).
+
+In-place edits against a whole assignment (3 rounds against main at 75757677f, load about 30,
+medians, ns a row for the whole run: the read, the edit and its host call):
+
+| Per row | 8-item `f32[]` | 64-item `f32[]` |
+| --- | --- | --- |
+| `push` or `pop`, in place | 1124 | 1854 |
+| `push` or `pop`, whole assignment | 1161 | 3847 |
+| `[3] =`, in place | 940 | 1893 |
+| `[3] =`, whole assignment | 1240 | 3548 |
+
+At 8 items the two are within noise for a push (869-1212 against 1021-1447); at 64 an edit costs
+about half an assignment, which re-sends every item. The plain arms match main in those rounds
+(column 12 against 12, despawn 26 against 29, message 607 against 725, event 2228 against 2559).
 
 Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
 fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).

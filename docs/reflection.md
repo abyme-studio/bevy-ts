@@ -90,7 +90,11 @@ A TS component's `string` and `T[]` fields (docs/ecs.md, "Heap fields") use the 
 target per field, the codec's `Str` or `List` op built from the field's type instead of its
 `TypeInfo`, and the changed-tick cache in JS. Writes cross as the codec's bytes, not JSON: both
 ends are bevy-ts's, and no reflection is involved. Over the protocol, `.label` and `.scores` are
-written whole; `.scores[0]` is refused.
+written whole, and `.scores[0]` (or `.hits[0].hp`) one item in place.
+
+A list on a writable accessor shares the reflected `Mut` getters' flush (`reflectFlush`, at the end
+of each run): a reflected value is compared and written back whole, a heap list is diffed into item
+edits sent by one `WRITE_EDIT` host call (`heap::Edit`, `heap::apply`).
 
 ## No gap goes unchecked
 

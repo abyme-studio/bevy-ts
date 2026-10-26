@@ -1,6 +1,7 @@
 //! Heap fields in TS systems (openspecs ts-component-heap-fields, ts-heap-fields-2), through V8: a
 //! `string` or `T[]` field of a component or resource read through the host at its place and
-//! cached by its changed tick, assigned whole on a `Mut` row or `ResMut`, read from a lifecycle
+//! cached by its changed tick, assigned whole or edited in place on a `Mut` row, `ResMut` or
+//! `Local` (sent as item edits at the end of the run), read from a lifecycle
 //! value's copy, kept by a `Local` across runs and reloads, carried by messages and events
 //! (read-only to readers and observers), and refused where its type is not one yet.
 
@@ -64,21 +65,25 @@ app.addSystems(Update, chain(rename, seen));
 }
 
 #[test]
-fn a_list_reads_frozen_and_is_written_whole() {
+fn a_list_reads_frozen_on_a_read_row_and_is_written_whole() {
     let body = r#"
 export function grow(q: Query<[Mut<Tag>]>) {
   q.each((t) => {
     if (t.scores.length >= 3) return;
+    t.scores = [...t.scores, t.scores.length + 1];
+    console.log("now " + JSON.stringify(t.scores));
+  });
+}
+export function look(q: Query<[Tag]>) {
+  q.each((t) => {
     try {
       (t.scores as u32[]).push(9);
     } catch (e) {
       console.log("push " + (e instanceof TypeError));
     }
-    t.scores = [...t.scores, t.scores.length + 1];
-    console.log("now " + JSON.stringify(t.scores));
   });
 }
-app.addSystems(Update, grow);
+app.addSystems(Update, chain(grow, look));
 "#;
     let (_, mut app) = load("heap-list", &format!("{HEAD}{body}"));
     let e = spawn_ts(&mut app, "game::Tag", json!({ "scores": [1] }), ());
@@ -88,6 +93,120 @@ app.addSystems(Update, grow);
     let m = messages(&app);
     assert!(m.iter().any(|l| l == "push true"), "{m:?}");
     assert!(m.iter().any(|l| l == "now [1,2]") && m.iter().any(|l| l == "now [1,2,3]"), "{m:?}");
+}
+
+/// The in-place list edits Rust applied since the last call, sorted.
+fn edits(app: &mut App) -> Vec<String> {
+    let mut v = std::mem::take(&mut app.world_mut().resource_mut::<bevy_ts::reflect_codec::EditLog>().0);
+    v.sort();
+    v
+}
+
+#[test]
+fn in_place_edits_reach_rust_as_edits_and_mark_only_a_real_change() {
+    let body = r#"
+let frame = 0;
+export function edit(q: Query<[Mut<Tag>]>) {
+  frame++;
+  q.each((t) => {
+    if (frame !== 2) return;
+    const s = t.scores;
+    if (t.label === "push") {
+      s.push(9);
+      s[0] = 5;
+      console.log("same " + (t.scores === s) + " " + JSON.stringify(t.scores));
+    } else if (t.label === "sort") s.sort((a, b) => a - b);
+    else if (t.label === "assign") {
+      s.push(1);
+      t.scores = [7];
+    } else if (t.label === "same") s[0] = s[0];
+    else if (t.label === "hole") s[10] = 1;
+    else if (t.label === "late") {
+      s.length = 6;
+      s.fill(4, 3);
+    }
+  });
+}
+export class Wave extends Component { ys: f32[] = [] }
+export function wave(q: Query<[Mut<Wave>]>) {
+  q.each((w) => {
+    if (frame === 1) w.ys = [NaN, 1];
+    else if (frame === 2) w.ys[0] = NaN;
+  });
+}
+export function seen(q: Query<[Tag], Changed<Tag>>, waves: Query<[Wave], Changed<Wave>>) {
+  q.each((t) => console.log(`changed ${frame} ${t.label}`));
+  waves.each(() => console.log(`changed ${frame} wave`));
+}
+app.addSystems(Update, chain(edit, wave, seen));
+"#;
+    let (_, mut app) = load("heap-edits", &format!("{HEAD}{body}"));
+    app.init_resource::<bevy_ts::reflect_codec::EditLog>();
+    let mut row = |label: &str| spawn_ts(&mut app, "game::Tag", json!({ "label": label, "scores": [3, 1, 2] }), ());
+    let [push, sort, assign, same, hole, late] = ["push", "sort", "assign", "same", "hole", "late"].map(&mut row);
+    spawn_ts(&mut app, "game::Wave", json!({}), ());
+    app.update();
+    assert_eq!(edits(&mut app), Vec::<String>::new(), "frame 1 reads and edits nothing");
+    app.update();
+    let scores = |app: &App, e| read_ts(app, e, "game::Tag").unwrap()["scores"].clone();
+    assert_eq!(
+        edits(&mut app),
+        ["game::Tag.scores append 1", "game::Tag.scores append 3", "game::Tag.scores replace 3", "game::Tag.scores set 0"],
+        "a push and one item set; a sort, whole; an assignment after a push, only the assignment; NaN over NaN, nothing"
+    );
+    assert_eq!(
+        [push, sort, assign, same, late].map(|e| scores(&app, e)),
+        [json!([5, 1, 2, 9]), json!([1, 2, 3]), json!([7]), json!([3, 1, 2]), json!([3, 1, 2, 4, 4, 4])]
+    );
+    assert_eq!(scores(&app, hole), json!([3, 1, 2]), "a hole writes nothing for that list");
+    // A run's console lines reach the log at the next frame's start.
+    app.update();
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l == "same true [5,1,2,9]"), "the system sees its own edits at once: {m:?}");
+    let changed: Vec<_> = m.iter().filter(|l| l.starts_with("changed 2 ")).cloned().collect();
+    for l in ["push", "sort", "assign", "late"] {
+        assert!(changed.contains(&format!("changed 2 {l}")), "{changed:?}");
+    }
+    assert!(
+        !changed.iter().any(|l| l.ends_with(" same") || l.ends_with(" hole") || l.ends_with(" wave")),
+        "an unchanged (NaN over NaN included) or failed list marks nothing: {changed:?}"
+    );
+    let e = logs(&app).into_iter().find(|l| l.message.contains("is a hole")).expect("the hole fails the run");
+    assert!(e.message.contains("Tag.scores[3] is a hole"), "{}", e.message);
+}
+
+#[test]
+fn edits_on_res_mut_a_local_and_an_observers_mut_are_seen_after_them() {
+    let body = r#"
+import { Resource } from "bevy-ts";
+import type { Add, Local, On, ResMut } from "bevy-ts";
+export class Board extends Resource { names: string[] = [] }
+export function tally(board: ResMut<Board>, l: Local<{ seen: u32[] }>) {
+  board.names.push("b" + board.names.length);
+  l.seen.push(l.seen.length);
+  console.log("tally " + JSON.stringify(board.names) + " " + JSON.stringify(l.seen));
+}
+export function tagged(on: On<Add<Tag>>, q: Query<[Mut<Tag>]>) {
+  const r = q.get(on.entity);
+  if (r) r[0].scores.push(42);
+}
+export function after(q: Query<[Tag]>) {
+  q.each((t) => console.log("after " + JSON.stringify(t.scores)));
+}
+app.insertResource(Board.of({ names: ["a"] })).addSystems(Update, chain(tally, after));
+app.addObserver(tagged);
+"#;
+    let (_, mut app) = load("heap-edit-places", &format!("{HEAD}{body}"));
+    updates(&mut app, 3);
+    assert_eq!(read_res(&app, "game::Board").unwrap()["names"], json!(["a", "b1", "b2", "b3"]));
+    // A run's console lines reach the log at the next frame's start.
+    app.update();
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l == r#"tally ["a","b1"] [0]"#), "{m:?}");
+    assert!(m.iter().any(|l| l == r#"tally ["a","b1","b2","b3"] [0,1,2]"#), "the resource and the Local keep each run's edit: {m:?}");
+    spawn_ts(&mut app, "game::Tag", json!({ "scores": [1] }), ());
+    updates(&mut app, 2);
+    assert!(messages(&app).iter().any(|l| l == "after [1,42]"), "an observer's edit is seen after it: {:?}", messages(&app));
 }
 
 #[test]
@@ -185,13 +304,11 @@ fn a_local_keeps_its_string_and_list_across_runs_and_a_reload_that_adds_a_field(
             r#"import {{ app, Update }} from "bevy-ts";
 import type {{ Local, u32 }} from "bevy-ts";
 export function tally(l: Local<{{ log: string; hits: u32[]{extra} }}>) {{
-  try {{
-    (l.hits as u32[]).push(9);
-  }} catch (e) {{
-    if (!(e instanceof TypeError)) throw e;
-  }}
+  // An edit before a whole assignment is dropped by it.
+  const old = [...l.hits];
+  l.hits.push(9);
   l.log = l.log + "x";
-  l.hits = [...l.hits, l.hits.length];
+  l.hits = [...old, old.length];
   console.log("tally " + l.log + " " + JSON.stringify(l.hits));
 }}
 app.addSystems(Update, tally);
@@ -350,6 +467,11 @@ export function look(q: Query<[Mut<Trail>]>) {
     } catch (e) {
       console.log("edit " + (e instanceof TypeError));
     }
+    try {
+      t.hits = [{ ...t.hits[0], extra: 1 } as Hit];
+    } catch (e) {
+      console.log("extra " + (e as Error).message);
+    }
   });
 }
 app.addSystems(Update, look);
@@ -367,7 +489,7 @@ app.addSystems(Update, look);
     let e = spawn_ts(&mut app, "game::Trail", v, ());
     updates(&mut app, 3);
     let m = messages(&app);
-    assert!(m.iter().any(|l| l == "point 3 5.000 true true"), "{m:?}");
+    assert!(m.iter().any(|l| l == "point 3 5.000 true false"), "a Mut row's list is its own array, its items frozen: {m:?}");
     assert!(m.iter().any(|l| l == r#"flat [[1,2,0]] turn [[0,0,0,1]]"#), "a vec2 reads as a vector with z 0: {m:?}");
     assert!(m.iter().any(|l| l == r#"who [6] kinds ["miss"]"#), "{m:?}");
     let first = r#"{"at":[1,0,0],"by":2,"kind":"hit","hp":1}"#;
@@ -375,6 +497,7 @@ app.addSystems(Update, look);
     assert!(m.iter().any(|l| *l == format!("hits [{first}] true true")), "{m:?}");
     assert!(m.iter().any(|l| *l == format!("hits [{first},{pushed}] true true")), "TS reads the item Rust pushed: {m:?}");
     assert!(m.iter().any(|l| l == "edit true"), "an item is read-only: {m:?}");
+    assert!(m.iter().any(|l| l.starts_with("extra ") && l.ends_with("hits[0] has no member extra")), "{m:?}");
     assert_eq!(read_ts(&app, e, "game::Trail").unwrap()["points"], json!([[3.0, 4.0, 0.0], [0.0, 0.0, 2.0]]));
 }
 

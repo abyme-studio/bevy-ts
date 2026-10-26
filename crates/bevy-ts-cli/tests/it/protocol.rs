@@ -510,9 +510,17 @@ export class Tag extends Component { label: string = "crate"; hp: f32 = 1; score
     assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["label"], json!("gate"), "a bad value writes nothing");
     ok(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".scores", "value": [3, 1] })));
     assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["scores"], json!([3, 1]));
-    let item = call(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".scores[0]", "value": 1 }))).unwrap_err();
-    assert!(item.message.contains("scores is a list: write it whole, with the path .scores"), "{}", item.message);
-    assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["scores"], json!([3, 1]));
+    // One item, in place (stage 5); past the end fails naming the length and writes nothing.
+    let before = tick(&mut app);
+    app.world_mut().increment_change_tick();
+    ok(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".scores[0]", "value": 9 })));
+    assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["scores"], json!([9, 1]));
+    assert_eq!(changed_since(&mut app, "game::Tag", before), vec![e], "an item edit marks the row changed");
+    let past = call(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".scores[2]", "value": 1 }))).unwrap_err();
+    assert!(past.message.contains(".scores[2]: [2] is past the end: the list has 2 items"), "{}", past.message);
+    let wrong = call(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Tag", "path": ".scores[0]", "value": -1 }))).unwrap_err();
+    assert!(wrong.message.contains(".scores[0]"), "{}", wrong.message);
+    assert_eq!(read_ts(&app, e, "game::Tag").unwrap()["scores"], json!([9, 1]));
 
     let s = ok(&mut app, "bevy-ts/schema", Some(json!({ "names": ["game::Tag"] })));
     assert_eq!(s["game::Tag"]["properties"]["label"], json!({ "type": "string" }));
@@ -544,6 +552,16 @@ export class Trail extends Component { hits: Hit[] = []; points: Vec3[] = [] }
     assert_eq!(got["components"]["game::Trail"], json!({ "hits": hits, "points": [[1.0, 2.0, 3.0]] }));
     let partial = call(&mut app, "bevy-ts/mutate_components", Some(json!({ "entity": e.to_bits(), "component": "game::Trail", "path": ".hits", "value": [{ "at": [0, 0, 0] }] }))).unwrap_err();
     assert!(partial.message.contains("member by is missing"), "{}", partial.message);
+    // An item's member and a vector item's lane, in place.
+    let at = |path: &str, value: serde_json::Value| json!({ "entity": e.to_bits(), "component": "game::Trail", "path": path, "value": value });
+    ok(&mut app, "bevy-ts/mutate_components", Some(at(".hits[0].hp", json!(3))));
+    ok(&mut app, "bevy-ts/mutate_components", Some(at(".hits[0].at.y", json!(4))));
+    ok(&mut app, "bevy-ts/mutate_components", Some(at(".points[0].z", json!(7))));
+    let trail = read_ts(&app, e, "game::Trail").unwrap();
+    assert_eq!(trail["hits"][0], json!({ "at": [1.0, 4.0, 0.0], "by": 5, "kind": "miss", "hp": 3.0 }));
+    assert_eq!(trail["points"], json!([[1.0, 2.0, 7.0]]));
+    let bad = call(&mut app, "bevy-ts/mutate_components", Some(at(".hits[0].kind", json!("graze")))).unwrap_err();
+    assert!(bad.message.contains(".hits[0].kind"), "{}", bad.message);
 
     // `ok` validates the schema's answer against the protocol's: a `struct` item is on contract.
     let s = ok(&mut app, "bevy-ts/schema", Some(json!({ "names": ["game::Trail"] })));

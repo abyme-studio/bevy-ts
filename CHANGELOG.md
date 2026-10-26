@@ -4,6 +4,8 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- Protocol 1.36.0: `mutate_components` takes `.field[i]` and `.field[i].member` on a list field,
+  writing that item in place; past the end fails naming the list's length. It used to refuse them.
 - Protocol 1.35.0: a system's `schedule.kind` (and the `Stage` enum) may be `"predicate"`, a
   TS predicate condition passed to `runIf`. A reader that switches on the stage handles it.
 - `resourceExists(R)` is false after `removeResource(R)`, and a system taking `Res<R>` is
@@ -13,6 +15,9 @@ Changes a user of bevy-ts must act on, newest first.
   A reader that switches on a field type's `kind` handles `struct`; its value is an object of every
   member. A Rust system reads such a list as a `Vec<T>` of the item's layout: `Vec4` and `Quat`
   items as `[f32; 4]`, an object as a `#[repr(C)]` struct of its members.
+- A list field on a `Mut` row, `ResMut` or `Local` is now a plain array a system edits in place
+  (`push`, `[i] =`, `sort`); the edits reach Rust at the end of the run. It used to be frozen, and
+  `push` threw a `TypeError`. A read row's list is still frozen.
 - Protocol 1.33.0: a TS component field may be `{ kind: "string" }` (`label: string`) or
   `{ kind: "list", of }` (`scores: u32[]`), heap fields. A reader that switches on a field type's
   `kind` handles both; a component with one has an 8-byte header before its first field, already in

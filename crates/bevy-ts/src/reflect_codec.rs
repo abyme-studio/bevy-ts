@@ -724,6 +724,47 @@ pub unsafe fn write_heap(cell: UnsafeWorldCell, t: &Target, entity: Entity, mut 
     Ok(())
 }
 
+/// Applies in-place edits to a heap list (`heap::Edit`'s wire form), marking the component changed
+/// at `tick`.
+///
+/// # Safety
+/// As [`write`].
+pub unsafe fn edit_heap(cell: UnsafeWorldCell, t: &Target, entity: Entity, bytes: &[u8], tick: Tick) -> Result<(), String> {
+    let (offset, kind) = t.heap.ok_or("not a heap field")?;
+    let field = t.hole.as_ref().map_or("", |h| h.0.as_str());
+    let path = format!("{}.{field}", t.type_path);
+    let edits = crate::heap::Edit::read_all(kind, bytes).map_err(|e| format!("{path}: {e}"))?;
+    // SAFETY: the caller's contract.
+    unsafe { log_edits(cell, &path, &edits) };
+    let e = cell.get_entity(entity).map_err(|_| format!("{entity} does not exist"))?;
+    // SAFETY: exclusive access to the component (the caller's contract).
+    let mut value = unsafe { e.get_mut_by_id(t.component) }.map_err(|_| format!("{entity} has no {}", t.type_path))?;
+    // SAFETY: the column holds a live value with a list of `kind` at `offset`.
+    unsafe { crate::heap::apply(value.bypass_change_detection().as_ptr(), offset, kind, edits) }.map_err(|e| format!("{path}: {e}"))?;
+    value.set_last_changed(tick);
+    Ok(())
+}
+
+/// The in-place list edits applied, while a test keeps one: `"<Type>.<field> set 0"`.
+#[derive(bevy::prelude::Resource, Default)]
+pub struct EditLog(pub Vec<String>);
+
+/// # Safety
+/// No other access to `EditLog` is live.
+unsafe fn log_edits(cell: UnsafeWorldCell, path: &str, edits: &[crate::heap::Edit]) {
+    use crate::heap::Edit;
+    // SAFETY: the caller's contract.
+    let Some(mut log) = (unsafe { cell.get_resource_mut::<EditLog>() }) else { return };
+    for e in edits {
+        log.0.push(match e {
+            Edit::Truncate(n) => format!("{path} truncate {n}"),
+            Edit::Set(i, _) => format!("{path} set {i}"),
+            Edit::Append(v) => format!("{path} append {}", v.count()),
+            Edit::Replace(v) => format!("{path} replace {}", v.count()),
+        });
+    }
+}
+
 /// The read targets of a TS component's heap fields, or (with `payload`, `id` unused) a
 /// message's or event's, as the resolution hands them to JS.
 pub fn ts_heap_holes(world: &mut World, name: &str, id: ComponentId, payload: Option<Payload>, layout: &crate::layout::ComponentLayout) -> Vec<ResolvedHole> {
@@ -820,6 +861,9 @@ pub const READ: u32 = 0xFFFF_0000;
 pub const WRITE: u32 = 0xFFFF_0001;
 /// `read`'s JSON text instead of the codec's bytes: the bench's baseline, and nothing else.
 pub const READ_JSON: u32 = 0xFFFF_0002;
+/// `reflect_edit(place, target, len)`: in-place edits of a heap list (`heap::Edit`'s wire form), in
+/// slice 0. Places as `WRITE`'s.
+pub const WRITE_EDIT: u32 = 0xFFFF_0003;
 
 /// Reflected host calls made so far (reads and writes), for tests and the bench.
 pub static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -903,6 +947,14 @@ fn local_call(world: &World, i: u32, field: u32, id: u32, r: &mut crate::host::S
             unsafe { crate::heap::replace(store.data_mut().as_mut_ptr(), offset, v) };
             Ok(0)
         }
+        WRITE_EDIT => {
+            let len = r.slot()? as usize;
+            let bytes = buf.get(..len).ok_or("write: length past the buffer")?;
+            let edits = crate::heap::Edit::read_all(kind, bytes).map_err(|e| format!("Local.{name}: {e}"))?;
+            // SAFETY: as above.
+            unsafe { crate::heap::apply(store.data_mut().as_mut_ptr(), offset, kind, edits) }.map_err(|e| format!("Local.{name}: {e}"))
+                .map(|_| 0)
+        }
         _ => Err(format!("no reflected host function {id} at {place}")),
     }
 }
@@ -939,7 +991,7 @@ fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, 
                 unsafe { crate::heap::put_codec_at(p, offset, kind, scratch) };
                 answer(scratch, buf, ret)
             }
-            WRITE => Err(format!("{}.{}: read-only at {place}", t.type_path, t.hole.as_ref().map_or("", |h| h.0.as_str()))),
+            WRITE | WRITE_EDIT => Err(format!("{}.{}: read-only at {place}", t.type_path, t.hole.as_ref().map_or("", |h| h.0.as_str()))),
             _ => Err(format!("no reflected host function {id} at {place}")),
         };
     };
@@ -967,6 +1019,14 @@ fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, 
             let t = t.clone();
             // SAFETY: called from a host call during an exclusive run: no other access is live.
             unsafe { write_heap(cell, &t, entity, bytes, tick) }?;
+            Ok(0)
+        }
+        WRITE_EDIT => {
+            let len = r.slot()? as usize;
+            let bytes = buf.get(..len).ok_or("write: length past the buffer")?;
+            let t = t.clone();
+            // SAFETY: called from a host call during an exclusive run: no other access is live.
+            unsafe { edit_heap(cell, &t, entity, bytes, tick) }?;
             Ok(0)
         }
         WRITE => {

@@ -218,9 +218,13 @@ impl Raw {
     /// `p` holds a raw list's words.
     unsafe fn get(p: *const u8) -> Raw {
         let o = vec_order();
-        // SAFETY: the caller's contract.
-        let w = |i: usize| unsafe { std::ptr::read_unaligned((p as *const usize).add(o[i])) };
-        Raw { ptr: std::ptr::with_exposed_provenance_mut(w(0)), cap: w(1), len: w(2) }
+        // SAFETY: the caller's contract. The pointer is read as a pointer, keeping its provenance
+        // (a `Vec` a Rust system grew never exposed it).
+        unsafe {
+            let w = |i: usize| std::ptr::read_unaligned((p as *const usize).add(o[i]));
+            let ptr = std::ptr::read_unaligned((p as *const usize).add(o[0]) as *const *mut u8);
+            Raw { ptr, cap: w(1), len: w(2) }
+        }
     }
 
     /// # Safety
@@ -228,13 +232,41 @@ impl Raw {
     /// list of `shape`.
     unsafe fn put(self, p: *mut u8, shape: &ItemShape) {
         shape.live.fetch_add(1, Ordering::SeqCst);
+        // SAFETY: the caller's contract.
+        unsafe { self.set(p) }
+    }
+
+    /// Writes the words over the slot's, which already counts as this list.
+    ///
+    /// # Safety
+    /// `p` has room for a raw list's words.
+    unsafe fn set(self, p: *mut u8) {
         let o = vec_order();
         // SAFETY: the caller's contract.
         unsafe {
-            std::ptr::write_unaligned((p as *mut usize).add(o[0]), self.ptr.expose_provenance());
+            std::ptr::write_unaligned((p as *mut usize).add(o[0]) as *mut *mut u8, self.ptr);
             std::ptr::write_unaligned((p as *mut usize).add(o[1]), self.cap);
             std::ptr::write_unaligned((p as *mut usize).add(o[2]), self.len);
         }
+    }
+
+    /// Room for `more` items past `len`, growing the buffer as `Vec` does (at least double).
+    ///
+    /// # Safety
+    /// `self` is a live list of `shape`.
+    unsafe fn reserve(&mut self, shape: &ItemShape, more: usize) {
+        let need = self.len + more;
+        if need <= self.cap {
+            return;
+        }
+        let cap = need.max(self.cap * 2).max(4);
+        let layout = shape.layout(cap);
+        // SAFETY: a non-zero size; the old buffer was allocated with `shape.layout(self.cap)`.
+        let ptr = unsafe { if self.cap == 0 { std::alloc::alloc(layout) } else { std::alloc::realloc(self.ptr, shape.layout(self.cap), layout.size()) } };
+        if ptr.is_null() {
+            std::alloc::handle_alloc_error(layout);
+        }
+        (self.ptr, self.cap) = (ptr, cap);
     }
 
     /// The items' bytes.
@@ -386,6 +418,12 @@ trait Slot: Default + Clone + PartialEq + Sized {
     fn from_value(v: HeapValue) -> Self;
     fn put_codec(&self, out: &mut Vec<u8>);
     fn read_codec(b: &mut &[u8]) -> Result<Self, String>;
+    /// `n` items with no count before them; a string has none.
+    fn read_items(b: &mut &[u8], n: usize) -> Result<Self, String>;
+    /// Items in a list; a string's bytes.
+    fn count(&self) -> usize;
+    /// Applies one checked edit (`apply`); a string is never edited.
+    fn edit(&mut self, e: Edit);
 }
 
 /// One item of a list, in the codec's wire format: a number in its own width, `bool` as a byte,
@@ -444,6 +482,15 @@ impl Slot for String {
     fn read_codec(b: &mut &[u8]) -> Result<Self, String> {
         <String as CodecItem>::read(b)
     }
+    fn read_items(_: &mut &[u8], _: usize) -> Result<Self, String> {
+        Err("a string has no items".into())
+    }
+    fn count(&self) -> usize {
+        self.len()
+    }
+    fn edit(&mut self, _: Edit) {
+        unreachable!("a string is written whole")
+    }
 }
 
 macro_rules! list_slots {
@@ -469,6 +516,20 @@ macro_rules! list_slots {
                     return Err("a heap value is cut short".into());
                 }
                 (0..n).map(|_| <$t as CodecItem>::read(b)).collect()
+            }
+            fn read_items(b: &mut &[u8], n: usize) -> Result<Self, String> {
+                (0..n).map(|_| <$t as CodecItem>::read(b)).collect()
+            }
+            fn count(&self) -> usize {
+                self.len()
+            }
+            fn edit(&mut self, e: Edit) {
+                match e {
+                    Edit::Truncate(n) => self.truncate(n),
+                    Edit::Set(i, v) => self[i] = Self::from_value(v).swap_remove(0),
+                    Edit::Append(v) => self.extend(Self::from_value(v)),
+                    Edit::Replace(v) => *self = Self::from_value(v),
+                }
             }
         }
     )*};
@@ -522,6 +583,198 @@ impl HeapValue {
         }
         slot_type!(kind, T => T::read_codec(b).map(Slot::into_value))
     }
+}
+
+/// One in-place edit of a list (design decision 7): its items are a list value of the slot's kind.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Edit {
+    /// Keep the first `n` items.
+    Truncate(usize),
+    /// Item `i` becomes the one item of the value.
+    Set(usize, HeapValue),
+    /// The value's items go on the end.
+    Append(HeapValue),
+    /// The value is the whole list.
+    Replace(HeapValue),
+}
+
+/// Edits' wire tags: each a `u8`, then `truncate` a `u32` length, `set` a `u32` index and one item,
+/// `append` a `u32` count and the items, `replace` a whole list; edits follow each other to the end.
+const EDIT_TRUNCATE: u8 = 0;
+const EDIT_SET: u8 = 1;
+const EDIT_APPEND: u8 = 2;
+const EDIT_REPLACE: u8 = 3;
+
+impl Edit {
+    /// Reads every edit in `b`, a list of `kind`'s, in the codec's wire format.
+    pub fn read_all(kind: HeapKind, mut b: &[u8]) -> Result<Vec<Edit>, String> {
+        if kind == HeapKind::Str {
+            return Err("a string is written whole".into());
+        }
+        let b = &mut b;
+        let mut edits = Vec::new();
+        while !b.is_empty() {
+            let tag = take(b, 1)?[0];
+            let u32_of = |b: &mut &[u8]| take(b, 4).map(|x| u32::from_le_bytes(x.try_into().unwrap()) as usize);
+            edits.push(match tag {
+                EDIT_TRUNCATE => Edit::Truncate(u32_of(b)?),
+                EDIT_SET => Edit::Set(u32_of(b)?, read_items(kind, b, 1)?),
+                EDIT_APPEND => {
+                    let n = u32_of(b)?;
+                    if n > b.len() {
+                        return Err("a heap value is cut short".into());
+                    }
+                    Edit::Append(read_items(kind, b, n)?)
+                }
+                EDIT_REPLACE => Edit::Replace(HeapValue::read_codec(kind, b)?),
+                t => return Err(format!("no list edit {t}")),
+            });
+        }
+        Ok(edits)
+    }
+
+    /// The wire form `read_all` reads, for one edit.
+    pub fn put(&self, out: &mut Vec<u8>) {
+        let mut body = Vec::new();
+        let list = |v: &HeapValue, body: &mut Vec<u8>| {
+            let mut whole = Vec::new();
+            v.put_codec(&mut whole);
+            body.extend_from_slice(&whole[4..]);
+        };
+        match self {
+            Edit::Truncate(n) => {
+                out.push(EDIT_TRUNCATE);
+                out.extend_from_slice(&(*n as u32).to_le_bytes());
+            }
+            Edit::Set(i, v) => {
+                out.push(EDIT_SET);
+                out.extend_from_slice(&(*i as u32).to_le_bytes());
+                list(v, &mut body);
+            }
+            Edit::Append(v) => {
+                out.push(EDIT_APPEND);
+                out.extend_from_slice(&(v.count() as u32).to_le_bytes());
+                list(v, &mut body);
+            }
+            Edit::Replace(v) => {
+                out.push(EDIT_REPLACE);
+                v.put_codec(&mut body);
+            }
+        }
+        out.extend_from_slice(&body);
+    }
+}
+
+/// `n` items of a list of `kind` with no count before them, as a list value.
+fn read_items(kind: HeapKind, b: &mut &[u8], n: usize) -> Result<HeapValue, String> {
+    if let HeapKind::List(Item::Plain(shape)) = kind {
+        let mut bytes = vec![0u8; n * shape.size];
+        for (i, item) in bytes.chunks_exact_mut(shape.size).enumerate() {
+            ItemShape::read(&shape.ty, b, item).map_err(|e| format!("[{i}]: {e}"))?;
+        }
+        return Ok(HeapValue::List(List::Plain(PlainList { shape, bytes })));
+    }
+    slot_type!(kind, T => T::read_items(b, n).map(Slot::into_value))
+}
+
+impl HeapValue {
+    /// A list's items; a string's bytes.
+    pub fn count(&self) -> usize {
+        match self {
+            HeapValue::List(List::Plain(l)) => l.len(),
+            v => {
+                let kind = v.kind();
+                slot_type!(kind, T => T::from_value(v.clone()).count())
+            }
+        }
+    }
+
+    /// The codec's wire form of the value.
+    pub fn put_codec(&self, out: &mut Vec<u8>) {
+        match self {
+            HeapValue::List(List::Plain(l)) => {
+                out.extend_from_slice(&(l.len() as u32).to_le_bytes());
+                for item in l.bytes.chunks_exact(l.shape.size) {
+                    ItemShape::put(&l.shape.ty, item, out);
+                }
+            }
+            v => {
+                let kind = v.kind();
+                slot_type!(kind, T => T::from_value(v.clone()).put_codec(out))
+            }
+        }
+    }
+}
+
+/// Applies `edits` in order to the list at `p + off`, in place. Each is checked against the length
+/// the ones before leave, and an edit past it fails naming that length; a failure changes nothing.
+///
+/// # Safety
+/// The slot holds a live list of `kind`, written only here for the call.
+pub unsafe fn apply(p: *mut u8, off: usize, kind: HeapKind, edits: Vec<Edit>) -> Result<(), String> {
+    // SAFETY: the slot lies inside the value (the caller's contract).
+    let p = unsafe { p.add(off) };
+    let plain = match kind {
+        HeapKind::Str => return Err("a string is written whole".into()),
+        HeapKind::List(Item::Plain(shape)) => Some(shape),
+        HeapKind::List(_) => None,
+    };
+    // SAFETY: the caller's contract; read as a copy, the slot keeps owning it.
+    let mut len = match plain {
+        Some(_) => unsafe { Raw::get(p).len },
+        None => slot_type!(kind, T => std::mem::ManuallyDrop::new(unsafe { std::ptr::read_unaligned(p as *const T) }).count()),
+    };
+    for e in &edits {
+        let item_kind = |v: &HeapValue| if v.kind() == kind { Ok(()) } else { Err(format!("an edit of {:?} on a list of {kind:?}", v.kind())) };
+        match e {
+            Edit::Truncate(n) if *n > len => return Err(format!("truncate to {n} is past the end: the list has {len} items")),
+            Edit::Truncate(n) => len = *n,
+            Edit::Set(i, _) if *i >= len => return Err(format!("[{i}] is past the end: the list has {len} items")),
+            Edit::Set(_, v) if v.count() != 1 => return Err("a set gives one item".into()),
+            Edit::Set(_, v) => item_kind(v)?,
+            Edit::Append(v) => {
+                item_kind(v)?;
+                len += v.count();
+            }
+            Edit::Replace(v) => {
+                item_kind(v)?;
+                len = v.count();
+            }
+        }
+    }
+    let Some(shape) = plain else {
+        // SAFETY: the caller's contract: the slot is taken, edited and put back.
+        slot_type!(kind, T => unsafe {
+            let mut v = std::ptr::read_unaligned(p as *const T);
+            edits.into_iter().for_each(|e| v.edit(e));
+            std::ptr::write_unaligned(p as *mut T, v);
+        });
+        return Ok(());
+    };
+    // SAFETY: the caller's contract; every index was checked above.
+    unsafe {
+        let mut raw = Raw::get(p);
+        let at = |raw: &Raw, i: usize| raw.ptr.add(i * shape.size);
+        for e in edits {
+            match e {
+                Edit::Truncate(n) => raw.len = n,
+                Edit::Set(i, HeapValue::List(List::Plain(l))) => std::ptr::copy_nonoverlapping(l.bytes.as_ptr(), at(&raw, i), shape.size),
+                Edit::Append(HeapValue::List(List::Plain(l))) => {
+                    raw.reserve(shape, l.len());
+                    std::ptr::copy_nonoverlapping(l.bytes.as_ptr(), at(&raw, raw.len), l.bytes.len());
+                    raw.len += l.len();
+                }
+                Edit::Replace(HeapValue::List(List::Plain(l))) => {
+                    raw.free(shape);
+                    raw = Raw::of(shape, &l.bytes);
+                    shape.live.fetch_add(1, Ordering::SeqCst);
+                }
+                _ => unreachable!("checked above"),
+            }
+        }
+        raw.set(p);
+    }
+    Ok(())
 }
 
 fn take<'a>(b: &mut &'a [u8], n: usize) -> Result<&'a [u8], String> {
@@ -1059,5 +1312,50 @@ mod tests {
         // SAFETY: as above; freed once, with the layout Rust grew it with.
         unsafe { drop_slot(p, kind) };
         assert_eq!(shape.live(), 0);
+    }
+
+    /// A list in a slot of its own, from JSON; `edits` read back from their wire form and applied.
+    fn edited(of: FieldType, start: serde_json::Value, edits: &[Edit]) -> (Result<(), String>, serde_json::Value) {
+        let ty = FieldType::List { of: Box::new(of) };
+        let v = crate::value::heap_value("", &ty, &start).unwrap();
+        let kind = v.kind();
+        let mut slot = [0u8; HEAP_SLOT];
+        let p = slot.as_mut_ptr();
+        let mut wire = Vec::new();
+        edits.iter().for_each(|e| e.put(&mut wire));
+        let edits = Edit::read_all(kind, &wire).unwrap();
+        // SAFETY: `slot` holds nothing live, then a list of `kind`, freed once at the end.
+        unsafe {
+            write_slot(p, v);
+            let r = apply(p, 0, kind, edits);
+            let after = crate::value::heap_json(&read(p, 0, kind));
+            drop_slot(p, kind);
+            (r, after)
+        }
+    }
+
+    fn items(of: &FieldType, v: serde_json::Value) -> HeapValue {
+        crate::value::heap_value("", &FieldType::List { of: Box::new(of.clone()) }, &v).unwrap()
+    }
+
+    #[test]
+    fn each_list_edit_applies_in_place_and_one_past_the_end_changes_nothing() {
+        use serde_json::json;
+        let f = FieldType::F32;
+        let edits = [Edit::Truncate(2), Edit::Set(0, items(&f, json!([9]))), Edit::Append(items(&f, json!([7, 8])))];
+        assert_eq!(edited(f.clone(), json!([1, 2, 3]), &edits), (Ok(()), json!([9.0, 2.0, 7.0, 8.0])));
+        assert_eq!(edited(f.clone(), json!([1]), &[Edit::Replace(items(&f, json!([5, 6])))]), (Ok(()), json!([5.0, 6.0])));
+        let past = [Edit::Append(items(&f, json!([4]))), Edit::Set(2, items(&f, json!([0])))];
+        assert_eq!(edited(f.clone(), json!([1]), &past), (Err("[2] is past the end: the list has 2 items".into()), json!([1.0])));
+        assert_eq!(edited(f.clone(), json!([1]), &[Edit::Truncate(3)]).0, Err("truncate to 3 is past the end: the list has 1 items".into()));
+        // A raw list grows from empty past its capacity, and a replace frees what it held.
+        let v = FieldType::Vec2;
+        let many: Vec<_> = (0..9).map(|i| json!([i, -i])).collect();
+        let (r, after) = edited(v.clone(), json!([]), &[Edit::Append(items(&v, json!(many[..5]))), Edit::Append(items(&v, json!(many[5..])))]);
+        assert_eq!((r, after.as_array().unwrap().len(), after[8].clone()), (Ok(()), 9, json!([8.0, -8.0])));
+        let edits = [Edit::Set(1, items(&v, json!([[3, 4]]))), Edit::Truncate(1), Edit::Replace(items(&v, json!([[5, 6], [7, 8]]))), Edit::Set(1, items(&v, json!([[1, 1]])))];
+        assert_eq!(edited(v.clone(), json!([[0, 0], [0, 0]]), &edits), (Ok(()), json!([[5.0, 6.0], [1.0, 1.0]])));
+        assert_eq!(ItemShape::of(&v).live(), 0, "every raw list built here is freed once");
+        assert_eq!(Edit::read_all(HeapKind::Str, &[0, 0, 0, 0, 0]), Err("a string is written whole".into()));
     }
 }
