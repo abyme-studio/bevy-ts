@@ -113,7 +113,7 @@ fn ts_app(arm: &str) -> App {
     let dir = project(&format!("mesh-bench-{arm}"), &[("game.ts", &TS.replace("__ARM__", arm))]);
     let mut app = base_app();
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true)).add_plugins(bevy_ts_cli::assets::ScriptAssetsPlugin);
-    app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.ts"), true).unwrap())));
+    app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap())));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     app
@@ -164,11 +164,14 @@ fn arm(make: &dyn Fn() -> App) -> (f64, f64) {
     (pct(&all, 0.5), pct(&all, 0.95))
 }
 
+/// A row of the table: id, label, the floor it subtracts, and the app it builds.
+type Arm = (&'static str, &'static str, f64, Box<dyn Fn() -> App>);
+
 #[test]
 #[ignore = "a benchmark: run by hand in release"]
 fn chunk_remesh_costs() {
     let (empty, _) = arm(&|| ts_app("empty"));
-    let arms: [(&str, &str, f64, Box<dyn Fn() -> App>); 4] = [
+    let arms: [Arm; 4] = [
         ("a", "Rust get_mut + copies (floor)", 0.0, Box::new(rust_app)),
         ("b", "TS getMut + 4 insertAttribute + insertIndices, same length", empty, Box::new(|| ts_app("same"))),
         ("c", "TS, vertex count changing each frame", empty, Box::new(|| ts_app("resize"))),

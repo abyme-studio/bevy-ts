@@ -54,7 +54,7 @@ const TOPOLOGIES: [PrimitiveTopology; 5] =
 
 fn attribute(index: u32) -> Result<(MeshVertexAttribute, &'static str), String> {
     let i = index as usize;
-    ATTRIBUTES.get(i).map(|a| (a.clone(), ATTRIBUTE_NAMES[i])).ok_or_else(|| format!("{index} is not a Mesh.ATTRIBUTE_*"))
+    ATTRIBUTES.get(i).map(|a| (*a, ATTRIBUTE_NAMES[i])).ok_or_else(|| format!("{index} is not a Mesh.ATTRIBUTE_*"))
 }
 
 /// Numbers per vertex of a built-in attribute's format.
@@ -439,7 +439,7 @@ impl ScriptAssetServer<'_> {
                 return Err(format!("load: {path:?} names a labelled asset; pass its type, server.load({path:?}, Mesh)"));
             }
             let ext = parsed.get_full_extension().ok_or_else(|| format!("load: {path:?} has no extension; pass the asset type"))?;
-            let loader = bevy::tasks::futures::now_or_never(self.server.get_asset_loader_with_extension(&ext))
+            let loader = bevy::tasks::futures::now_or_never(self.server.get_asset_loader_with_extension(ext))
                 .ok_or_else(|| format!("load: the loader for .{ext} is not ready yet; pass the asset type"))?
                 .map_err(|e| format!("load: {e}"))?;
             loader.asset_type_id()

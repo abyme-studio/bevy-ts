@@ -47,7 +47,7 @@ fn assets_app(name: &str, body: &str, files: &[(&str, &[u8])], extra: impl FnOnc
     // bevy_render registers the image loader in a windowed app; this one has no renderer.
     app.register_asset_loader(bevy::image::ImageLoader::new(bevy::image::CompressedImageFormats::empty()));
     extra(&mut app);
-    app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.ts"), true).unwrap())));
+    app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap())));
     // As a real app does before its first update.
     app.finish();
     app.cleanup();
@@ -871,7 +871,7 @@ app.addSystems(Update, watch);
     )
     .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true))
     .add_plugins(bevy_ts_cli::assets::ScriptAssetsPlugin);
-    app.insert_resource(DevSource(Arc::new(Compiler::new(&dir.join("game.ts"), true).unwrap())));
+    app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap())));
     app.finish();
     app.cleanup();
     let r = reload(&mut app, false);

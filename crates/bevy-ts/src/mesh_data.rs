@@ -86,7 +86,7 @@ pub fn write(slots: &Slots, base: Option<&Mesh>, json: &Value) -> Result<Mesh, S
     if let Some(attrs) = o.get("attributes") {
         let attrs = attrs.as_object().ok_or_else(|| format!("a Mesh's attributes are an object by Bevy name, not {attrs}"))?;
         let old: Vec<MeshVertexAttribute> = match base {
-            Some(b) => b.try_attributes().map_err(|_| RENDER_ONLY)?.map(|(a, _)| a.clone()).collect(),
+            Some(b) => b.try_attributes().map_err(|_| RENDER_ONLY)?.map(|(a, _)| *a).collect(),
             None => Vec::new(),
         };
         for a in &old {
@@ -154,7 +154,7 @@ fn field<T: Reflect>(slots: &Slots, mut default: T, json: &Value, name: &str) ->
 /// `from`'s attributes and indices into `to`, a mesh of another topology.
 fn copy_data(from: &Mesh, to: &mut Mesh) -> Result<(), String> {
     for (attr, values) in from.try_attributes().map_err(|_| RENDER_ONLY)? {
-        to.try_insert_attribute(attr.clone(), values.clone()).map_err(|_| RENDER_ONLY)?;
+        to.try_insert_attribute(*attr, values.clone()).map_err(|_| RENDER_ONLY)?;
     }
     if let Some(ix) = from.try_indices_option().map_err(|_| RENDER_ONLY)? {
         to.try_insert_indices(ix.clone()).map_err(|_| RENDER_ONLY)?;

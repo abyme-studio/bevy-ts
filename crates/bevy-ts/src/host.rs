@@ -772,7 +772,7 @@ impl<A: Asset> ScriptRef<A> {
 
 impl<A: Asset> Clone for ScriptRef<A> {
     fn clone(&self) -> Self {
-        ScriptRef::new(self.0)
+        *self
     }
 }
 

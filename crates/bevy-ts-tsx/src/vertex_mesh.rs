@@ -51,6 +51,7 @@ enum Normals {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[allow(clippy::enum_variant_names)] // "computed" is a wire value
 #[serde(rename_all = "camelCase")]
 enum Computed {
     Computed,

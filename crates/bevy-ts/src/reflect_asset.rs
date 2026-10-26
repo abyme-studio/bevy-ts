@@ -296,12 +296,15 @@ impl ScriptAssets {
     }
 }
 
+/// A queued value, its handle, and its kind when the table knows it.
+type FlushItem = (Queued, UntypedHandle, Option<Kind>);
+
 /// Puts every queued value in its `Assets<T>`: an add inserted at its UUID, a set applied once.
 /// A hand-mapped value is inserted whole at the ref's id, for an add and a set alike.
 /// Runs after each system run and entry call, before its commands apply.
 pub fn flush(world: &mut World) {
     let Some(assets) = world.get_resource::<ScriptAssets>() else { return };
-    let (queued, removing): (Vec<(Queued, UntypedHandle, Option<Kind>)>, Vec<UntypedHandle>) = {
+    let (queued, removing): (Vec<FlushItem>, Vec<UntypedHandle>) = {
         let mut t = assets.table();
         let queued = std::mem::take(&mut t.queued);
         let queued = queued
