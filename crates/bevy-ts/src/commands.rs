@@ -16,8 +16,9 @@
 //! | trigger | 9 | event index u32, target u64 (`u64::MAX` for a global event), len u32, bytes |
 //! | setState | 10 | state index u32, value u32 |
 //! | observe | 13 | entity u64, observer key index u32, len u32, its system declaration JSON |
-//! | saveWorld | 14 | name len u16, name, len u32, options JSON (`saves::SaveOptions`) |
-//! | loadWorld | 15 | name len u16, name, parent u64 (`u64::MAX` for none) |
+//! | stateScoped | 14 | entity u64, kind u8 (bit 7: remove), machine index u32, value index u32 |
+//! | saveWorld | 15 | name len u16, name, len u32, options JSON (`saves::SaveOptions`) |
+//! | loadWorld | 16 | name len u16, name, parent u64 (`u64::MAX` for none) |
 //!
 //! Entities are `Entity::to_bits`. Component values are native layout bytes.
 
