@@ -11,7 +11,7 @@ Run conditions for TS systems with Bevy's names and combinators, evaluated in Ru
 - `inState(S.Value)`, `onMessage(M)`, `not(c)` (as now);
 - `runOnce()`;
 - `resourceExists(R)`, `resourceAdded(R)`, `resourceChanged(R)`, `resourceExistsAndChanged(R)`, `resourceRemoved(R)`, `resourceChangedOrRemoved(R)`;
-- `resourceEquals(R.of({...}))` and `resourceExistsAndEquals(R.of({...}))`, comparing the resource's bytes with the value's bytes in its native layout;
+- `resourceEquals(R.of({...}))` and `resourceExistsAndEquals(R.of({...}))`, comparing the resource's plain fields with the value's bytes in its native layout and its heap fields (`string`, `T[]`) by value;
 - `anyWithComponent(C)`, `anyComponentRemoved(C)`, and `anyMatchFilter(...filters)` with `With(C)`, `Without(C)`, `Added(C)`, `Changed(C)` filter values, named as the filter types;
 - `conditionChanged(c)` and `conditionChangedTo(c, value)`.
 
@@ -24,6 +24,10 @@ Run conditions for TS systems with Bevy's names and combinators, evaluated in Ru
 #### Scenario: resourceEquals
 - **WHEN** `runIf(resourceEquals(Score.of({ value: 10 })))` gates `win` and `Score.value` goes from 9 to 10
 - **THEN** `win` runs from the frame `Score.value` is 10
+
+#### Scenario: resourceEquals on a string
+- **WHEN** `runIf(resourceEquals(Title.of({ text: "won" })))` gates `cheer` and a system sets `title.text` to a new string `"won"`
+- **THEN** `cheer` runs from that frame, though the two strings are different allocations
 
 #### Scenario: anyComponentRemoved
 - **WHEN** `runIf(anyComponentRemoved(Enemy))` gates `recount` and a Rust system removes `Enemy` from one entity

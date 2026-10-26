@@ -12,9 +12,11 @@ A component SHALL be declared as a plain class extending `Component`, its fields
 export class Mover extends Component { speed: f32 = 1; amplitude: f32 = 2 }
 export class Target extends Component { declare entity: Entity }
 export class Tag extends Component { label: string = "crate"; scores: u32[] = [] }
+type Point = { x: f32; y: f32 }
+export class Path extends Component { declare points: Point[]; declare stops: Entity[] }
 ```
 
-The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A component field MAY also be `string` (a heap field, Rust's `String`) or `T[]` with `T` one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool` or `string` (a heap field, Rust's `Vec<T>`). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero, `""` for a string and `[]` for a list. Objects, nested lists, lists of vectors or entities and other heap data SHALL fail the load with the file and line.
+The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A field MAY also be `string` (a heap field, Rust's `String`) or `T[]` (a heap field, Rust's `Vec<T>`) with `T` a number kind, `bool`, `string`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, a string-literal union, or an object type (a literal, an alias or an interface) whose members are all of the plain types above (a struct item). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero, `""` for a string and `[]` for a list. Nested lists, a struct item with a `string` or list member, an object field outside a list and other heap data SHALL fail the load with the file and line.
 
 The class SHALL be the component's handle in queries (`Query<[Mover]>`), its TSX tag (`<Mover speed={2} />`) and, through `Mover.of({ speed: 2 })`, its constructor for commands. Its instance type SHALL be the component's data. A class with no fields is a marker. A class extending `SceneComponent` is a component whose `static scene(props)` builds a scene spawned with it, as Bevy's `#[derive(SceneComponent)]` (tsx, levels).
 
@@ -32,8 +34,12 @@ The component's name in Bevy, the protocol and `.bsn` files SHALL default to a R
 - **WHEN** a component declares `scores: u32[] = [1, 2]` and an entity is spawned with `scores: [7]`
 - **THEN** a TS system reads `[7]`, and another entity spawned without it reads `[1, 2]`
 
+#### Scenario: Lists of vectors, entities and structs
+- **WHEN** a component declares `points: Vec3[]`, `stops: Entity[]` and `marks: Point[]` with `type Point = { x: f32; y: f32 }`, and an entity is spawned with two of each
+- **THEN** a TS system reads each item back, and a Rust system reads `points` as a `Vec<Vec3>` and `marks` as a `Vec` of a `#[repr(C)]` struct `{ x: f32, y: f32 }`
+
 #### Scenario: A refused heap type
-- **WHEN** a component declares `points: Vec3[]` or `meta: { a: f32 }`
+- **WHEN** a component declares `grid: f32[][]`, `meta: { a: f32 }` or `items: { name: string }[]`
 - **THEN** loading fails with an error naming the class, the field, the file and the line
 
 #### Scenario: A pinned name survives a rename
@@ -111,7 +117,7 @@ A heap field's value SHALL be stored in the component's own bytes as Rust's `Str
 - **THEN** each entity's `label` reads back the string it was given
 
 ### Requirement: Heap fields in TS systems
-A TS system SHALL read a heap field through its row accessor (`tag.label`, `tag.scores`), the value fetched from Rust on the first read and kept until the row's changed tick moves. A list SHALL read as a frozen array typed `readonly T[]`. A `Mut<C>` SHALL assign a whole heap field (`tag.label = "x"`, `tag.scores = [1, 2]`); the write SHALL apply at once, store the run's change tick and be seen by Rust and by later reads the same frame. In-place list edits SHALL not be offered: `tag.scores.push(1)` throws. `q.tables` SHALL offer no raw arrays for a component with a heap field. A query over a component with no heap field SHALL make no host call for it.
+A TS system SHALL read a heap field through its row accessor (`tag.label`, `tag.scores`), the value fetched from Rust on the first read and kept until the row's changed tick moves. Through a read-only accessor a list SHALL read as a frozen array typed `readonly T[]`, and `tag.scores.push(1)` throws a `TypeError`. Through a writable accessor (`Mut<C>`, `ResMut<R>`, `Local`) a list SHALL read as a mutable array typed `T[]`, edited in place with JS's array API (`push`, `pop`, `tag.scores[i] = x`, `length = n`, item fields of a struct or vector item); the edits SHALL be applied in Rust at the end of the system's run, before any later system, as item edits (set, append, truncate) when the change is one of those and as a whole write otherwise, with the change tick stored once. A list read through a writable accessor and left unchanged SHALL write nothing and mark nothing changed. Items SHALL be compared with `Object.is`. A list with a hole or an `undefined` item at the end of the run (a grown `length`, `a[i] = x` past the end) SHALL fail the run with a `TypeError` naming the field and the index, and write nothing for that list. A heap read from Rust in the same run of a row with pending edits SHALL see them. A whole assignment (`tag.label = "x"`, `tag.scores = [1, 2]`) SHALL apply at once, store the run's change tick and be seen by Rust and by later reads the same frame; it SHALL replace the array and its snapshot, so edits before it are dropped and edits after it are taken against it. `q.tables` SHALL offer no raw arrays for a component with a heap field. A query over a component with no heap field SHALL make no host call for it.
 
 #### Scenario: A write is seen at once
 - **WHEN** a system with `Query<[Mut<Tag>]>` sets `tag.label = "open"` and then reads `tag.label`
@@ -122,8 +128,24 @@ A TS system SHALL read a heap field through its row accessor (`tag.label`, `tag.
 - **THEN** the second frame makes no host call for `Tag`
 
 #### Scenario: A push on a read list
-- **WHEN** a system calls `tag.scores.push(3)`
+- **WHEN** a system with `Query<[Tag]>` calls `tag.scores.push(3)`
 - **THEN** it throws a `TypeError` and the component is unchanged
+
+#### Scenario: A push in place
+- **WHEN** a system with `Query<[Mut<Tag>]>` calls `tag.scores.push(4)` on a row holding `[1, 2, 3]`, and sets `tag.scores[0] = 9`
+- **THEN** a Rust system after it reads `[9, 2, 3, 4]`, the write reached Rust as one set and one append, and `Changed<Tag>` matches the row
+
+#### Scenario: An item past the end
+- **WHEN** a system with `Query<[Mut<Tag>]>` sets `tag.scores[10] = 1` on a list of 3
+- **THEN** the run fails with a `TypeError` naming `scores` and index 3, and the list is still its 3 items
+
+#### Scenario: An assignment after a push
+- **WHEN** a system calls `tag.scores.push(4)` then assigns `tag.scores = [7]`, then pushes 8
+- **THEN** a Rust system after it reads `[7, 8]`
+
+#### Scenario: A list read and left alone
+- **WHEN** a system with `Query<[Mut<Tag>]>` reads `tag.scores.length` on every row and edits none
+- **THEN** no row is marked changed
 
 ### Requirement: Reload moves heap fields
 A reload that changes a component's layout SHALL keep a heap field of the same name and type by moving its value into the new component, not copying it. A heap field whose type changed SHALL be reset to its default and its old value freed.
@@ -132,9 +154,30 @@ A reload that changes a component's layout SHALL keep a heap field of the same n
 - **WHEN** `Tag` holds `label: "door"` and a reload adds `weight: f32 = 1`
 - **THEN** the entity has `label` `"door"` and `weight` 1, and the old value is not freed while the new one still holds it
 
-### Requirement: Heap fields are allowed on components only
-A `string` or `T[]` field in a `Local`, a TS resource, a message or an event SHALL fail the load with the file, the line and a message that heap fields are allowed on components only. Scene props keep their own `string` support.
+### Requirement: Heap fields wherever a layout is declared
+A `string` or `T[]` field SHALL be allowed, with the same types, defaults and storage as on a component, in a TS resource, a `Local`, a message and an event. Each value SHALL be built in Rust, owned by the store that holds it (the resource entity, the system's memory, the message queue, the pending event) and freed exactly once: when it is replaced, when a message expires on Bevy's two-frame rule, when the last observer of an event has run, on a restart, and when the world drops. A reload that keeps a heap field of a `Local` or resource SHALL move its value. A message or event's heap field SHALL be read-only to its readers and observers, as Bevy's `MessageReader` and `On` give `&M`. A `runSystemWith` input (`In<E>`) of an event with a heap field SHALL throw a `TypeError` naming the event, until a later change carries it. Scene props keep their own `string` support.
 
 #### Scenario: A string in a resource
-- **WHEN** a TS resource declares `title: string = "x"`
-- **THEN** loading fails naming the resource, the field, the file and the line, and saying heap fields are allowed on components only
+- **WHEN** a TS resource declares `title: string = "x"`, a system with `ResMut<Title>` sets `title.title = "y"` and a later system with `Res<Title>` reads it
+- **THEN** the later system reads `"y"`, and a second read of the unchanged resource makes no host call
+
+#### Scenario: A list in a Local
+- **WHEN** a system takes `Local<{ seen: Entity[] }>`, pushes an entity each run, and its module reloads with another field added
+- **THEN** each run sees the entities of the runs before, across the reload
+
+#### Scenario: A message with a string
+- **WHEN** a system writes `Chat.of({ text: "hi" })` and two later systems read `Chat`
+- **THEN** each reads `"hi"` once, and the string is freed once, when the message expires
+
+#### Scenario: An event with a list
+- **WHEN** `commands.trigger(Hit.of({ entity: e, tags: ["fire"] }))` bubbles to two entities, each with an observer
+- **THEN** both observers read `["fire"]`, and the list is freed once after the last one has run
+
+### Requirement: Lifecycle values carry a copy of the component
+For a component with a heap field, the value an `On<Remove<C>>`, `On<Despawn<C>>` or `On<Discard<C>>` observer gets SHALL be a copy taken when the event fires, owning its own heap values, so its heap fields read as they were then, even once the component or entity is gone. Its heap fields SHALL be read at the observer place, never as a resource. A component with no heap field SHALL keep today's byte copy.
+
+This is a behaviour change: under ts-component-heap-fields such a read was routed as a resource read (`reflect_codec.rs`, a negative entity) and always threw.
+
+#### Scenario: A name read after despawn
+- **WHEN** an entity with `Tag { label: "door" }` is despawned and an observer on `On<Despawn<Tag>>` reads `label`
+- **THEN** it reads `"door"`

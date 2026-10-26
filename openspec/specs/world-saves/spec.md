@@ -88,7 +88,7 @@ A save SHALL be one file `<name>.scn.ron`, written by `DynamicWorld::serialize` 
 - **THEN** the world has 6 `Save`-marked entities
 
 ### Requirement: TS components migrate on load and unknown ones are kept
-On load, each `TsSaved` entry SHALL be written with `TsComponents::encode` when its name is declared in the live generation. Its fields SHALL migrate by the hot-reload rules: a field of the same name and type is kept, a new field takes its default, a field of another type is reset to its default, a field no longer declared is dropped. A `string` or `T[]` field SHALL be kept when its saved value is a value of the live type, whatever a list's length. A component that migrated SHALL be reported once per load as a warning in the script log, naming the component and its field lists. An entry whose name is not declared SHALL stay in the entity's `TsSaved`, with one warning per name naming it, and SHALL be saved again by a later save of that entity; it SHALL never be dropped.
+On load, each `TsSaved` entry SHALL be written with `TsComponents::encode` when its name is declared in the live generation. Its fields SHALL migrate by the hot-reload rules: a field of the same name and type is kept, a new field takes its default, a field of another type is reset to its default, a field no longer declared is dropped. A `string` or `T[]` field SHALL be kept when its saved value is a value of the live type, whatever a list's length; a list of struct items SHALL be kept only when every item's members match the live item type by name and type. A component that migrated SHALL be reported once per load as a warning in the script log, naming the component and its field lists. An entry whose name is not declared SHALL stay in the entity's `TsSaved`, with one warning per name naming it, and SHALL be saved again by a later save of that entity; it SHALL never be dropped. TS resources with heap fields SHALL save and migrate by the same rules.
 
 #### Scenario: A field was added since the save
 - **WHEN** a save holds `game::Health { hp: 3 }` and `Health` now declares `hp` and `max: f32 = 10`
@@ -105,6 +105,10 @@ On load, each `TsSaved` entry SHALL be written with `TsComponents::encode` when 
 #### Scenario: A list's item type changed
 - **WHEN** a save holds `scores: [1.5]` and `scores` is now `string[]`
 - **THEN** the loaded entity has `scores` at its default and the log names `scores` reset
+
+#### Scenario: A struct item gained a member
+- **WHEN** a save holds `marks: [{ x: 1, y: 2 }]` and `Point` now also declares `z: f32`
+- **THEN** the loaded entity has `marks` at its default and the log names `marks` reset
 
 ### Requirement: The outcome is a message
 bevy-ts SHALL add two Rust messages TS reads as it reads any Rust message: `WorldSaved { name, error }`, written once the file is renamed into place or the save failed, and `WorldLoaded { name, entities, error }`, written once the entities are in the world or the load failed, `entities` the new entities. `error` SHALL be absent on success and name the cause on failure: a missing file, an unreadable file (Bevy's error, with its position), a component Bevy cannot serialise (its type path), an IO error (the path).
@@ -138,3 +142,10 @@ docs/saves.md SHALL hold a table of every public item of Bevy 0.20's `bevy_world
 #### Scenario: The matrix row
 - **WHEN** this change lands
 - **THEN** the "`DynamicWorld` save and load" row in `docs/research/bevy-coverage.md` says covered and links docs/saves.md
+
+### Requirement: Entities in lists are remapped on load
+An `Entity` item of a TS list, and an `Entity` member of a struct item, SHALL be remapped through the load's entity map, as a TS `Entity` field is.
+
+#### Scenario: A path of stops
+- **WHEN** entity `a` has `game::Path { stops: [b, c] }`, all three are saved, despawned and loaded
+- **THEN** the loaded `a`'s `stops` are the loaded `b` and `c`
