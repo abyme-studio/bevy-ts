@@ -304,11 +304,14 @@ fn build(
     state
 }
 
+/// An owned instance read back: its id, its params by name and its textures by name.
+type Owned = (AssetId<ScriptMaterial>, Map<String, Value>, Vec<(String, Option<Handle<Image>>)>);
+
 /// Every other `ScriptMaterial` of the kind (owned ones, from `Kind.add`) re-encoded against the
 /// new kind by param name, as keyed ones are, keeping its textures by name.
 fn reencode_owned(world: &mut World, generation: u64, state: &KindState) {
     let keyed: std::collections::HashSet<AssetId<ScriptMaterial>> = state.instances.values().map(|(h, _)| h.id()).collect();
-    let owned: Vec<(AssetId<ScriptMaterial>, Map<String, Value>, Vec<(String, Option<Handle<Image>>)>)> = world
+    let owned: Vec<Owned> = world
         .resource::<Assets<ScriptMaterial>>()
         .iter()
         .filter(|(id, m)| m.kind.name == state.decl.name && !Arc::ptr_eq(&m.kind, &state.kind) && !keyed.contains(id))
