@@ -131,3 +131,9 @@ pub extern "system" fn Java_dev_bevyts_Engine_nativeDestroy(_: JNIEnv, _: JClass
         engine.destroy();
     }
 }
+
+/// android-activity's native-activity backend (linked for bevy_asset, see Cargo.toml) refers to
+/// the app's `android_main`, so the library does not load without one. A `NativeActivity` is never
+/// pointed at this library: the host is a Java `Activity` calling `Engine`.
+#[unsafe(no_mangle)]
+fn android_main(_app: android_activity::AndroidApp) {}

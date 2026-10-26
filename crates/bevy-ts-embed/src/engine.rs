@@ -10,8 +10,9 @@ use bevy::asset::io::AssetSourceBuilder;
 use bevy::asset::io::file::FileAssetReader;
 use bevy::prelude::*;
 use bevy::render::RenderApp;
+use bevy::render::view::{ExtractedWindow, SurfaceData};
 use bevy::render::pipelined_rendering::PipelinedRenderingPlugin;
-use bevy::window::{ExitCondition, PrimaryWindow, WindowCreated, WindowEvent, WindowResized, WindowResolution, WindowScaleFactorChanged};
+use bevy::window::{ExitCondition, PrimaryWindow, RawHandleWrapper, WindowCreated, WindowEvent, WindowResized, WindowResolution, WindowScaleFactorChanged};
 use bevy_ts::engine::EngineIdentity;
 use bevy_ts::log::{LogLevel, ScriptLog};
 use bevy_ts_v8::V8Options;
@@ -407,22 +408,25 @@ impl Runner {
         }
     }
 
-    /// Removes the window's handle and runs the render world's extract, so it drops the
-    /// surface, until the window is released or the deadline passes. No main-world system runs.
+    /// Removes the window's handle from both worlds and drops the render world's surface, as
+    /// Bevy's `extract_windows` does, then waits until the window is released or the deadline
+    /// passes. No schedule runs: a render update with no main-world frame before it panics in
+    /// Bevy's shadow queueing, and a main-world frame would run while paused.
     fn drop_window(&mut self) {
         if self.native.take().is_none() {
             return;
         }
-        self.app.world_mut().entity_mut(self.window).remove::<bevy::window::RawHandleWrapper>();
+        self.app.world_mut().entity_mut(self.window).remove::<RawHandleWrapper>();
+        if let Some(render) = self.app.get_sub_app_mut(RenderApp) {
+            let world = render.world_mut();
+            let windows: Vec<Entity> = world.query_filtered::<Entity, With<RawHandleWrapper>>().iter(world).collect();
+            for window in windows {
+                world.entity_mut(window).remove::<(ExtractedWindow, RawHandleWrapper, SurfaceData)>();
+            }
+        }
         let released = self.released.take();
         let deadline = Instant::now() + SURFACE_DEADLINE;
-        loop {
-            if self.app.get_sub_app(RenderApp).is_some() {
-                self.app.update_sub_app_by_label(RenderApp);
-            }
-            if released.as_ref().is_none_or(|r| r.load(Ordering::SeqCst)) {
-                return;
-            }
+        while !released.as_ref().is_none_or(|r| r.load(Ordering::SeqCst)) {
             if Instant::now() >= deadline {
                 warn!("embed: the renderer still holds the host's window after {SURFACE_DEADLINE:?}");
                 return;

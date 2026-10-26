@@ -71,15 +71,24 @@ until_ok() {
 }
 log() { "$adb" -s $serial logcat -d -s bevy-ts-smoke:I 2>/dev/null; }
 logged() { log | grep -q -- "$1"; }
+count() { log | grep -c -- "$1" || true; }
+# A loaded emulator shows "System UI isn't responding", over the game and in the way of a tap.
+close_dialogs() { "$adb" -s $serial shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true; }
 
 until_ok '[[ "$("$adb" -s $serial shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == 1 ]]' 600 "the emulator booted"
 say "booted"
 "$adb" -s $serial shell input keyevent KEYCODE_WAKEUP
 "$adb" -s $serial shell wm dismiss-keyguard >/dev/null 2>&1 || true
 "$adb" -s $serial install -r -t "$apk" >/dev/null
-"$adb" -s $serial exec-in run-as $pkg sh -c 'mkdir -p files && cat > files/libbevy_ts_android.so' < "$so"
+# adb exec-in can cut a long stream short: push, copy inside the device, and check the size.
+"$adb" -s $serial push -q "$so" /data/local/tmp/libbevy_ts_android.so >/dev/null
+"$adb" -s $serial shell "cat /data/local/tmp/libbevy_ts_android.so | run-as $pkg sh -c 'mkdir -p files && cat > files/libbevy_ts_android.so'"
+copied=$("$adb" -s $serial shell run-as $pkg stat -c %s files/libbevy_ts_android.so | tr -d '\r')
+[[ "$copied" == "$(wc -c < "$so" | tr -d ' ')" ]] || { echo "smoke: the .so copied as $copied bytes" >&2; exit 1; }
 "$adb" -s $serial shell run-as $pkg rm -rf files/games
-tar -C "$out/game" -cf - . | "$adb" -s $serial exec-in run-as $pkg sh -c "mkdir -p files/games/$game && tar -C files/games/$game -xf -"
+tar -C "$out/game" -cf "$cache/game.tar" .
+"$adb" -s $serial push -q "$cache/game.tar" /data/local/tmp/game.tar >/dev/null
+"$adb" -s $serial shell "cat /data/local/tmp/game.tar | run-as $pkg sh -c 'mkdir -p files/games/$game && tar -C files/games/$game -xf -'"
 "$adb" -s $serial logcat -c
 
 # Play: started from the library in filesDir.
@@ -89,22 +98,27 @@ logged "failed" && { log; exit 1; }
 say "$(log | grep -o 'loaded .*' | head -1)"
 say "$(log | grep -o 'first frame in .*' | head -1)"
 sleep 5 # frames to look at, for the screenshot only
+close_dialogs
 "$adb" -s $serial exec-out screencap -p > "$results/$game-playing.png"
 
 # A tap reaches the host's input, which hands it to the engine.
 read -r w h < <("$adb" -s $serial shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tail -1)
+close_dialogs
 "$adb" -s $serial shell input tap $((w / 2)) $((h / 2))
 until_ok 'logged "touch start" && logged "touch end"' 30 "the tap"
 say "tap"
 
 # Home drops the surface (the host waits for the engine to let go) and pauses; back again gives a
 # new surface and resumes.
+# Counted, since a dialog over the game also pauses and resumes it.
+released=$(count "surface released") paused=$(count "paused") resumed=$(count "resumed")
 "$adb" -s $serial shell input keyevent KEYCODE_HOME
-until_ok 'logged "surface released" && logged "paused"' 30 "the surface released"
+until_ok '(( $(count "surface released") > released && $(count "paused") > paused ))' 30 "the surface released"
 say "$(log | grep -o 'surface released in .*' | tail -1)"
 "$adb" -s $serial shell am start -W -n $pkg/.SmokeActivity >/dev/null
-until_ok 'logged "resumed"' 30 "resumed"
+until_ok '(( $(count "resumed") > resumed ))' 30 "resumed"
 sleep 5
+close_dialogs
 "$adb" -s $serial exec-out screencap -p > "$results/$game-after-replace.png"
 say "resumed on a new surface"
 
