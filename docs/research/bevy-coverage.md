@@ -1,8 +1,9 @@
 # Bevy coverage: what a TS script reaches today
 
-Audit of Bevy 0.20's core crates against bevy-ts on main (`542a005`), 2026-10-23, for the
-operator's ask: nothing in core Bevy without an idiomatic TS translation that is not a
-hand-written hack. Research by research@bevy-coverage-audit, for lead@bevy-ts.
+Audit of Bevy 0.20's core crates against bevy-ts on main, for the operator's ask: nothing in core
+Bevy without an idiomatic TS translation that is not a hand-written hack. First written at
+`542a005` (2026-10-23) by research@bevy-coverage-audit; refreshed at `50340d9ef` (2026-10-27) by
+research@coverage-refresh, for lead@engine-core.
 
 Status words:
 
@@ -10,255 +11,218 @@ Status words:
 - **partial**: idiomatic for part; the missing part is named.
 - **hack**: reached only through `spawnNative` recipes, `custom()` ops or JSON blobs.
 - **missing**: no way from TS without writing Rust.
+- **not needed** / **decline**: no TS path wanted, with the reason.
 
-Owner says who closes the gap: an in-flight change (its team), or a new change proposed at the
-end (`new: <name>`). Tests are relative to `crates/`. "no test" means the claim rests on code
-reading.
+A row is idiomatic only with a test that proves it, or it says "no test". Owner is "—" when
+covered, a running change (`openspec/changes/<name>` on main, or a running team) when one owns the
+gap, else "open". Tests are relative to `crates/`; a bare file name is
+`bevy-ts-cli/tests/it/<file>`. No test was run for this refresh: a named test exists on main and is
+not `#[ignore]`.
 
-The one-line answer: data is nearly covered once the in-flight changes land (reflect-coverage
-does most of it); behaviour is not. Schedules, conditions, observers on Rust events, Rust
-messages, input devices, time control, assets, gizmos, audio, diagnostics and 2D have no TS
-path, and a writable exported param, which most of them need, is refused by design today.
+The one-line answer: since 2026-10-23 every proposed change but one has landed (all but
+custom-relationships). Behaviour is now covered too: schedules, conditions, Rust messages and
+observers, input devices, assets, gizmos, audio, animation, diagnostics, saves and 2D sprites and
+meshes. What is left is small: a few typing and test gaps a game team hits, and a handful of
+Bevy features with no owner. They are ranked at the end.
 
 ## ECS
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
-| TS components (layout columns) | idiomatic | `bevy-ts-cli/tests/it/systems.rs` `ts_writes_reach_rust_and_only_written_rows_are_changed` | — |
-| TS component, resource and `Local` `String` / `Vec<T>` fields (`string`, `T[]` of numbers, `bool`, `string`); lifecycle values carry a copy | partial: whole assignment only; in-place list edits (`Mut` copy-and-flush), heap fields in messages and events, lists of vectors, `Entity` or structs, and `.field[i]` protocol edits of a list are ts-heap-fields-2's later stages | `bevy-ts/tests/it/heap_fields.rs`, `bevy-ts/src/memory.rs` `a_locals_string_is_freed_once_on_redeclare_restart_and_drop`, `bevy-ts-cli/tests/it/heap_fields.rs`, `bevy-ts-cli/tests/it/conditions.rs` `resource_equals_compares_a_string_by_value`, `bevy-ts-cli/tests/it/protocol.rs` `string_and_list_fields_read_edit_and_type_on_contract` | ts-component-heap-fields, ts-heap-fields-2 (stages 1-2); follow-ups: ts-heap-fields-2 stages 3-5 |
-| Rust layout-tier components as query data | idiomatic | `bevy-ts-cli/tests/it/native_components.rs` `a_ts_write_is_seen_by_rust_the_same_frame…` | — |
-| Layout-tier holes (`Color`, enums with data, `Option`) | partial: TSX writes after reflect-enums-color; systems never see them | `bevy.d.ts` "Holes" comments | reflect-enums-color (TSX), reflect-coverage stage 3 (systems) |
-| Reflect-tier components in TSX, `With`/`Without` | idiomatic | `native_components.rs` `a_reflect_tier_component_is_a_tsx_element`; filters: no test | — |
-| Reflect-tier components from `Commands` (`Name`, `Camera3d`, `Disabled`) | missing: `idOf` throws, `runtime/core.js:2041` | no test | reflect-coverage stage 2 |
-| Reflect-tier components as query data, `GlobalTransform` | missing (`NotReflect` in `index.d.ts:220`) | `systems.rs` `load_errors_name_what_is_wrong` (refusal) | reflect-coverage stage 3 |
-| `bevy.d.ts` reflect-tier types carry fields | missing: bare `Reflected`, so `<Camera3d …>` props do not type-check | `bevy.d.ts:7` | reflect-coverage stage 1 (generated types) |
+| TS components (layout columns) | idiomatic | `systems.rs` `ts_writes_reach_rust_and_only_written_rows_are_changed` | — |
+| TS component, resource and `Local` `String` / `Vec<T>` fields; lifecycle values carry a copy | partial: whole assignment, on components, resources and `Local`. Missing: messages and events (stage 3), lists of vectors, `Entity` or structs (4), in-place list edits and `.field[i]` protocol edits (5) | `heap_fields.rs` `a_resmut_write_is_seen_by_res_and_an_unchanged_res_makes_no_host_call`, `a_despawn_observer_reads_the_label_as_it_was`, `a_list_reads_frozen_and_is_written_whole`; `bevy-ts/src/memory.rs` `a_locals_string_is_freed_once_on_redeclare_restart_and_drop`; `conditions.rs` `resource_equals_compares_a_string_by_value`; `protocol.rs` `string_and_list_fields_read_edit_and_type_on_contract`; `bevy-ts/tests/it/heap_fields.rs` `heap_fields_are_refused_on_messages` | ts-heap-fields-2 stages 3-5 |
+| Rust layout-tier components as query data | idiomatic | `native_components.rs` `a_ts_write_is_seen_by_rust_the_same_frame_and_changed_only_on_written_rows` | — |
+| Layout-tier holes (`Color`, enums with data, `Option`) | idiomatic in TSX and systems (`light.color`); no system test of a data-enum or `Option` hole | `reflect_systems.rs` `a_hole_reads_and_writes_and_column_views_stay_valid`; `reflect_values.rs` `a_light_colour_is_a_prop_written_through_reflection`, `every_kind_is_a_tsx_prop_and_a_list_is_replaced` | — |
+| Reflect-tier components in TSX, `With`/`Without` | idiomatic | `native_components.rs` `a_reflect_tier_component_is_a_tsx_element`; `ecs_queries.rs` `probe_disabled_and_sparse_filters` | — |
+| Reflect-tier TSX props bound to a function (`<Projection value={() => …}>`) | partial: the runtime binds them (`bevy-ts-tsx/src/resolve.rs:310`, checked when the value arrives), but `jsx-runtime.d.ts:1028` types `tsxProps` without `Bindable`, so tsc refuses a bound value. Only a layout-tier hole refuses a binding (`resolve.rs:291`) | negative only: `reflect_values.rs:134` (a bound `DirectionalLight color` hole fails); no test binds a reflect-tier prop | open |
+| Reflect-tier components from `Commands` (`Camera3d`, `Projection`, `DirectionalLight`, `Name`, `Disabled`) | idiomatic: `Class.of(json)` over `OP_INSERT_REFLECT`; `Name` and `Disabled`: no test | `reflect_scripts.rs` `an_orthographic_camera_from_ts`, `a_warm_sun_from_ts`, `a_bad_value_fails_its_command_naming_type_and_field` | — |
+| Reflect-tier components as query data | idiomatic; computed components read and refuse writes | `reflect_systems.rs` `a_camera_switches_to_orthographic_and_changed_sees_it`, `a_computed_component_refuses_a_write`, `ref_get_reads_reflected_values_and_reruns_on_change` | — |
+| `bevy.d.ts` reflect-tier types carry fields | idiomatic: generated `ReflectClass<…>` with `Holes<>` | `reflect_coverage.rs` `prebuilt_engine_has_no_unlisted_gap`, `codec_output_equals_read_for_every_covered_type` | — |
 | TS resources (`Res`, `ResMut`) | idiomatic | `surface.rs` `a_score_resource_is_written_in_place_and_kept_across_reloads` | — |
-| Rust resources other than `Time` | missing: `Res` resolves `Time` or TS names only (`bevy-ts/src/systems.rs:447`); `native.d.ts` types them, so they fail at load | no test | new: `rust-resources` (with reflect-coverage stage 3) |
+| Rust resources (layout and reflect tier) | idiomatic: `Res`/`ResMut`/`Option<Res>` by path or short name; `GlobalsUniform` (render world) fails every run | `rust_resources.rs` `a_ts_write_to_a_bevy_resource_is_seen_by_rust_that_frame_and_changed_once`, `unusable_resources_fail_the_load_naming_the_system_and_resource`, `an_absent_resource_fails_the_run_and_an_optional_one_is_undefined`; `reflect_systems.rs` `res_mut_of_a_reflect_tier_resource_writes_back_with_change_detection` | — |
 | Filters `With`, `Without`, `Changed`, `Added` | idiomatic | `systems.rs` `changed_and_added_filters_visit_only_matching_rows` | — |
-| Filters `Or`, `Spawned`, `Has`, `AnyOf`, `Ref` | missing | `bevy-ts-cli/src/reader.rs:1147` | new: `ecs-queries` |
+| Filters `Or`, `Spawned`, `Has`, `AnyOf`, `Ref`; sparse-set filters | idiomatic | `ecs_queries.rs` `or_mixes_archetype_and_row_terms`, `spawned_sees_new_entities_once`, `has_is_a_bool_and_never_filters`, `any_of_needs_one_part`, `ref_reports_ticks_and_refuses_writes`, `probe_disabled_and_sparse_filters` | — |
 | `Option`, `Entity`, `get`, `single`, `each`, iteration | idiomatic | `systems.rs` `option_entity_single_get_and_iteration` | — |
-| `iter_many`, `Single`, `Populated`, `RemovedComponents`, `SystemChangeTick` | missing | `reader.rs:1116` | new: `ecs-queries` |
-| `ParamSet` | not needed: overlapping queries share one column | `overlapping_queries_alias_one_column` | — |
-| Hierarchy: `setParent`, `ChildOf` column | idiomatic | `systems.rs` `commands_spawn_parent_overflow_and_discard` | — |
-| Hierarchy: walk down (`Children`), sibling order | missing: `Children` is reflect tier | — | reflect-coverage stage 3 (read), new: `ecs-queries` (helpers) |
-| Custom relationships | missing | — | new: `ecs-queries` |
-| Commands `spawn`, `insert`, `remove`, `despawn`, `trigger`, `write` | idiomatic | `systems.rs` as above; `surface.rs` trigger and message tests; `remove`: no test | — |
-| `spawn(<element/>)` returns no entity; `entity(e).insert(<X/>)` mounts a child, not on `e` | partial | `core.js:1893`, `core.js:1801` | new: `ecs-queries` |
-| `spawnBatch`, `insertIfNew`, `retain`, `clear`, `cloneAndSpawn` | missing | — | new: `ecs-queries` |
-| 256 spawns per system run | partial (a limit Bevy does not have) | `bevy-ts/src/commands.rs:42` | new: `ecs-queries` (lift or document) |
-| `spawnNative` recipes `camera3d`, `directionalLight`, `cuboid` | hack | `bevy-ts/src/recipes.rs:79-109`; example `ui-gallery` uses `camera3d` | reflect-coverage stage 2 removes them |
-| `custom(kind, payload)` | hack, kept for plugin opcodes | `bevy-ts/tests/it/plugin_api.rs` | — (a plugin seam, not a gameplay path) |
+| `Single`, `Populated`, `RemovedComponents`, `SystemChangeTick`, `iterMany`, `getMany`, `iterCombinations`, `iterAncestors`, `contains`, `isEmpty` | idiomatic | `ecs_queries.rs` `single_skips_without_exactly_one`, `populated_skips_when_empty`, `removed_components_sees_remove_and_despawn_once`, `system_change_tick_last_run_is_previous_this_run`, `iter_many_and_get_many`, `iter_combinations_yields_each_set_once`, `contains_and_is_empty`, `iter_ancestors_and_descendants` | — |
+| `ParamSet` | not needed: overlapping queries share one column | `systems.rs` `overlapping_queries_alias_one_column` | — |
+| Hierarchy: `setParent`, `ChildOf`, `withChildren`, `addChildren`, `detachChildren`, `despawnChildren`, `insertRecursive`, `removeRecursive` | idiomatic | `systems.rs` `commands_spawn_parent_overflow_and_discard`; `ecs_queries.rs` `children_commands`, `insert_and_remove_recursive`, `despawn_takes_children` | — |
+| Hierarchy: walk down (`Children`), sibling order | partial: `Children` is reflect-tier query data, no test reads it; no `iterDescendants`; no sibling-order helpers | — | ecs-queries 6.1 (`iterDescendants`); sibling order: open |
+| Custom relationships | missing: `Relationship`/`RelationshipTarget` not exported | — | custom-relationships (unstarted, after ecs-queries) |
+| Commands `spawn`, `insert`, `remove`, `despawn`, `trigger`, `write` | idiomatic | `systems.rs` as above; `surface.rs` `an_observer_triggered_from_ts_runs_before_the_next_system`; `ecs_queries.rs` `remove_takes_only_named`, `despawn_takes_children` | — |
+| `spawn(<element/>)` returns its root; `entity(e).insert(<X/>)` lands on `e` | idiomatic | `ecs_queries.rs` `spawn_element_returns_its_root`, `insert_element_lands_on_the_entity` | — |
+| `spawnBatch`, `insertBatch`, `insertIfNew`, `tryInsert`, `retain`, `clear`, `removeWithRequires`, `cloneAndSpawn` | idiomatic | `ecs_queries.rs` `spawn_batch_returns_ids_in_order`, `insert_batch_inserts_each`, `insert_if_new_and_try_insert`, `retain_and_clear`, `remove_with_requires`, `clone_and_spawn_copies_components` | — |
+| Spawns per system run | idiomatic: the 256-id pool refills through `reserve(n)` | `ecs_queries.rs` `a_thousand_spawns_in_one_run` | — |
+| `spawnNative` recipes `camera3d`, `directionalLight`, `cuboid` | removed; `spawnNative` stays for plugin recipes | `reflect_scripts.rs` `a_removed_recipe_names_its_replacement` | — |
+| `custom(kind, payload)` | hack, kept for plugin opcodes | `bevy-ts/tests/it/plugin_api.rs` `plugin_ops_apply_in_order_with_built_in_ones` | — (a plugin seam) |
 | TS messages | idiomatic (TS queues, not Bevy `Messages<T>`) | `surface.rs` `two_readers_see_the_same_messages_once_and_they_expire` | — |
-| Reading Rust messages (`KeyboardInput`, `AssetEvent`, `WindowResized`, `CollisionEvent`) | idiomatic (`MessageReader<M>`, JSON per message read); `CollisionEvent` has no `Reflect` and stays forwarded by `plugin_api::write_message` | `rust_events.rs` `a_ts_reader_sees_keyboard_input_once`, `a_project_message_is_read_and_written_from_ts` | — |
+| Reading Rust messages (`KeyboardInput`, `AssetEvent`, `WindowResized`) | idiomatic (`MessageReader<M>`); `CollisionEvent` has no `Reflect` and stays forwarded by `plugin_api::write_message` | `rust_events.rs` `a_ts_reader_sees_keyboard_input_once`, `window_messages_reach_a_ts_reader` | — |
 | Writing Rust messages (`GamepadRumbleRequest`, `RequestRedraw`) | idiomatic (`MessageWriter<M>`, `commands.write`) | `rust_events.rs` `a_ts_writer_sends_a_rumble_request_a_rust_reader_sees`, `an_unlisted_reflect_message_is_writable` | — |
-| A project's own Rust message or event types in TS | partial: reachable and typed, declared by hand (`class Scored extends rustMessage("game_native::Scored") { declare points: u32 }`); the project's `native.d.ts` does not emit them | `rust_events.rs` `a_project_message_is_read_and_written_from_ts`; tsc: `packages/bevy-ts/test/rust_events.ts` | open |
-| Observers: TS `Event`, `EntityEvent` | idiomatic; bubbling itself untested | `surface.rs` `an_observer_triggered_from_ts_runs_before_the_next_system` | new: `ecs-queries` (bubble test) |
-| Lifecycle `Add`, `Insert`, `Remove` | idiomatic, deferred to the next stage boundary | `surface.rs` `a_lifecycle_observer_on_a_rust_insert_runs_at_the_next_stage`; Insert/Remove: no test | — |
-| Lifecycle `Discard`, `Despawn` | missing | `bevy-ts/src/observers.rs:56` | new: `ecs-queries` |
-| Entity-scoped observers from code (`entity(e).observe`) | idiomatic, TS and Rust entity events | `rust_events.rs` `an_entity_observer_runs_for_its_entity_only_and_dies_with_it`, `an_entity_observer_of_a_rust_event_runs_for_its_entity_only` | — |
-| Observers on Rust events (`Pointer*`, `WorldInstanceReady`, `FocusGained`) | idiomatic from code (`On<E>`, deferred to the next drain); TSX props for UI | `rust_events.rs` `a_global_observer_sees_a_bubbling_pointer_click`, `propagate_false_drops_the_rest_of_a_rust_triggers_hops` | bevy-ui-coverage (UI picking and focus props) |
-| Component hooks | missing; observers cover the TS need | — | new: `ecs-queries` (decide: hooks or immediate observers) |
-| Required components on TS components | missing | — | new: `ecs-queries` |
-| States, `NextState`, `OnEnter`/`OnExit`, `inState` | idiomatic (TS state machines) | `surface.rs` `entering_playing_runs_exit_then_enter_and_unlocks_systems` | — |
-| `SubStates`, `ComputedStates`, `PreviousState`, `OnTransition`, `state_changed`, `state_exists` | idiomatic; TS states are Bevy states (`TsState<N>`, 32 slots); `PreviousState` undefined for sub and computed states | `states.rs` `a_sub_state_exists_only_in_its_source_value_and_ignores_next_state_otherwise`, `leaving_a_parent_exits_the_sub_state_first`, `a_computed_state_is_computed_only_when_a_source_transitions`, `on_transition_runs_on_exactly_its_transition_and_previous_state_reads_the_last_value`, `state_changed_is_true_on_the_frame_of_a_transition_only` | — |
-| State-scoped entities (`DespawnOnExit`, `DisableOnExit`…) | idiomatic: Bevy's components of `TsState<N>`, in commands, TSX and levels | `states.rs` `state_scoped_components_despawn_on_exit` | — |
-| Rust states in TS (`app.ts_state::<S>()`, `bevy-ts/states`), Rust reading TS states | idiomatic | `states.rs` `a_ts_system_gates_on_a_rust_state`, `rust_reads_a_ts_state_and_its_transition_event`, `a_rust_next_state_write_runs_ts_transition_systems` | — |
+| A project's own Rust message or event types in TS | partial: reachable, declared by hand (`rustMessage("game_native::Scored")`); the project's `native.d.ts` does not emit them (`docs/native.md:303`) | `rust_events.rs` `a_project_message_is_read_and_written_from_ts`; tsc: `packages/bevy-ts/test/rust_events.ts` | open |
+| Observers: TS `Event`, `EntityEvent`, bubbling | idiomatic | `surface.rs` `an_observer_triggered_from_ts_runs_before_the_next_system`; `ecs_queries.rs` `entity_event_bubbles_until_stopped` | — |
+| Lifecycle `Add`, `Insert`, `Remove` | idiomatic, at the next stage boundary; `Insert`: no test | `surface.rs` `a_lifecycle_observer_on_a_rust_insert_runs_at_the_next_stage`; `ecs_queries.rs` `remove_observer_reads_the_value` | — |
+| Lifecycle `Discard`, `Despawn` | idiomatic, in Bevy's order, with the old value | `ecs_queries.rs` `discard_sees_the_old_value`, `despawn_observers_run_in_bevy_order` | — |
+| Entity-scoped observers (`entity(e).observe`) | idiomatic, TS and Rust entity events | `rust_events.rs` `an_entity_observer_runs_for_its_entity_only_and_dies_with_it`, `an_entity_observer_of_a_rust_event_runs_for_its_entity_only` | — |
+| Observers on Rust events (`Pointer*`, `WorldInstanceReady`, `FocusGained`) | idiomatic (`On<E>`); `FocusGained`, `WorldInstanceReady`: registration check only | `rust_events.rs` `a_global_observer_sees_a_bubbling_pointer_click`, `propagate_false_drops_the_rest_of_a_rust_triggers_hops` | — |
+| Component hooks | not needed: a hook runs inside the structural change, where JS cannot; observers with the copied value cover it (`docs/ecs.md:215`) | — | — |
+| Required components on TS components | idiomatic: `static require`, transitive, cycle error | `ecs_queries.rs` `required_components_from_every_path` | — |
+| States, `NextState`, `OnEnter`/`OnExit`, `inState` | idiomatic | `surface.rs` `entering_playing_runs_exit_then_enter_and_unlocks_systems` | — |
+| `SubStates`, `ComputedStates`, `PreviousState`, `OnTransition`, `state_changed`, `state_exists` | idiomatic; `PreviousState` undefined for sub and computed states | `states.rs` `a_sub_state_exists_only_in_its_source_value_and_ignores_next_state_otherwise`, `a_computed_state_is_computed_only_when_a_source_transitions`, `on_transition_runs_on_exactly_its_transition_and_previous_state_reads_the_last_value`, `state_changed_is_true_on_the_frame_of_a_transition_only` | — |
+| State-scoped entities (`DespawnOnExit`, `DisableOnExit`…) | idiomatic | `states.rs` `state_scoped_components_despawn_on_exit` | — |
+| Rust states in TS, Rust reading TS states | idiomatic | `states.rs` `a_ts_system_gates_on_a_rust_state`, `rust_reads_a_ts_state_and_its_transition_event`, `a_rust_next_state_write_runs_ts_transition_systems` | — |
 | Schedules `Startup`, `PreUpdate`, `Update`, `FixedUpdate`, `PostUpdate` | idiomatic | `surface.rs` `startup_runs_once_per_identity`; `systems.rs` `chain_after_before_sets_and_stages_order_systems` | — |
-| Schedules `First`, `Last`, `PreStartup`, `PostStartup`, `FixedFirst`/`PreUpdate`/`PostUpdate`/`Last` | idiomatic; a stage made on first use | `schedules.rs` `a_system_in_last_runs_after_post_update_and_its_stage_is_made_on_load`, `fixed_schedules_run_in_order_once_per_step`, `startup_lists_run_in_order_once_with_commands_between`, `an_unused_schedule_has_no_bevy_ts_system` | — |
-| Schedules `RunFixedMainLoop`, `SpawnScene` | idiomatic; anchor `bevy:fixed-main-loop` | `schedules.rs` `an_unused_schedule_has_no_bevy_ts_system` | — |
-| Custom schedules (`ScheduleLabel`, `insertSchedule*`, `initSchedule`, `runSchedule`), Rust's with `ts_schedule` | idiomatic | `schedules.rs` `a_custom_schedule_after_update_moves_on_reload`, `run_schedule_runs_it_once_before_the_next_system`, `a_ports_schedule_runs_its_ts_systems_when_the_port_runs_it` | — |
-| Sets and ordering, Rust anchors | idiomatic | `systems.rs` as above | — |
+| Schedules `First`, `Last`, `PreStartup`, `PostStartup`, the fixed ones | idiomatic; a stage made on first use | `schedules.rs` `a_system_in_last_runs_after_post_update_and_its_stage_is_made_on_load`, `fixed_schedules_run_in_order_once_per_step`, `startup_lists_run_in_order_once_with_commands_between` | — |
+| Schedules `RunFixedMainLoop`, `SpawnScene` | idiomatic; their ordering untested | `schedules.rs` `an_unused_schedule_has_no_bevy_ts_system` | — |
+| Custom schedules, Rust's with `ts_schedule` | idiomatic | `schedules.rs` `a_custom_schedule_after_update_moves_on_reload`, `run_schedule_runs_it_once_before_the_next_system`, `a_ports_schedule_runs_its_ts_systems_when_the_port_runs_it` | — |
+| Sets and ordering, Rust anchors | idiomatic | `systems.rs` `chain_after_before_sets_and_stages_order_systems` | — |
 | Conditions `inState`, `resourceExists`, `onMessage`, `not` | idiomatic, evaluated in Rust | `surface.rs` `resource_exists_and_not_conditions`, `a_skipped_system_costs_no_js_call` | — |
-| Conditions `runOnce`, `resourceChanged`/`Added`/`Removed`/`Equals` and their `Exists` forms, `anyWithComponent`, `anyComponentRemoved`, `anyMatchFilter`, `conditionChanged`/`To` | idiomatic, evaluated in Rust, state per use | `conditions.rs` `every_rust_condition_skips_with_no_call_into_js`, `resource_changed_runs_on_the_frame_rust_writes_it_and_costs_no_call_otherwise`, `run_once_survives_a_reload_and_resets_on_restart` | — |
-| A TS predicate condition, `resource_exists_and` | missing | — | `ecs-schedules` stage 3 (after its bench) |
-| Combinators `andThen`/`orElse`/`nandThen`/`norElse`/`xor`/`xnor` and the eager forms; collective and distributive `runIf` | idiomatic | `conditions.rs` `short_circuit_skips_b_and_eager_spends_it`, `collective_run_if_is_one_evaluation_and_distributive_is_one_each`, `a_groups_condition_holds_for_the_whole_stage_run` | — |
-| Rust conditions in TS (`ts_condition`, `nativeCondition`) | idiomatic; the seam `script-time` and `script-input-devices` plug into | `conditions.rs` `a_ports_condition_runs_in_rust`, `a_factory_error_fails_the_load_with_the_call` | — |
-| One-shot systems (`registerSystem`, `runSystem`, `runSystemWith`, `In<E>`), Rust's `RunTsSystem` | idiomatic | `schedules.rs` `run_system_runs_a_one_shot_after_the_callers_commands`, `run_system_with_passes_its_input`, `rust_runs_a_ts_one_shot_with_run_ts_system` | — |
-| Exclusive world access | missing; not wanted (JS stays batched) | `index.d.ts:426` | — (decline) |
-| `Disabled` entities | partial: filter only; whether TS queries honour `DefaultQueryFilters` is untested | — | reflect-coverage stage 2 (insert); new: `ecs-queries` (test) |
+| Conditions `runOnce`, `resource*`, `anyWithComponent`, `anyComponentRemoved`, `anyMatchFilter`, `conditionChanged`/`To` | idiomatic, evaluated in Rust | `conditions.rs` `every_rust_condition_skips_with_no_call_into_js`, `resource_changed_runs_on_the_frame_rust_writes_it_and_costs_no_call_otherwise`, `run_once_survives_a_reload_and_resets_on_restart` | — |
+| A TS predicate condition, `resource_exists_and` | missing | — | ecs-schedules stage 3 (after its bench) |
+| Combinators and collective/distributive `runIf` | idiomatic | `conditions.rs` `short_circuit_skips_b_and_eager_spends_it`, `collective_run_if_is_one_evaluation_and_distributive_is_one_each` | — |
+| Rust conditions in TS (`ts_condition`, `nativeCondition`) | idiomatic | `conditions.rs` `a_ports_condition_runs_in_rust`, `a_factory_error_fails_the_load_with_the_call` | — |
+| One-shot systems, Rust's `RunTsSystem` | idiomatic | `schedules.rs` `run_system_runs_a_one_shot_after_the_callers_commands`, `run_system_with_passes_its_input`, `rust_runs_a_ts_one_shot_with_run_ts_system` | — |
+| Exclusive world access | decline (JS stays batched; `docs/native.md:578`) | — | — |
+| `Disabled` entities | idiomatic: queries honour `DefaultQueryFilters`; no test inserts `Disabled` from TS | `ecs_queries.rs` `probe_disabled_and_sparse_filters` | — |
 
 ## Transform, time, input, window
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
 | `Transform` columns, `Vec3`/`Quat` helpers | idiomatic | `systems.rs` `a_vector_method_stores_the_tick_once` | — |
-| `Transform.lookingAt` | missing | — | reflect-coverage stage 2 |
-| `GlobalTransform` read; `TransformHelper` | missing (read); the slot after propagation exists (`bevy:transform-propagate`) | `schedules.rs` `after_propagation_reads_this_frames_global_transform` (ignored until the read lands) | reflect-coverage stage 3 (read) |
-| `Res<Time>` | idiomatic, read-only, a built value (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`, `time.rs` `fixed_update_reads_timestep` | script-time stage 1 (done) |
-| `Time<Real>`, `Time<Virtual>` pause and speed, `Time<Fixed>` timestep | partial: every clock read (`Res<Time<C>>`); a game's own pause holds; writes (`ResMut<Time<Virtual>>`, `ResMut<Time<Fixed>>`) missing | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame` | script-time stage 2 (writes) |
-| `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: `Timer`, `Stopwatch`, `TimerMode` are field types with Bevy's methods; `onTimer` and Bevy's six other time conditions run Bevy's own (`bevy:` conditions); `commands.delayed()` missing | `time.rs` `timer_matches_bevy`, `stopwatch_pauses`, `time_conditions_match_bevy`, `paused_follows_the_game_clock` | script-time stage 3 (done), stage 4 (delayed commands) |
-| Keyboard (`ButtonInput<KeyCode>`), `InputFocus`, `KeyCode` | missing on main | — | text-input |
-| Mouse buttons, motion, scroll, cursor position | missing | — | new: `script-input-devices` |
-| Touch, gestures | missing | — | new: `script-input-devices` |
-| Gamepads (buttons, axes, sticks, rumble) | missing | — | new: `script-input-devices` |
-| `input_just_pressed` conditions | missing | — | new: `script-input-devices` |
-| Actions and bindings | not core Bevy (0.20 has none); a leafwing port is planned | `docs/research/native-ports.md` | — (port, not core) |
-| Tab and directional navigation, focus events | missing | — | bevy-ui-coverage stage 4 |
-| `Window`, `CursorOptions` | partial: flags and enums are columns; size, title, position are holes | `bevy.d.ts` | reflect-coverage |
-| Window messages (`WindowResized`, `CursorMoved`, `FileDragAndDrop`) | idiomatic (`MessageReader`) | `rust_events.rs` `window_messages_reach_a_ts_reader` | — |
-| `CursorIcon` | missing (reflect, custom cursor needs an image handle) | — | reflect-coverage |
+| `Transform.lookingAt` | idiomatic, a value for `spawn` (not a method on a live column) | `reflect_scripts.rs` `looking_at_matches_bevy` | — |
+| `GlobalTransform` read; `TransformHelper` | partial: reflect-tier query data, read as 12 raw floats (`bevy.d.ts:1346`), no `translation` or `compute_transform`; writes refused. `TransformHelper` missing. `schedules.rs:302` `after_propagation_reads_this_frames_global_transform` is still `#[ignore]` on a stale reason and reads `g.translation`, which the type lacks | `reflect_systems.rs` `a_computed_component_refuses_a_write` (write only); no read test | open |
+| `Res<Time>` | idiomatic, read-only (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`; `time.rs` `fixed_update_reads_timestep` | — |
+| `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | partial: every clock reads; writes fail the load | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame`, `clock_writes_fail_the_load` | script-time stage 2 |
+| `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: timers and Bevy's time conditions work; `commands.delayed()` missing (its blocker, writable-native-params, has landed) | `time.rs` `timer_matches_bevy`, `stopwatch_pauses`, `time_conditions_match_bevy`, `paused_follows_the_game_clock` | open (script-time lists stage 4 as not its task) |
+| Keyboard (`ButtonInput<KeyCode>`), `InputFocus`, `KeyCode` | idiomatic: `Keys`, `InputFocus`, generated `KeyCode` (`bevy-ts/input`) | `text_input.rs` `keys_and_input_focus_read_n_only_while_nothing_has_focus`; `rust_events.rs` `a_ts_reader_sees_keyboard_input_once` | — |
+| Mouse buttons, motion, scroll, cursor position | idiomatic: `MouseButtons`, `Cursor`, `AccumulatedMouseMotion`/`Scroll` | `input_devices.rs` `mouse_buttons_read_bevys_button_input`, `the_cursor_is_the_primary_windows`, `mouse_motion_and_scroll_read_as_bevys_resources` | — |
+| Touch, gestures | idiomatic: `Touches`; gestures as messages | `input_devices.rs` `touches_list_by_index_with_bevys_positions`; `rust_events.rs` `input_messages_reach_a_ts_reader` | — |
+| Gamepads (buttons, axes, sticks, rumble) | idiomatic: `Gamepads`, rumble by `MessageWriter`; `GamepadSettings` writes missing | `input_devices.rs` `gamepads_read_each_pads_state`; `rust_events.rs` `a_ts_writer_sends_a_rumble_request_a_rust_reader_sees` | `GamepadSettings`: open |
+| `input_just_pressed` conditions | idiomatic: `inputPressed`, `inputJustPressed`, `inputJustReleased`, `inputToggleActive` | `input_devices.rs` `input_conditions_run_in_rust_and_skipped_systems_cost_no_call`, `input_toggle_active_flips_on_each_press` | — |
+| Actions and bindings | not core Bevy; a leafwing port is planned | `docs/research/native-ports.md` | — (port) |
+| Tab and directional navigation, focus events | idiomatic, opt-in in `bevy-ts.json` | `ui_focus.rs` `tab_moves_through_three_buttons_with_focus_events`, `a_modal_tab_group_traps_focus`, `arrow_keys_move_focus_through_directional_navigation` (macOS only) | — |
+| `Window`, `CursorOptions` | partial: flags are columns, title, resolution and position read and write as holes; no test touches `Window` from TS | `reflect_systems.rs` `a_hole_reads_and_writes_and_column_views_stay_valid` (a stand-in) | open (a test) |
+| Window messages | idiomatic (`MessageReader`) | `rust_events.rs` `window_messages_reach_a_ts_reader` | — |
+| `CursorIcon` | idiomatic, no test (`bevy.d.ts:1929`) | — | — |
 
 ## Assets and scenes
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
-| Handles as asset paths in TSX and levels | idiomatic | `bevy-ts-tsx/src/reflected.rs:19` | — |
-| Hot reload of files | idiomatic (dev only, by design) | levels: `bevy-ts-levels/tests/it/levels.rs` `an_included_file_reloads_every_includer_copy`; textures and glTF: no test | — |
-| `AssetServer.load`, load state, `isLoadedWithDependencies` in systems | idiomatic: `Res<AssetServer>` (`bevy-ts/assets`) | `bevy-ts-cli/tests/it/script_assets.rs` `a_texture_loads_and_reaches_loaded`, `a_missing_file_fails_with_bevys_error`, `a_gltf_waits_for_its_dependencies` | script-assets |
-| `AssetEvent`, `AssetLoadFailedEvent` | `AssetEvent<A>` idiomatic (`MessageReader<AssetEvent<Image>>`, with Bevy's `isAdded` and the rest taking a ref or an id); `AssetLoadFailedEvent` missing: no `Reflect` in Bevy 0.20 | `rust_events.rs` `asset_event_image_reaches_a_ts_reader`, `script_assets.rs` `a_load_is_seen_as_an_event` | — (`AssetLoadFailedEvent`: upstream) |
-| `Assets<T>` add and mutate (meshes, images, materials, atlas layouts) from TS | partial: meshes (`ResMut<Assets<Mesh>>`, and `assets.add`/`get`/`set` as Bevy-named JSON) and reflected assets such as materials; strong refs dropped and removed. `Image` is on reflect-value's uncovered list | `script_assets.rs` `a_quad_matches_the_same_rust_calls`, `a_mesh_reads_back_as_bevy_named_json`, `a_dropped_mesh_nothing_holds_is_freed`, `remove_frees_at_once`; `reflect_assets.rs` | script-assets; images: reflect-coverage |
-| Processing, meta files, custom loaders | Rust-side by nature | — | — (stays Rust) |
-| `.bsn` levels, TSX scenes, `SceneComponent` prefabs | idiomatic (bevy-ts's own `.bsn` loader; Bevy 0.20 has none) | `bevy-ts-levels/tests/it/levels.rs` | — |
-| glTF scenes (`WorldAssetRoot`) | partial: TSX cannot place a newtype component today | — | script-gltf |
-| `DynamicWorld` save and load (save games) | covered: `commands.saveWorld` / `loadWorld`, Rust and TS components, docs/saves.md (its coverage table) | `crates/bevy-ts/tests/it/saves.rs`, `crates/bevy-ts-cli/tests/it/saves.rs` | world-saves |
+| Handles as asset paths in TSX and levels | idiomatic | `reflect_assets.rs` `a_texture_path_is_the_image_load_of_its_value` | — |
+| Hot reload of files | idiomatic (dev only); textures and glTF: no test | `bevy-ts-levels/tests/it/levels.rs` `an_included_file_reloads_every_includer_copy` | — |
+| `AssetServer.load`, load state, `isLoadedWithDependencies` | idiomatic (`bevy-ts/assets`) | `script_assets.rs` `a_texture_loads_and_reaches_loaded`, `a_missing_file_fails_with_bevys_error`, `a_gltf_waits_for_its_dependencies` | — |
+| `AssetEvent`, `AssetLoadFailedEvent` | `AssetEvent<A>` idiomatic; `AssetLoadFailedEvent` has no `Reflect` in Bevy 0.20, failure reads from `loadState` | `rust_events.rs` `asset_event_image_reaches_a_ts_reader`; `script_assets.rs` `a_load_is_seen_as_an_event`, `a_mesh_update_is_seen_as_modified` | — (upstream) |
+| `Assets<T>` add and mutate from TS | partial: meshes and reflected assets (materials) idiomatic; `Image` takes a sampler only, so a procedural texture is missing (`docs/assets.md:102`); custom vertex attributes and morph targets missing | `script_assets.rs` `a_quad_matches_the_same_rust_calls`, `a_mesh_reads_back_as_bevy_named_json`, `remove_frees_at_once`; `reflect_assets.rs` `a_system_adds_reads_and_sets_a_material` | open |
+| Processing, meta files, custom loaders | Rust-side by nature | — | — |
+| `.bsn` levels, TSX scenes, `SceneComponent` prefabs | idiomatic | `bevy-ts-levels/tests/it/levels.rs` | — |
+| glTF scenes (`WorldAssetRoot`) | idiomatic in TSX and levels | `animation.rs` `a_tsx_fox_plays_and_its_bound_clip_cross_fades`, `a_level_fox_plays_with_no_ts` | — |
+| `Gltf` asset fields (named scenes, nodes, animations), extras | partial: extras are reflect components; `Gltf` loads but has no reflection, so its fields are unreadable | `script_assets.rs` `a_gltf_waits_for_its_dependencies` | open |
+| `DynamicWorld` save and load | idiomatic (`docs/saves.md`) | `saves.rs` `a_script_saves_and_loads_in_the_dev_folder`, `the_whole_arena_saves` | — |
 
 ## Render, PBR, core pipeline
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
-| Cameras: `Camera`, `Camera3d`, `Hdr`, `RenderTarget` | partial: `camera3d` recipe (hack) or TSX `<Camera3d/>`; no look-at | `examples/cube/src/cube.tsx`, `play_stop.rs` | reflect-coverage (recipes go, `.of`), game-camera-edit (editor side) |
-| `Projection`, `ScalingMode`, `Viewport` | missing → TSX after reflect-enums-color | — | reflect-enums-color |
-| World to viewport | missing on main | — | world-to-screen |
-| Viewport to world (cursor ray), `MeshRayCast` | missing | — | new: `camera-rays` |
-| Lights (`Directional`, `Point`, `Spot`, `Rect`) | idiomatic for numbers; `color` a hole | `examples/arena/src/game.tsx:49` | reflect-enums-color (colour) |
-| `AmbientLight` | partial | — | ambient-light-script |
-| Environment maps, skybox, light probes, fog volumes | partial: numbers are columns, image handles via the path rule | — | reflect-coverage |
-| `<material>` `StandardMaterial`: color, metallic, roughness, emissive, unlit | idiomatic | `bevy-ts-tsx/src/intrinsics.rs` | — |
-| `alpha`, `alphaMode` | missing on main | — | material-alpha |
-| The other `StandardMaterial` fields (textures, normal map, double-sided, cull, transmission, clearcoat, uv transform, depth bias) | missing | — | new: `standard-material-fields` |
-| Script materials (`.wgsl` + TS params) | idiomatic | `docs/materials.md` | — |
-| Script material on a glTF scene | missing on main | — | scene-material |
-| Post-process settings (`Bloom`, `Tonemapping`, `DepthOfField`, AA…) | idiomatic for numbers; colours and nested structs are holes | `bevy.d.ts` | reflect-enums-color |
-| `RenderLayers`, `Visibility`, `NoFrustumCulling`, shadows markers | partial: `Visibility` a column (no test); `RenderLayers` reflect tier | — | reflect-coverage |
-| `OcclusionCulling` | idiomatic: brings its `DepthPrepass` (bevy-ts requires it), MSAA may stay on. Removing `DepthPrepass` alone from a camera that keeps `OcclusionCulling` still crashes (bevyengine/bevy#22747); Bevy leaves deferred unsupported | `crates/bevy-ts-cli/tests/it/occlusion_render.rs` | occlusion-culling-prereqs |
-| `<mesh>` primitives | partial: cuboid, sphere, plane | `intrinsics.rs:27` | mesh-primitives |
-| Custom meshes from TS (`Mesh::new`, attributes, indices) | idiomatic: `Mesh.new` and Bevy's `Mesh` API in systems, `<mesh positions>` in TSX | `script_assets.rs` `every_attribute_round_trips`, `computed_normals_match_rust`, `a_chunk_remesh_is_six_host_calls`; `bevy-ts-tsx/tests/it/vertex_mesh.rs` | script-assets |
-| Wireframes | partial: markers via TSX | — | reflect-coverage |
+| Cameras: `Camera`, `Camera3d`, `Hdr`, `RenderTarget`, `Viewport` | idiomatic; `Hdr`, `RenderTarget`: no test | `reflect_render.rs` `an_orthographic_camera_draws_near_and_far_cubes_the_same_size` | — |
+| `Projection`, `ScalingMode` | idiomatic as a value (binding: see the ECS row on bound reflect props) | `reflect_values.rs` `an_orthographic_projection_in_tsx_and_its_reloads`, `a_bad_variant_or_key_fails_the_load_naming_it` | — |
+| World to viewport | idiomatic: `Cameras.worldToViewport` | `cameras.rs` `world_points_project_to_logical_pixels` | — |
+| Viewport to world, `MeshRayCast` | idiomatic | `cameras.rs` `viewport_points_convert_to_rays_and_back`, `rays_hit_meshes_nearest_first` | — |
+| Lights | idiomatic, colour included; only `DirectionalLight` tested | `reflect_values.rs` `a_light_colour_is_a_prop_written_through_reflection`; `reflect_render.rs` `a_warm_light_colour_warms_the_lit_pixel` | — |
+| `AmbientLight` | idiomatic | `ambient_light.rs` `a_script_inserted_ambient_light_keeps_its_white_and_its_brightness_lights_the_scene` | — |
+| Environment maps, skybox, light probes, fog volumes | idiomatic; only `Skybox` tested | `reflect_values.rs` `an_asset_path_at_a_handle_loads_it_from_tsx_and_of` | — |
+| `<material>` color, metallic, roughness, emissive, unlit | idiomatic | `bevy-ts-tsx/tests/it/standard_material.rs` `every_prop_sets_its_field` | — |
+| `alpha`, `alphaMode` | idiomatic | `materials.rs` `a_material_alpha_blends_by_default_and_an_explicit_mode_wins`, `a_bound_material_alpha_fades_a_shape_frame_by_frame` | — |
+| The other `StandardMaterial` fields | partial: 18 texture and channel fields blocked by Bevy's 16-sampler limit (`docs/materials.md`) | `bevy-ts-tsx/tests/it/standard_material.rs` `every_texture_loads_its_path_in_its_colour_space`, `the_table_covers_standard_material`; `standard_material_limits.rs` `every_texture_fits_wgpus_default_limits` | open (upstream) |
+| Script materials | idiomatic | `materials.rs` `a_material_draws_with_its_file_and_values`; `material_params_render.rs` `a_set_redraws_the_same_asset_in_its_new_colour` | — |
+| Script material on a glTF scene | idiomatic | `scene_material.rs` `a_scene_mesh_carries_the_script_material` | — |
+| Post-process settings | idiomatic; no per-type test | `reflect_coverage.rs` `codec_output_equals_read_for_every_covered_type` | — |
+| `RenderLayers`, `Visibility`, `NoFrustumCulling`, shadow markers, wireframes | idiomatic, no test (reflected classes) | `visibility_range.rs` `brp_inserts_and_gets_visibility_range` (`VisibilityRange` only) | — |
+| `OcclusionCulling` | idiomatic; removing `DepthPrepass` alone still crashes (bevyengine/bevy#22747) | `occlusion_render.rs` `occlusion_culling_alone_brings_a_depth_prepass_and_draws` | — |
+| `<mesh>` primitives | partial: every 3D and 2D area shape; line shapes and rings other than the circle missing (`docs/meshes.md`) | `bevy-ts-tsx/tests/it/primitives.rs` `every_shape_builds_a_valid_mesh`, `builder_settings_reach_bevy` | open |
+| Custom meshes from TS | idiomatic | `script_assets.rs` `every_attribute_round_trips`, `a_chunk_remesh_is_six_host_calls`; `bevy-ts-tsx/tests/it/vertex_mesh.rs` `a_quad_from_props_equals_bevys_calls` | — |
 
 ## 2D, text, UI, picking
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
-| `Camera2d`, `Sprite`, `Anchor` | partial: `Sprite.image` is a handle hole; no 2D camera recipe | `bevy.d.ts` | reflect-coverage (handles, colour) |
-| `Mesh2d` + `ColorMaterial`, 2D primitives | missing (mesh-primitives scopes out `Mesh2d` and 2D cameras) | — | new: `script-2d` |
-| Texture atlases (`TextureAtlasLayout::from_grid`), sprite sheet animation | missing | — | new: `script-2d` (with `script-assets`) |
-| `Text2d`, `TilemapChunk` | missing / reflect only | — | new: `script-2d` |
-| UI nodes, style, text, images, buttons | partial (see bevy-ui-coverage's list) | `bevy-ts-tsx/tests` | bevy-ui-coverage |
-| `<input>` | missing on main | — | text-input |
-| UI widgets (checkbox, slider, menus, dialogs) | missing | — | bevy-ui-coverage stages 5–6 |
-| UI materials (`MaterialNode`) | missing | — | bevy-ui-coverage stage 8 (ask-first, not asked) |
-| Picking events on entities | partial: five `onPointer*` props, no bubbling | `tsx_reactive.rs` | bevy-ui-coverage stage 3 (all events), mesh-picking (3D backend) |
-| `Pickable`, `PickingInteraction`, `Hovered` | partial: columns | — | — |
+| `Camera2d`, `Sprite`, `Anchor` | idiomatic | `two_d.rs` `a_camera2d_is_orthographic_and_draws_a_sprite`, `a_sprite_takes_an_image_path_and_flips` | — |
+| 2D in the editor | missing: the editor camera is a `Camera3d` (`bevy-ts-viewport/src/edit.rs:613`), so 2D is not drawn while editing; `viewport_mode camera:"game"` shows it with the tools off | — | open (script-2d's non-goal, `openspec/changes/script-2d/proposal.md:21`) |
+| `Mesh2d` + `ColorMaterial`, 2D primitives | idiomatic: `<mesh2d>`, `<material2d>` | `two_d.rs` `every_2d_shape_builds_a_flat_mesh2d`, `a_material2d_builds_its_color_material_and_equal_props_share_handles` | — |
+| Texture atlases, sprite sheet animation | partial: `TextureAtlasLayout.fromGrid`, one layout cache for sprites and UI; sheet animation (a system on a `Timer`) untested | `two_d.rs` `sprites_and_a_ui_image_given_one_grid_share_one_32_tile_layout`, `a_sprite_atlas_index_past_its_grid_names_index_and_count`; `ui_media.rs` `equal_atlas_grids_share_one_layout` | script-2d stage 4 (animation) |
+| `Text2d`, `TilemapChunk` | partial: `<text2d>` idiomatic; `TilemapChunk` missing | `two_d.rs` `a_bound_text2d_writes_only_its_text2d_and_its_span_is_a_child` | script-2d stage 5 (`TilemapChunk`) |
+| `<worldText>` in the 3D world | idiomatic for straight labels; `path` and `normal` fail the load | `bevy-ts-material/tests/it/world_text.rs`, `world_text_render.rs` | world-text-stage-2 (path text) |
+| UI nodes, style, text, images, buttons | idiomatic | `ui_style.rs` `grid_tracks_and_placements`; `ui_text.rs` `each_text_prop_writes_its_component`; `ui_media.rs` `sliced_tiled_and_stretch_modes` | — |
+| `<input>` | idiomatic | `text_input.rs` `typed_keys_then_enter_submit_the_text`, `escape_cancels_and_clears_focus` | — |
+| UI widgets | idiomatic | `ui_widgets.rs` `a_slider_and_its_thumb_have_bevys_components`, `a_tab_list_selects_by_key`; `ui_overlays.rs` `overlays_have_bevys_components` | — |
+| UI materials (`MaterialNode`), `bevy_feathers` | missing, not asked for (`docs/ui.md` "Not available"); bevy-ui-coverage archived without them | — | open (ask-first: a new material target and pipeline) |
+| Picking events on entities | idiomatic: every `onPointer*`, bubbling; 3D by `meshPicking`; 2D sprites | `ui_events.rs` `every_picking_event_reaches_its_handler_with_bevys_fields`; `ui_drag.rs` `a_drag_reaches_a_ui_node_a_mesh_and_a_scene_root`; `mesh_picking.rs` `the_headless_pointer_clicks_a_mesh`; `headless_pointer.rs` `a_test_clicks_a_mesh_headless`; `two_d.rs` `clicking_a_sprite_runs_its_handler_once_with_its_entity` | — |
+| `Pickable`, `PickingInteraction`, `PointerInteraction`, `Hovered` | idiomatic, no test: reflected classes. No test reads `PointerInteraction` under the headless pointer | `ui_events.rs` `has_pressed_styles_a_button_with_one_call_per_change_and_none_when_quiet` (`Pressed` only) | open (a test) |
 
-## Gizmos, animation, audio, glTF, diagnostics, remote, reflect
+## Gizmos, animation, audio, diagnostics, remote, reflect
 
 | Capability | Today | Evidence / test | Owner |
 |---|---|---|---|
-| Immediate `Gizmos` (lines, shapes, text, primitives, curves) | works | [docs/gizmos.md](../gizmos.md) | `script-gizmos` |
-| Gizmo config, retained `GizmoAsset`, `Show*Gizmo` markers | config and markers work; `GizmoAsset` planned (stage 3) | [docs/gizmos.md](../gizmos.md) | `script-gizmos` |
-| Play a glTF clip with transitions | missing on main | — | script-gltf (`PlayAnimation`) |
-| `AnimationPlayer` control from systems (seek, pause, speed, weights, `is_finished`), graphs, animation events, TS-built clips | missing; script-gltf scopes it out | — | new: `animation-control` |
-| `AudioPlayer`, `PlaybackSettings`, `SpatialListener` | idiomatic: `<AudioPlayer value=..>` and `PlaybackSettings` in TSX, Ogg and WAV decode; script spawns wait on reflect-coverage stage 2 ([docs/audio.md](../audio.md)) | `crates/bevy-ts-cli/tests/it/audio.rs` | `script-audio` |
-| `AudioSink` control, `GlobalVolume` | `AudioSinks` in `bevy-ts/audio` is idiomatic; `GlobalVolume` waits on reflect-coverage stage 3 ([docs/audio.md](../audio.md)) | `crates/bevy-ts-cli/tests/it/audio.rs` | `script-audio` (stage 2: `GlobalVolume`) |
-| glTF asset (`Gltf`: named scenes, nodes, animations), extras | partial: extras are reflect components; `server.load("x.gltf")` loads a `Gltf` and its load state, but `Gltf` has no reflection, so its fields are not readable | `script_assets.rs` `a_gltf_waits_for_its_dependencies` | script-gltf (the `Gltf` fields) |
-| `DiagnosticsStore` (every diagnostic by path), `Diagnostics`, `RegisterDiagnostic`, `FrameCount`, the diagnostics plugins | idiomatic: `bevy-ts/diagnostics` and `bevy-ts.json`'s `diagnostics` (docs/diagnostics.md) | `crates/bevy-ts-cli/tests/it/diagnostics.rs` | `script-diagnostics` |
-| BRP (studio, protocol) | idiomatic for tools; scripts need none | `bevy-ts-remote` | — |
-| Custom BRP methods from TS | missing; low demand | — | — (decline for now) |
-| Reflect shapes (enums, colour, lists, maps, `Duration`), hole CI walker | partial | — | reflect-enums-color, reflect-coverage |
+| Immediate `Gizmos` | idiomatic ([docs/gizmos.md](../gizmos.md)) | `gizmos.rs` `a_system_draws_lines`, `ts_draws_what_rust_draws`, `gizmos_render_headless` | — |
+| Gizmo config, `GizmoAsset`, `Show*Gizmo` | idiomatic | `gizmos.rs` `config_round_trips_through_the_store`, `a_retained_gizmo_renders`, `show_aabb_gizmo_draws_its_box` | — |
+| Play a glTF clip with transitions | idiomatic: `PlayAnimation` | `animation.rs` `a_tsx_fox_plays_and_its_bound_clip_cross_fades` | — |
+| `AnimationPlayer` control, graphs, TS-built clips | idiomatic: `Animations` (`status`, `seek`, `rewind`, `replay`), graphs and clips built in TS, tweens | `animation.rs` `animations_status`, `animations_seek_rewind_replay`, `a_ts_built_graph_blends`; `bevy-ts-animation/tests/it/clip.rs` `a_tween_translates_with_an_ease` | — |
+| Animation events, `adjust_speeds`, `set_weight` | decline: Rust closures (`docs/animation.md`) | — | — |
+| `AudioPlayer`, `PlaybackSettings`, `SpatialListener` | idiomatic; mp3 refused by name ([docs/audio.md](../audio.md)) | `audio.rs` `tsx_writes_audio_player_and_playback_settings`, `a_script_spawns_audio_player_and_playback_settings` | — |
+| `AudioSink` control, `GlobalVolume` | idiomatic | `audio.rs` `audio_sinks_control_sinks_with_no_device`, `global_volume_and_default_spatial_scale_from_ts` | — |
+| Diagnostics, `FrameCount` | idiomatic (`docs/diagnostics.md`) | `diagnostics.rs` `ts_reads_the_store_and_the_frame_count_as_rust_does`, `a_script_diagnostic_is_measured_and_survives_a_reload` | — |
+| BRP (studio, protocol) | idiomatic for tools | `protocol.rs` `a_watch_stays_quiet_for_rows_a_system_does_not_write` | — |
+| Custom BRP methods from TS | decline for now (low demand) | — | — |
+| Reflect shapes, hole walker | idiomatic, with a named list (`bevy-ts/src/reflect_value.rs:49` `UNCOVERED`) | `reflect_coverage.rs` `prebuilt_engine_has_no_unlisted_gap`; `bevy-ts/src/reflect_value.rs` `every_kind_round_trips` | — |
 
 ## Docs and specs that claim more than the code
 
-- `openspec/specs/ts-systems/spec.md:134` says a Rust resource with a native layout is reachable
-  as `Res<Time>` is. Only `Time` is special-cased. `rust-resources` owns the fix.
-- `docs/native.md:89` and the same spec called `Time` a column. It is a value built per run.
-  Fixed by script-time stage 1.
-- `openspec/specs/native-components/spec.md:41-50` says shipped types carry JSON shapes;
-  `bevy.d.ts` declares reflect-tier types bare. reflect-coverage stage 1 owns the fix.
-- No doc says `Commands` cannot insert a reflect-tier component; it is a runtime error. Closed
-  by reflect-coverage stage 2.
+The four from 2026-10-23 are fixed (rust-resources, script-time stage 1, reflect-coverage stages 1
+and 2). New ones:
 
-## The enabler most new changes need
+- `openspec/specs/ts-systems/spec.md:145` says a reflect-tier Rust resource fails the load. It
+  works since reflect-coverage stage 3 (`audio.rs` `global_volume_and_default_spatial_scale_from_ts`).
+- `crates/bevy-ts-cli/tests/it/schedules.rs:300` ignores its test "until reflect-coverage stage 3",
+  which has landed; the test reads `g.translation`, which `GlobalTransform` lacks.
+- `openspec/changes/script-2d/design.md` says reflect-path props cannot be bound. Only layout-tier
+  holes refuse (`bevy-ts-tsx/src/resolve.rs:291`); reflect-tier props bind at run time.
 
-Exported params (`#[bevy_ts_native::export]`) are read-only by rule: "A param that writes
-(`ResMut`, `Query<&mut T>`) does not compile" (`docs/native.md`). That rule is why gizmos,
-audio sinks, time control, asset loading, animation control and rumble have no TS path. Bevy's
-own unit for each is a writing param (`Gizmos`, `ResMut<Time<Virtual>>`, `AssetServer` +
-`ResMut<Assets<T>>`, `Query<&mut AnimationPlayer>`).
+## Open, ranked
 
-Recommendation: a `writable-native-params` change first. An exported param may write; its calls
-run inside the TS system's run, which is already exclusive on the main thread, so a written
-column is marked changed and the borrow ends with the call. It is an extension of an existing
-pattern, but it changes how Rust and JS share the world, so it is on the operator's ask-first
-list (architecture, performance). Every new change below except `ecs-*`, `rust-events`,
-`script-2d` and `world-saves` builds on it.
+Missing or partial, no running owner, ranked by which a game team waits on.
 
-## New changes, one per uncovered category
+1. Bound reflect-tier props are refused by tsc (`jsx-runtime.d.ts:1028` lacks `Bindable`) though
+   the runtime binds them. Agent town (`<Projection value>`) and script-2d wait.
+2. `GlobalTransform` reads as 12 raw floats with no `translation`, and no test reads it; the
+   after-propagation test is ignored on a stale reason. Agent town waits (it reads it through BRP
+   with its own `component()` helper, `agent-town/test/fit-walk.mjs:111`).
+3. `PointerInteraction` under the headless pointer: untested; 3D mesh picking is tested only
+   through observers. Agent town waits; its build is bisecting whether the empty value is ours.
+4. 2D in the editor: the editor camera is a `Camera3d`. script-2d waits and lists it as a non-goal.
+5. `commands.delayed()`: its blocker has landed; script-time disowns stage 4.
+6. `Gltf` asset fields unreadable (no reflection).
+7. A project's own Rust messages are not emitted to `native.d.ts`.
+8. `Image` pixel data from TS (procedural textures); custom vertex attributes and morph targets.
+9. `<mesh>` line shapes and rings.
+10. Hierarchy sibling-order helpers.
+11. `GamepadSettings` writes.
+12. UI materials (`MaterialNode`): ask-first, nobody has asked.
+13. The 18 `StandardMaterial` textures: upstream, Bevy's sampler limit; no issue filed.
+14. Test-only gaps, no code missing: `Window`/`CursorOptions` from TS, `Name`/`Disabled` from
+    commands, the `Insert` observer, `RenderTarget`, `Hdr`, `CursorIcon`, render markers.
 
-Recommended order: the enabler, then ECS (everything else uses it), then the rest by demand.
-
-1. `writable-native-params`: exported params may take `ResMut`, `Query<&mut T>` and `Commands`;
-   change ticks and borrow rules; a bench against today's read-only call.
-2. `ecs-schedules`: every main and fixed schedule; `PreStartup`/`PostStartup`; a slot after
-   transform propagation; conditions `or`/`and`/`runOnce`/`resource*`/`anyWithComponent`/
-   `conditionChanged` evaluated in Rust, plus a TS predicate; one-shot systems; `SubStates`,
-   `ComputedStates`, `PreviousState`, `OnTransition`; TS states as real Bevy states so
-   `DespawnOnExit` and friends work.
-3. `ecs-queries`: `Or`, `Has`, `Spawned`, `AnyOf`, `Ref` filters and data; `Single`,
-   `Populated`, `iterMany`, `RemovedComponents`; `Discard`/`Despawn` lifecycle; required
-   components and custom relationships on TS components; `Children` helpers; `spawnBatch` and
-   the other `EntityCommands`; `spawn(<element/>)` returns its entity; the 256-spawn limit; tests
-   for bubbling, `Disabled` and despawn recursion.
-4. `rust-events`: `MessageReader<M>`/`MessageWriter<M>` of any reflected Rust message (input,
-   window, asset, state transition, port messages without hand forwarding); `addObserver` and
-   `entity(e).observe` on any reflected Rust `Event`/`EntityEvent`, with bubbling.
-   A Rust event field named like one of On<E>'s own members is read as `on.event.<name>`
-   (openspec/changes/rust-events, task 4.5).
-5. `rust-resources`: `Res`/`ResMut` of every Rust resource: layout tier zero-copy, reflect tier
-   through reflect-coverage's reader and writer; the spec fix. Settle with reflect-coverage
-   whether its stage 3 already takes this (it names "`Res` data" for reflect tier only).
-6. `script-time`: `Time<Real>`, `Time<Virtual>` (pause, speed), `Time<Fixed>` (timestep,
-   overstep); `Timer` and `Stopwatch` as TS values with Bevy's methods; `onTimer` conditions
-   (stage 3, done); delayed commands.
-7. `script-input-devices`: extends text-input's `bevy-ts/input` with `Mouse`, `MouseMotion`,
-   `MouseScroll`, cursor position, `Touches`, gestures, `Gamepads` (buttons, axes, sticks,
-   rumble), and `inputJustPressed` conditions.
-8. `script-assets`: an `Assets` param: `load` (typed handles), load state, `add` for meshes,
-   images, materials and atlas layouts built in TS, the `Gltf` asset's named parts.
-9. `script-gizmos`: the `Gizmos` param with Bevy's methods, batched per frame; config groups;
-   retained `GizmoAsset`.
-10. `script-audio`: the decoder features, `<AudioPlayer>`, `AudioSink` control from systems,
-    spatial audio, `GlobalVolume`.
-11. `script-diagnostics` (done): `DiagnosticsStore` reads (FPS, frame time, entity count) and
-    `FrameCount`.
-12. `script-2d`: `Camera2d` example, `Mesh2d` + `ColorMaterial` (`<mesh>` 2D shapes,
-    `<material2d>` or `<material>` on a 2D mesh), sprite sheets, `Text2d`, tilemap chunks.
-13. `standard-material-fields`: every `StandardMaterial` field on `<material>`, textures as
-    asset paths. A follow-up for the material-alpha team.
-14. `animation-control`: `AnimationPlayer` and graph control from systems, animation events,
-    TS-built clips. A follow-up for the script-gltf team.
-15. `camera-rays`: `viewportToWorld` and `MeshRayCast` on world-to-screen's `Cameras` param. A
-    follow-up for the world-to-screen team.
-16. `world-saves` (done): `DynamicWorld` save and load of TS and Rust components (docs/saves.md).
-
-Declined: exclusive world access from TS (it breaks the batched bridge), custom BRP methods from
-TS, Bevy action bindings (not core; the leafwing port plan covers them), asset processing and
-custom loaders (Rust by nature).
+Owned by a running change, so not ranked: heap fields (ts-heap-fields-2), `iterDescendants`
+(ecs-queries 6.1), custom relationships, a TS predicate condition (ecs-schedules stage 3), clock
+writes (script-time stage 2), sprite-sheet animation and tilemaps (script-2d), path text
+(world-text-stage-2). heimdall-labels has
+named no ask.
 
 ## Sources
 
-- bevy-ts `main` at `542a005`: `packages/bevy-ts/*.d.ts`, `runtime/core.js`,
-  `crates/bevy-ts/src`, `crates/bevy-ts-cli` tests, `docs/native.md`, `openspec/specs`.
-- In-flight proposals in their worktrees: bevy-ui-coverage, text-input, reflect-enums-color,
-  reflect-coverage, mesh-primitives, mesh-picking, script-gltf (scene-animation),
-  scene-material, material-alpha, world-to-screen, game-camera-edit, script-networking.
-- Bevy 0.20.0 sources in the cargo registry: `bevy_ecs`, `bevy_state`, `bevy_app`,
-  `bevy_time`, `bevy_input`, `bevy_asset`, `bevy_scene`, `bevy_world_serialization`,
-  `bevy_camera`, `bevy_pbr`, `bevy_sprite`, `bevy_gizmos`, `bevy_animation`, `bevy_audio`,
-  `bevy_diagnostic`, `bevy_picking`, `bevy_mesh`, `bevy_image`; and its `Cargo.toml` features
-  against bevy-ts's (`3d`, `bevy_ui_render`, `bevy_remote`, `file_watcher`; no `audio`).
+- bevy-ts `main` at `50340d9ef`: `packages/bevy-ts/*.d.ts`, `runtime`, `crates/*/src`,
+  `crates/*/tests/it`, `docs/*.md`, `openspec/specs`, `openspec/changes` and its archive.
+- `abyme call teams list` on 2026-10-27; game-team asks relayed by lead@engine-core.
+- Bevy 0.20.0 sources in the cargo registry (the 2026-10-23 audit's list).
 
-Confidence: high for "missing" rows (each checked against the code); medium for "idiomatic"
-rows without a test. Not checked: whether TS queries skip `Disabled` entities, whether Rust
-required components come with a TS insert, whether `Changed`/`Added` work on sparse-set
-components (the rows path reads table ticks only, `bevy-ts/src/systems.rs:697`), and whether
-`<Camera3d/>` in TSX renders with no recipe.
+Confidence: high for rows with a named test (each grepped and not ignored; none was run); medium
+for "no test" rows, which rest on the type existing. Not checked: running teams' unlanded
+branches.
