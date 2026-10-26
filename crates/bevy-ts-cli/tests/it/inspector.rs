@@ -120,7 +120,7 @@ fn the_debugger_follows_a_restart_to_the_spare_instance() {
     // The spare boots in a frame of its own.
     app.update();
     assert_eq!(reload(&mut app, true).status, bevy_ts::generation::ReloadStatus::Applied);
-    let ws = app.world().non_send_resource::<bevy_ts::runtime::ScriptRuntime>().backend.inspector_address().expect("the debugger is served after the restart");
+    let ws = app.world().non_send::<bevy_ts::runtime::ScriptRuntime>().backend.inspector_address().expect("the debugger is served after the restart");
     let client = std::thread::spawn(move || {
         let (mut sock, _) = tungstenite::connect(ws.as_str()).unwrap();
         sock.send(tungstenite::Message::text(json!({ "id": 1, "method": "Runtime.evaluate", "params": { "expression": "globalThis.mark", "returnByValue": true } }).to_string())).unwrap();
