@@ -500,7 +500,7 @@ app.addSystems(Update, pairs);
     assert_eq!(lines(&mut app, "pairs"), vec!["pairs 6 6"]);
 }
 
-/// `iterDescendants` waits on `Children` as query data (reflect-coverage stage 3; task 6.1).
+/// `iterAncestors` walks `ChildOf` up; `iterDescendants` walks `Children` down, breadth first.
 #[test]
 fn iter_ancestors_and_descendants() {
     let (_, mut app, es) = staged(
@@ -509,12 +509,16 @@ fn iter_ancestors_and_descendants() {
             let a = app.world_mut().spawn_empty().id();
             let b = app.world_mut().spawn(ChildOf(a)).id();
             let c = app.world_mut().spawn(ChildOf(b)).id();
-            vec![a, b, c]
+            let d = app.world_mut().spawn(ChildOf(a)).id();
+            vec![a, b, c, d]
         },
-        "export function up(q: Query<[ChildOf]>) { console.log(`up ${[...q.iterAncestors($2)].join(' ')}`); }\napp.addSystems(Update, up);\n",
+        "import { Children } from \"bevy-ts/bevy\";\nexport function up(q: Query<[ChildOf]>, k: Query<[Children]>) { console.log(`up ${[...q.iterAncestors($2)].join(' ')}`); console.log(`down ${[...k.iterDescendants($0)].join(' ')}`); console.log(`leaf [${[...k.iterDescendants($2)]}]`); }\napp.addSystems(Update, up);\n",
     );
     app.update();
-    assert_eq!(lines(&mut app, "up"), vec![format!("up {} {}", es[1].to_bits(), es[0].to_bits())]);
+    let bits = |i: usize| es[i].to_bits();
+    assert_eq!(lines(&mut app, "up"), vec![format!("up {} {}", bits(1), bits(0))]);
+    assert_eq!(lines(&mut app, "down"), vec![format!("down {} {} {}", bits(1), bits(3), bits(2))], "children, then theirs");
+    assert_eq!(lines(&mut app, "leaf"), vec!["leaf []"], "a leaf has none, and is not itself yielded");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -880,7 +884,10 @@ export function seen(all: Query<[Entity], With<Grunt>>, bare: Query<[Entity], [W
   labels.each((l) => { if (l.text === "grunt") named++; });
   console.log(`grunts ${all.len} bare ${bare.len} named ${named}`);
 }
+// From frame 2, Boss's own Label is changed: the other grunts' copies must not follow.
+export function rename(q: Query<[Mut<Label>], With<Boss>>) { if (frame >= 2) q.each((l) => { l.text = "boss"; }); }
 app.addSystems(Update, make);
+app.addSystems(Update, rename);
 app.addSystems(PostUpdate, seen);
 "#;
     let (_, mut app, _) = staged("ecsq-required", |_| vec![], body);
@@ -889,7 +896,8 @@ app.addSystems(PostUpdate, seen);
     // A heap-field part (a string) is copied per entity: each has its own.
     let seen = lines(&mut app, "grunts");
     assert!(seen.iter().all(|l| l.contains("bare 0")), "{seen:?}");
-    assert!(seen.iter().all(|l| { let w: Vec<&str> = l.split(' ').collect(); w[1] == w[5] }), "every grunt has its Label: {seen:?}");
+    assert_eq!(seen[0], "grunts 4 bare 0 named 4", "every grunt has its Label");
+    assert_eq!(seen[1], "grunts 4 bare 0 named 3", "Boss's Label changed alone");
     let rust = spawn_ts(&mut app, "game::Grunt", json!({}), ());
     assert_eq!(read_ts(&app, rust, "game::Health").map(|h| h["hp"].clone()), Some(json!(10.0)), "a Rust insert meets the hook");
     let grunts = with(&mut app, "game::Grunt");
@@ -899,6 +907,10 @@ app.addSystems(PostUpdate, seen);
     assert_eq!(hp, vec![3.0, 10.0, 10.0, 10.0, 10.0], "a given Health keeps its value");
     assert!(grunts.iter().all(|e| read_ts(&app, *e, "game::Shield") == Some(json!({ "v": 1.0 }))));
     let boss = with(&mut app, "game::Boss")[0];
+    for e in &grunts {
+        let text = if *e == boss { "boss" } else { "grunt" };
+        assert_eq!(read_ts(&app, *e, "game::Label"), Some(json!({ "text": text })), "each grunt owns its Label");
+    }
     assert_eq!(app.world().get::<Transform>(boss).unwrap().translation, Vec3::new(1.0, 2.0, 3.0));
     // removeWithRequires takes what Boss requires, transitively.
     updates(&mut app, 1);
