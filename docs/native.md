@@ -658,6 +658,34 @@ export function orbit(motion: Res<AccumulatedMouseMotion>, scroll: Res<Accumulat
 }
 ```
 
+Each event behind them, and the gestures, touches and gamepad events, is a Rust message, read
+with `MessageReader` (Rust messages and events, above). A rumble is a `MessageWriter`; its
+`duration` is in seconds, as reflect-coverage spells a `Duration`:
+
+```ts
+import type { MessageReader, MessageWriter } from "bevy-ts";
+import { GamepadEvent, GamepadRumbleRequest, MouseWheel, PinchGesture } from "bevy-ts/bevy";
+
+export function pinchZoom(pinch: MessageReader<PinchGesture>, wheel: MessageReader<MouseWheel>) {
+  pinch.each((p) => zoom(p));                              // a tuple struct reads as its value
+  wheel.each((w) => zoom(w.unit === "Line" ? w.y * PIXELS_PER_LINE : w.y));
+}
+export function buzzOnConnect(events: MessageReader<GamepadEvent>, rumble: MessageWriter<GamepadRumbleRequest>) {
+  events.each((e) => {
+    if ("Connection" in e && e.Connection.connection !== "Disconnected") rumble.write(GamepadRumbleRequest.of({
+      Add: { gamepad: e.Connection.gamepad, duration: 0.5, intensity: { strong_motor: 1, weak_motor: 0.25 } },
+    }));
+  });
+}
+```
+
+`packages/bevy-ts/test/input_messages.ts` type-checks this example. rust-events' tests
+(`crates/bevy-ts-cli/tests/it/rust_events.rs`) own the messages: `input_messages_reach_a_ts_reader`
+reads `MouseButtonInput`, `MouseMotion`, `MouseWheel`, `TouchInput`, `PinchGesture` and
+`GamepadEvent`; `window_messages_reach_a_ts_reader` reads `CursorMoved`;
+`a_ts_writer_sends_a_rumble_request_a_rust_reader_sees` checks a rumble's pad, duration and
+intensity.
+
 Every public Bevy 0.20 input type, and where TS reaches it:
 
 | Bevy type | TS | Owner |
@@ -669,17 +697,17 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` | script-input-devices |
 | `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollUnit` | `Res<T>`; the unit as `"Line" \| "Pixel"` | rust-resources; script-input-devices |
 | `MouseScrollPixelsPerLine` | none: Bevy 0.20 reflects it without `reflect(Resource)`; `register_type_data::<_, ReflectResource>()` would reach it | follow-up, lead@script-input-devices |
-| `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events; script-input-devices stage 3 |
+| `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events |
 | `Window::cursor_position`, `physical_cursor_position` | `Cursor` | script-input-devices |
-| `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events; stage 3 |
+| `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events |
 | `Touches`, `Touch` | `Touches`, its touch record (no `force`) | script-input-devices |
-| `TouchInput`, `TouchPhase`, `ForceTouch` | `MessageReader` | rust-events; stage 3 |
-| `PinchGesture`, `RotationGesture`, `DoubleTapGesture`, `PanGesture` | `MessageReader` | rust-events; stage 3 |
+| `TouchInput`, `TouchPhase`, `ForceTouch` | `MessageReader` | rust-events |
+| `PinchGesture`, `RotationGesture`, `DoubleTapGesture`, `PanGesture` | `MessageReader` | rust-events |
 | `Gamepad` | `With<Gamepad>` to find pads, `Gamepads` for its methods | script-input-devices |
 | `GamepadButton`, `GamepadAxis`, `GamepadInput` | enums; `get` takes either | script-input-devices |
 | `GamepadSettings`, `ButtonSettings`, `AxisSettings`, `ButtonAxisSettings` | read through reflection; no write | a follow-up: writing them belongs to reflect-coverage / writable-native-params |
-| `GamepadEvent`, `GamepadConnectionEvent`, `GamepadButtonChangedEvent`, `GamepadButtonStateChangedEvent`, `GamepadAxisChangedEvent`, `RawGamepadEvent` and its parts | `MessageReader` | rust-events; stage 3 |
-| `GamepadRumbleRequest`, `GamepadRumbleIntensity` | `MessageWriter` | rust-events; stage 3 |
+| `GamepadEvent`, `GamepadConnectionEvent`, `GamepadButtonChangedEvent`, `GamepadButtonStateChangedEvent`, `GamepadAxisChangedEvent`, `RawGamepadEvent` and its parts | `MessageReader` | rust-events |
+| `GamepadRumbleRequest`, `GamepadRumbleIntensity` | `MessageWriter`, `duration` in seconds | rust-events |
 | Rumble in viewport mode | none: the viewport protocol carries no rumble | a follow-up |
 | `input_pressed`, `input_just_pressed`, `input_just_released`, `input_toggle_active` | `inputPressed` and friends, native conditions | script-input-devices |
 | Condition combinators | `not`, `and`, `or` | ecs-schedules |
