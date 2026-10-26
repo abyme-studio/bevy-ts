@@ -177,7 +177,8 @@ app.addSystems(Update, systems(spawnBoss).runIf(bossReady),
 ```
 
 It goes wherever a condition goes: `runIf`, `distributiveRunIf`, `not` and the combinators.
-Each evaluation is one call into JS, about 3 µs when the stage already runs TS. In a stage
+Each evaluation is one call into JS, about 3 µs when the stage already runs TS (bench 3.1,
+with a system of a predicate's shape standing in). In a stage
 with no other TS system, the first call costs about 20 µs, the price of entering JS at all.
 Put Rust conditions first: `inState(Game.Playing).andThen(bossReady)` makes no call outside
 `Playing`. `resourceExistsAnd(R, pred)` calls `pred` only while `R` exists. A predicate reads
