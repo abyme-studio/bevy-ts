@@ -158,6 +158,13 @@ an event over one that reads nothing: the trigger-time copy, its free and one ho
 A `Local` (3 rounds against main at 913e0428c, load about 45): a plain `Local` read is 8 ns on
 main and here; a `Local` string read is 8 ns, cached until the system writes it.
 
+Messages and events (8 rounds against main at 7f41da5ca, load about 170, so rounds spread by a
+third; ns a message or event over a whole frame, written or triggered, then read by one system or
+observer): a plain message is 810 on main and 804 here; a plain event 3290 on main and 3462 here,
+5% apart with the two ranges (2835-4875, 3101-5126) overlapping. A string field costs about 1,230
+ns a message (2033) and 1,790 an event (5249): the string's build from JS bytes, its free and one
+host call a read.
+
 Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
 fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).
 ## Required components

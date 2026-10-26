@@ -43,7 +43,7 @@ binary, lowest layer, no fixed waits. Every cargo job through `~/dev/abyme/scrip
 - [x] 3.8 Tests: `crates/bevy-ts/src/messages.rs` unit: a heap queue frees each record once on `update` and on drop; `crates/bevy-ts/tests/it/heap_fields.rs` a failed reload keeps unread heap messages and frees nothing twice; an event over two observers and two hops freed once; `crates/bevy-ts-cli/tests/it/heap_fields.rs` `Chat { text }` read by two readers, `next()` with a string, an event with a list seen by two observers, a plain message reader makes no host call
 - [x] 3.9 Bench: plain message write + read and plain event trigger + observer read (controls against main), message with a string, event with a string
 - [x] 3.10 Docs: `docs/ecs.md` messages and events
-- [ ] 3.11 `cargo build`, tests of `bevy-ts` and `bevy-ts-cli` through `gate-slot`
+- [x] 3.11 `cargo build`, tests of `bevy-ts` and `bevy-ts-cli` through `gate-slot`
 
 ## 4. Stage 4: richer list items
 
