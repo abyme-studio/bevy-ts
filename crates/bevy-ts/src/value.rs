@@ -524,7 +524,7 @@ mod tests {
     fn a_vec2_takes_a_ts_vector_of_three_lanes() {
         let mut b = [0u8; 8];
         encode_field(".value", &FieldType::Vec2, &json!([4, 5, 0]), &mut b).unwrap();
-        assert_eq!(decode_field(&FieldType::Vec2, &b), json!([4.0, 5.0]));
+        assert_eq!(unsafe { decode_field(&FieldType::Vec2, &b) }, json!([4.0, 5.0]));
         assert!(encode_field(".value", &FieldType::Vec2, &json!([4, 5, 0, 0]), &mut b).is_err());
         let e = encode_field(".value", &FieldType::Vec2, &json!([4, 5, 1]), &mut b).unwrap_err();
         assert_eq!((e.path.as_str(), e.expected.as_str()), (".value", "vec2"));

@@ -1418,6 +1418,15 @@ export declare class WorldTextStyle extends Component {
 }
 export interface WorldTextStyle extends Holes<{ width: number | null; outline: readonly [number, ColorValue] | null }> {}
 
+/** Holes, not columns: color: an enum with data (bevy_color::color::Color). */
+export declare class TextHalo extends Component {
+  static readonly path: "bevy_ts_tsx::halo::TextHalo";
+  static readonly native: true;
+  static readonly tsxProps: { color?: ColorValue };
+  declare width: f32;
+}
+export interface TextHalo extends Holes<{ color: ColorValue }> {}
+
 export declare class UiScale extends Resource {
   static readonly path: "bevy_ui::UiScale";
   static readonly native: true;

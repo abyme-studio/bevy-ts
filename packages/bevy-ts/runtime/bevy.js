@@ -480,6 +480,8 @@ export const WorldText = reflectClass("WorldText");
 
 export class WorldTextStyle extends nativeComponent("WorldTextStyle", { size: f32, letter_spacing: f32, anchor: vec2, lit: bool }) {}
 
+export class TextHalo extends nativeComponent("TextHalo", { width: f32 }) {}
+
 export class UiScale extends nativeResource("UiScale", { value: f32 }) {}
 
 export const AccessibleLabel = reflectClass("AccessibleLabel");
