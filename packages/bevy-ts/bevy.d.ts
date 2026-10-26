@@ -6,6 +6,10 @@ import type { AssetClass, AssetFields, AssetLoad, AssetProps, AssetRef, AssetTyp
 
 export { Time, Transform } from "bevy-ts";
 
+/** `Res<AccessibilityRequested>` and `ResMut<AccessibilityRequested>` in systems, read and written through reflection. */
+export declare const AccessibilityRequested: ReflectClass<never, { value: unknown }>;
+export type AccessibilityRequested = InstanceType<typeof AccessibilityRequested>;
+
 export declare class ManageAccessibilityUpdates extends Resource {
   static readonly path: "bevy_a11y::ManageAccessibilityUpdates";
   static readonly native: true;
@@ -79,6 +83,10 @@ export declare class TemporalAntiAliasing extends Component {
 export declare const AudioPlayer: ReflectClass<string | null, { value: string | null }>;
 export type AudioPlayer = InstanceType<typeof AudioPlayer>;
 
+/** `Res<DefaultSpatialScale>` and `ResMut<DefaultSpatialScale>` in systems, read and written through reflection. */
+export declare const DefaultSpatialScale: ReflectClass<readonly [number, number, number], { value: readonly [number, number, number] }>;
+export type DefaultSpatialScale = InstanceType<typeof DefaultSpatialScale>;
+
 /** Holes, not columns: volume: an enum with data (bevy_audio::volume::Volume); spatial_scale: an enum with data (core::option::Option<bevy_audio::audio::SpatialScale>); start_position: an enum with data (core::option::Option<core::time::Duration>); duration: an enum with data (core::option::Option<core::time::Duration>). */
 export declare class PlaybackSettings extends Component {
   static readonly path: "bevy_audio::audio::PlaybackSettings";
@@ -98,6 +106,10 @@ export declare class SpatialListener extends Component {
   declare readonly left_ear_offset: Vec3;
   declare readonly right_ear_offset: Vec3;
 }
+
+/** `Res<GlobalVolume>` and `ResMut<GlobalVolume>` in systems, read and written through reflection. */
+export declare const GlobalVolume: ReflectClass<{ volume?: { Linear: number } | { Decibels: number } }, { volume: { Linear: number } | { Decibels: number } }>;
+export type GlobalVolume = InstanceType<typeof GlobalVolume>;
 
 /** Holes, not columns: viewport: an enum with data (core::option::Option<bevy_camera::camera::Viewport>); order: opaque to reflection (isize); computed: not plain data (bevy_camera::camera::ComputedCameraValues); output_mode: an enum with data (bevy_camera::camera::CameraOutputMode); clear_color: an enum with data (bevy_camera::clear_color::ClearColorConfig); sub_camera_view: an enum with data (core::option::Option<bevy_camera::camera::SubCameraView>). */
 export declare class Camera extends Component {
@@ -136,6 +148,10 @@ export type RenderTarget = InstanceType<typeof RenderTarget>;
 /** `ShadowLodOrigin.of(...)` in commands: the value written over its default. */
 export declare const ShadowLodOrigin: ReflectClass<{  }, {}>;
 export type ShadowLodOrigin = InstanceType<typeof ShadowLodOrigin>;
+
+/** `Res<ClearColor>` and `ResMut<ClearColor>` in systems, read and written through reflection. */
+export declare const ClearColor: ReflectClass<ColorValue, { value: ColorValue }>;
+export type ClearColor = InstanceType<typeof ClearColor>;
 
 /** `Camera2d.of(...)` in commands: the value written over its default. */
 export declare const Camera2d: ReflectClass<{  }, {}>;
@@ -277,6 +293,10 @@ export type NoBackgroundMotionVectors = InstanceType<typeof NoBackgroundMotionVe
 export declare const RootNonCameraView: ReflectClass<readonly [], {}>;
 export type RootNonCameraView = InstanceType<typeof RootNonCameraView>;
 
+/** `Res<FpsOverlayConfig>` and `ResMut<FpsOverlayConfig>` in systems, read and written through reflection. */
+export declare const FpsOverlayConfig: ReflectClass<{ text_config?: { font?: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size?: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight?: number; width?: number; style?: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing?: "None" | "AntiAliased"; font_features?: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations?: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } }; text_color?: ColorValue; enabled?: boolean; refresh_interval?: number; frame_time_graph_config?: { enabled?: boolean; min_fps?: number; target_fps?: number } }, { text_config: { font?: { Handle: string | null } | { Family: string } | { Families: string } | { List: readonly any[] } | { Generic: "Serif" | "SansSerif" | "Cursive" | "Fantasy" | "Monospace" | "SystemUi" | "UiSerif" | "UiSansSerif" | "UiMonospace" | "UiRounded" | "Emoji" | "Math" | "FangSong" }; font_size?: { Px: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Rem: number }; weight?: number; width?: number; style?: "Normal" | "Italic" | { Oblique: number | null }; font_smoothing?: "None" | "AntiAliased"; font_features?: { features?: readonly (readonly [readonly [number, number, number, number], number])[] }; font_variations?: { variations?: readonly (readonly [readonly [number, number, number, number], number])[] } }; text_color: ColorValue; enabled: boolean; refresh_interval: number; frame_time_graph_config: { enabled?: boolean; min_fps?: number; target_fps?: number } }>;
+export type FpsOverlayConfig = InstanceType<typeof FpsOverlayConfig>;
+
 /** `InfiniteGrid.of(...)` in commands: the value written over its default. */
 export declare const InfiniteGrid: ReflectClass<{  }, {}>;
 export type InfiniteGrid = InstanceType<typeof InfiniteGrid>;
@@ -320,6 +340,10 @@ export declare class RenderDebugOverlay extends Component {
   declare opacity: f32;
 }
 export interface RenderDebugOverlay extends Holes<{ mode: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } }> {}
+
+/** `Res<DefaultQueryFilters>` and `ResMut<DefaultQueryFilters>` in systems, read and written through reflection. */
+export declare const DefaultQueryFilters: ReflectClass<{ disabling?: readonly (number | string)[] }, { disabling: readonly (number | string)[] }>;
+export type DefaultQueryFilters = InstanceType<typeof DefaultQueryFilters>;
 
 /** `Disabled.of(...)` in commands: the value written over its default. */
 export declare const Disabled: ReflectClass<{  }, {}>;
@@ -382,6 +406,10 @@ export type TransformGizmoCamera = InstanceType<typeof TransformGizmoCamera>;
 export declare const TransformGizmoFocus: ReflectClass<{  }, {}>;
 export type TransformGizmoFocus = InstanceType<typeof TransformGizmoFocus>;
 
+/** `Res<TransformGizmoSettings>` and `ResMut<TransformGizmoSettings>` in systems, read and written through reflection. */
+export declare const TransformGizmoSettings: ReflectClass<{ mode?: "Translate" | "Rotate" | "Scale"; space?: "World" | "Local"; axis_length?: number; rotate_ring_radius?: number; axis_hit_distance?: number; snap_translate?: number | null; snap_rotate?: number | null; snap_scale?: number | null; confine_cursor?: boolean; screen_scale_factor?: number; scale_sensitivity?: number }, { mode: "Translate" | "Rotate" | "Scale"; space: "World" | "Local"; axis_length: number; rotate_ring_radius: number; axis_hit_distance: number; snap_translate: number | null; snap_rotate: number | null; snap_scale: number | null; confine_cursor: boolean; screen_scale_factor: number; scale_sensitivity: number }>;
+export type TransformGizmoSettings = InstanceType<typeof TransformGizmoSettings>;
+
 /** Holes, not columns: hovered_axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); axis: an enum with data (core::option::Option<bevy_gizmos::transform_gizmo::TransformGizmoAxis>); start_transform: not plain data (bevy_transform::components::transform::Transform); entity: an enum with data (core::option::Option<bevy_ecs::entity::Entity>). */
 export declare class TransformGizmoState extends Resource {
   static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoState";
@@ -392,6 +420,10 @@ export declare class TransformGizmoState extends Resource {
   declare readonly gizmo_origin: Vec3;
 }
 export interface TransformGizmoState extends Holes<{ hovered_axis: "X" | "Y" | "Z" | "View" | null; axis: "X" | "Y" | "Z" | "View" | null; start_transform: { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] }; entity: Entity | null }> {}
+
+/** `Res<LineGizmoEntities>` and `ResMut<LineGizmoEntities>` in systems, read and written through reflection. */
+export declare const LineGizmoEntities: ReflectClass<{ line_gizmo_renderer?: Entity; line_strip_gizmo_renderer?: Entity; line_joint_gizmo_renderer?: Entity }, { line_gizmo_renderer: Entity; line_strip_gizmo_renderer: Entity; line_joint_gizmo_renderer: Entity }>;
+export type LineGizmoEntities = InstanceType<typeof LineGizmoEntities>;
 
 /** `GltfExtras.of(...)` in commands: the value written over its default. */
 export declare const GltfExtras: ReflectClass<{ value?: string }, { value: string }>;
@@ -420,6 +452,10 @@ export type GltfSceneExtras = InstanceType<typeof GltfSceneExtras>;
 /** `GltfSceneName.of(...)` in commands: the value written over its default. */
 export declare const GltfSceneName: ReflectClass<string, { value: string }>;
 export type GltfSceneName = InstanceType<typeof GltfSceneName>;
+
+/** `Res<ButtonInputGamepadButton>` and `ResMut<ButtonInputGamepadButton>` in systems, read and written through reflection. */
+export declare const ButtonInputGamepadButton: ReflectClass<{ pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }, { pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }>;
+export type ButtonInputGamepadButton = InstanceType<typeof ButtonInputGamepadButton>;
 
 /** `Gamepad.of(...)` in commands: the value written over its default. */
 export declare const Gamepad: ReflectClass<{ vendor_id?: number | null; product_id?: number | null; digital?: { pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog?: { axis_data?: readonly (readonly [{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] } }, { vendor_id: number | null; product_id: number | null; digital: { pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_pressed?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[]; just_released?: readonly ("South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number })[] }; analog: { axis_data?: readonly (readonly [{ Axis: "LeftStickX" | "LeftStickY" | "LeftZ" | "RightStickX" | "RightStickY" | "RightZ" | { Other: number } } | { Button: "South" | "East" | "North" | "West" | "C" | "Z" | "LeftTrigger" | "LeftTrigger2" | "RightTrigger" | "RightTrigger2" | "Select" | "Start" | "Mode" | "LeftThumb" | "RightThumb" | "DPadUp" | "DPadDown" | "DPadLeft" | "DPadRight" | { Other: number } }, number])[] } }>;
@@ -452,6 +488,10 @@ export declare class MouseScrollPixelsPerLine extends Resource {
 export declare const FocusedInputKeyboardInput: ReflectClass<{ focused_entity?: Entity; input?: { key_code?: { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } } | "Backquote" | "Backslash" | "BracketLeft" | "BracketRight" | "Comma" | "Digit0" | "Digit1" | "Digit2" | "Digit3" | "Digit4" | "Digit5" | "Digit6" | "Digit7" | "Digit8" | "Digit9" | "Equal" | "IntlBackslash" | "IntlRo" | "IntlYen" | "KeyA" | "KeyB" | "KeyC" | "KeyD" | "KeyE" | "KeyF" | "KeyG" | "KeyH" | "KeyI" | "KeyJ" | "KeyK" | "KeyL" | "KeyM" | "KeyN" | "KeyO" | "KeyP" | "KeyQ" | "KeyR" | "KeyS" | "KeyT" | "KeyU" | "KeyV" | "KeyW" | "KeyX" | "KeyY" | "KeyZ" | "Minus" | "Period" | "Quote" | "Semicolon" | "Slash" | "AltLeft" | "AltRight" | "Backspace" | "CapsLock" | "ContextMenu" | "ControlLeft" | "ControlRight" | "Enter" | "SuperLeft" | "SuperRight" | "ShiftLeft" | "ShiftRight" | "Space" | "Tab" | "Convert" | "KanaMode" | "Lang1" | "Lang2" | "Lang3" | "Lang4" | "Lang5" | "NonConvert" | "Delete" | "End" | "Help" | "Home" | "Insert" | "PageDown" | "PageUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "NumLock" | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4" | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9" | "NumpadAdd" | "NumpadBackspace" | "NumpadClear" | "NumpadClearEntry" | "NumpadComma" | "NumpadDecimal" | "NumpadDivide" | "NumpadEnter" | "NumpadEqual" | "NumpadHash" | "NumpadMemoryAdd" | "NumpadMemoryClear" | "NumpadMemoryRecall" | "NumpadMemoryStore" | "NumpadMemorySubtract" | "NumpadMultiply" | "NumpadParenLeft" | "NumpadParenRight" | "NumpadStar" | "NumpadSubtract" | "Escape" | "Fn" | "FnLock" | "PrintScreen" | "ScrollLock" | "Pause" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "Eject" | "LaunchApp1" | "LaunchApp2" | "LaunchMail" | "MediaPlayPause" | "MediaSelect" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "Power" | "Sleep" | "AudioVolumeDown" | "AudioVolumeMute" | "AudioVolumeUp" | "WakeUp" | "Meta" | "Hyper" | "Turbo" | "Abort" | "Resume" | "Suspend" | "Again" | "Copy" | "Cut" | "Find" | "Open" | "Paste" | "Props" | "Select" | "Undo" | "Hiragana" | "Katakana" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; logical_key?: { Character: string } | { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } | { Web: string } } | { Dead: string | null } | "Alt" | "AltGraph" | "CapsLock" | "Control" | "Fn" | "FnLock" | "NumLock" | "ScrollLock" | "Shift" | "Symbol" | "SymbolLock" | "Meta" | "Hyper" | "Super" | "Enter" | "Tab" | "Space" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "End" | "Home" | "PageDown" | "PageUp" | "Backspace" | "Clear" | "Copy" | "CrSel" | "Cut" | "Delete" | "EraseEof" | "ExSel" | "Insert" | "Paste" | "Redo" | "Undo" | "Accept" | "Again" | "Attn" | "Cancel" | "ContextMenu" | "Escape" | "Execute" | "Find" | "Help" | "Pause" | "Play" | "Props" | "Select" | "ZoomIn" | "ZoomOut" | "BrightnessDown" | "BrightnessUp" | "Eject" | "LogOff" | "Power" | "PowerOff" | "PrintScreen" | "Hibernate" | "Standby" | "WakeUp" | "AllCandidates" | "Alphanumeric" | "CodeInput" | "Compose" | "Convert" | "FinalMode" | "GroupFirst" | "GroupLast" | "GroupNext" | "GroupPrevious" | "ModeChange" | "NextCandidate" | "NonConvert" | "PreviousCandidate" | "Process" | "SingleCandidate" | "HangulMode" | "HanjaMode" | "JunjaMode" | "Eisu" | "Hankaku" | "Hiragana" | "HiraganaKatakana" | "KanaMode" | "KanjiMode" | "Katakana" | "Romaji" | "Zenkaku" | "ZenkakuHankaku" | "Soft1" | "Soft2" | "Soft3" | "Soft4" | "ChannelDown" | "ChannelUp" | "Close" | "MailForward" | "MailReply" | "MailSend" | "MediaClose" | "MediaFastForward" | "MediaPause" | "MediaPlay" | "MediaPlayPause" | "MediaRecord" | "MediaRewind" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "New" | "Open" | "Print" | "Save" | "SpellCheck" | "Key11" | "Key12" | "AudioBalanceLeft" | "AudioBalanceRight" | "AudioBassBoostDown" | "AudioBassBoostToggle" | "AudioBassBoostUp" | "AudioFaderFront" | "AudioFaderRear" | "AudioSurroundModeNext" | "AudioTrebleDown" | "AudioTrebleUp" | "AudioVolumeDown" | "AudioVolumeUp" | "AudioVolumeMute" | "MicrophoneToggle" | "MicrophoneVolumeDown" | "MicrophoneVolumeUp" | "MicrophoneVolumeMute" | "SpeechCorrectionList" | "SpeechInputToggle" | "LaunchApplication1" | "LaunchApplication2" | "LaunchCalendar" | "LaunchContacts" | "LaunchMail" | "LaunchMediaPlayer" | "LaunchMusicPlayer" | "LaunchPhone" | "LaunchScreenSaver" | "LaunchSpreadsheet" | "LaunchWebBrowser" | "LaunchWebCam" | "LaunchWordProcessor" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "AppSwitch" | "Call" | "Camera" | "CameraFocus" | "EndCall" | "GoBack" | "GoHome" | "HeadsetHook" | "LastNumberRedial" | "Notification" | "MannerMode" | "VoiceDial" | "TV" | "TV3DMode" | "TVAntennaCable" | "TVAudioDescription" | "TVAudioDescriptionMixDown" | "TVAudioDescriptionMixUp" | "TVContentsMenu" | "TVDataService" | "TVInput" | "TVInputComponent1" | "TVInputComponent2" | "TVInputComposite1" | "TVInputComposite2" | "TVInputHDMI1" | "TVInputHDMI2" | "TVInputHDMI3" | "TVInputHDMI4" | "TVInputVGA1" | "TVMediaContext" | "TVNetwork" | "TVNumberEntry" | "TVPower" | "TVRadioService" | "TVSatellite" | "TVSatelliteBS" | "TVSatelliteCS" | "TVSatelliteToggle" | "TVTerrestrialAnalog" | "TVTerrestrialDigital" | "TVTimer" | "AVRInput" | "AVRPower" | "ColorF0Red" | "ColorF1Green" | "ColorF2Yellow" | "ColorF3Blue" | "ColorF4Grey" | "ColorF5Brown" | "ClosedCaptionToggle" | "Dimmer" | "DisplaySwap" | "DVR" | "Exit" | "FavoriteClear0" | "FavoriteClear1" | "FavoriteClear2" | "FavoriteClear3" | "FavoriteRecall0" | "FavoriteRecall1" | "FavoriteRecall2" | "FavoriteRecall3" | "FavoriteStore0" | "FavoriteStore1" | "FavoriteStore2" | "FavoriteStore3" | "Guide" | "GuideNextDay" | "GuidePreviousDay" | "Info" | "InstantReplay" | "Link" | "ListProgram" | "LiveContent" | "Lock" | "MediaApps" | "MediaAudioTrack" | "MediaLast" | "MediaSkipBackward" | "MediaSkipForward" | "MediaStepBackward" | "MediaStepForward" | "MediaTopMenu" | "NavigateIn" | "NavigateNext" | "NavigateOut" | "NavigatePrevious" | "NextFavoriteChannel" | "NextUserProfile" | "OnDemand" | "Pairing" | "PinPDown" | "PinPMove" | "PinPToggle" | "PinPUp" | "PlaySpeedDown" | "PlaySpeedReset" | "PlaySpeedUp" | "RandomToggle" | "RcLowBattery" | "RecordSpeedNext" | "RfBypass" | "ScanChannelsToggle" | "ScreenModeNext" | "Settings" | "SplitScreenToggle" | "STBInput" | "STBPower" | "Subtitle" | "Teletext" | "VideoModeNext" | "Wink" | "ZoomToggle" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; state?: "Pressed" | "Released"; text?: string | null; repeat?: boolean; window?: Entity }; window?: Entity }, { focused_entity: Entity; input: { key_code?: { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } } | "Backquote" | "Backslash" | "BracketLeft" | "BracketRight" | "Comma" | "Digit0" | "Digit1" | "Digit2" | "Digit3" | "Digit4" | "Digit5" | "Digit6" | "Digit7" | "Digit8" | "Digit9" | "Equal" | "IntlBackslash" | "IntlRo" | "IntlYen" | "KeyA" | "KeyB" | "KeyC" | "KeyD" | "KeyE" | "KeyF" | "KeyG" | "KeyH" | "KeyI" | "KeyJ" | "KeyK" | "KeyL" | "KeyM" | "KeyN" | "KeyO" | "KeyP" | "KeyQ" | "KeyR" | "KeyS" | "KeyT" | "KeyU" | "KeyV" | "KeyW" | "KeyX" | "KeyY" | "KeyZ" | "Minus" | "Period" | "Quote" | "Semicolon" | "Slash" | "AltLeft" | "AltRight" | "Backspace" | "CapsLock" | "ContextMenu" | "ControlLeft" | "ControlRight" | "Enter" | "SuperLeft" | "SuperRight" | "ShiftLeft" | "ShiftRight" | "Space" | "Tab" | "Convert" | "KanaMode" | "Lang1" | "Lang2" | "Lang3" | "Lang4" | "Lang5" | "NonConvert" | "Delete" | "End" | "Help" | "Home" | "Insert" | "PageDown" | "PageUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "NumLock" | "Numpad0" | "Numpad1" | "Numpad2" | "Numpad3" | "Numpad4" | "Numpad5" | "Numpad6" | "Numpad7" | "Numpad8" | "Numpad9" | "NumpadAdd" | "NumpadBackspace" | "NumpadClear" | "NumpadClearEntry" | "NumpadComma" | "NumpadDecimal" | "NumpadDivide" | "NumpadEnter" | "NumpadEqual" | "NumpadHash" | "NumpadMemoryAdd" | "NumpadMemoryClear" | "NumpadMemoryRecall" | "NumpadMemoryStore" | "NumpadMemorySubtract" | "NumpadMultiply" | "NumpadParenLeft" | "NumpadParenRight" | "NumpadStar" | "NumpadSubtract" | "Escape" | "Fn" | "FnLock" | "PrintScreen" | "ScrollLock" | "Pause" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "Eject" | "LaunchApp1" | "LaunchApp2" | "LaunchMail" | "MediaPlayPause" | "MediaSelect" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "Power" | "Sleep" | "AudioVolumeDown" | "AudioVolumeMute" | "AudioVolumeUp" | "WakeUp" | "Meta" | "Hyper" | "Turbo" | "Abort" | "Resume" | "Suspend" | "Again" | "Copy" | "Cut" | "Find" | "Open" | "Paste" | "Props" | "Select" | "Undo" | "Hiragana" | "Katakana" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; logical_key?: { Character: string } | { Unidentified: "Unidentified" | { Android: number } | { MacOS: number } | { Windows: number } | { Xkb: number } | { Web: string } } | { Dead: string | null } | "Alt" | "AltGraph" | "CapsLock" | "Control" | "Fn" | "FnLock" | "NumLock" | "ScrollLock" | "Shift" | "Symbol" | "SymbolLock" | "Meta" | "Hyper" | "Super" | "Enter" | "Tab" | "Space" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "ArrowUp" | "End" | "Home" | "PageDown" | "PageUp" | "Backspace" | "Clear" | "Copy" | "CrSel" | "Cut" | "Delete" | "EraseEof" | "ExSel" | "Insert" | "Paste" | "Redo" | "Undo" | "Accept" | "Again" | "Attn" | "Cancel" | "ContextMenu" | "Escape" | "Execute" | "Find" | "Help" | "Pause" | "Play" | "Props" | "Select" | "ZoomIn" | "ZoomOut" | "BrightnessDown" | "BrightnessUp" | "Eject" | "LogOff" | "Power" | "PowerOff" | "PrintScreen" | "Hibernate" | "Standby" | "WakeUp" | "AllCandidates" | "Alphanumeric" | "CodeInput" | "Compose" | "Convert" | "FinalMode" | "GroupFirst" | "GroupLast" | "GroupNext" | "GroupPrevious" | "ModeChange" | "NextCandidate" | "NonConvert" | "PreviousCandidate" | "Process" | "SingleCandidate" | "HangulMode" | "HanjaMode" | "JunjaMode" | "Eisu" | "Hankaku" | "Hiragana" | "HiraganaKatakana" | "KanaMode" | "KanjiMode" | "Katakana" | "Romaji" | "Zenkaku" | "ZenkakuHankaku" | "Soft1" | "Soft2" | "Soft3" | "Soft4" | "ChannelDown" | "ChannelUp" | "Close" | "MailForward" | "MailReply" | "MailSend" | "MediaClose" | "MediaFastForward" | "MediaPause" | "MediaPlay" | "MediaPlayPause" | "MediaRecord" | "MediaRewind" | "MediaStop" | "MediaTrackNext" | "MediaTrackPrevious" | "New" | "Open" | "Print" | "Save" | "SpellCheck" | "Key11" | "Key12" | "AudioBalanceLeft" | "AudioBalanceRight" | "AudioBassBoostDown" | "AudioBassBoostToggle" | "AudioBassBoostUp" | "AudioFaderFront" | "AudioFaderRear" | "AudioSurroundModeNext" | "AudioTrebleDown" | "AudioTrebleUp" | "AudioVolumeDown" | "AudioVolumeUp" | "AudioVolumeMute" | "MicrophoneToggle" | "MicrophoneVolumeDown" | "MicrophoneVolumeUp" | "MicrophoneVolumeMute" | "SpeechCorrectionList" | "SpeechInputToggle" | "LaunchApplication1" | "LaunchApplication2" | "LaunchCalendar" | "LaunchContacts" | "LaunchMail" | "LaunchMediaPlayer" | "LaunchMusicPlayer" | "LaunchPhone" | "LaunchScreenSaver" | "LaunchSpreadsheet" | "LaunchWebBrowser" | "LaunchWebCam" | "LaunchWordProcessor" | "BrowserBack" | "BrowserFavorites" | "BrowserForward" | "BrowserHome" | "BrowserRefresh" | "BrowserSearch" | "BrowserStop" | "AppSwitch" | "Call" | "Camera" | "CameraFocus" | "EndCall" | "GoBack" | "GoHome" | "HeadsetHook" | "LastNumberRedial" | "Notification" | "MannerMode" | "VoiceDial" | "TV" | "TV3DMode" | "TVAntennaCable" | "TVAudioDescription" | "TVAudioDescriptionMixDown" | "TVAudioDescriptionMixUp" | "TVContentsMenu" | "TVDataService" | "TVInput" | "TVInputComponent1" | "TVInputComponent2" | "TVInputComposite1" | "TVInputComposite2" | "TVInputHDMI1" | "TVInputHDMI2" | "TVInputHDMI3" | "TVInputHDMI4" | "TVInputVGA1" | "TVMediaContext" | "TVNetwork" | "TVNumberEntry" | "TVPower" | "TVRadioService" | "TVSatellite" | "TVSatelliteBS" | "TVSatelliteCS" | "TVSatelliteToggle" | "TVTerrestrialAnalog" | "TVTerrestrialDigital" | "TVTimer" | "AVRInput" | "AVRPower" | "ColorF0Red" | "ColorF1Green" | "ColorF2Yellow" | "ColorF3Blue" | "ColorF4Grey" | "ColorF5Brown" | "ClosedCaptionToggle" | "Dimmer" | "DisplaySwap" | "DVR" | "Exit" | "FavoriteClear0" | "FavoriteClear1" | "FavoriteClear2" | "FavoriteClear3" | "FavoriteRecall0" | "FavoriteRecall1" | "FavoriteRecall2" | "FavoriteRecall3" | "FavoriteStore0" | "FavoriteStore1" | "FavoriteStore2" | "FavoriteStore3" | "Guide" | "GuideNextDay" | "GuidePreviousDay" | "Info" | "InstantReplay" | "Link" | "ListProgram" | "LiveContent" | "Lock" | "MediaApps" | "MediaAudioTrack" | "MediaLast" | "MediaSkipBackward" | "MediaSkipForward" | "MediaStepBackward" | "MediaStepForward" | "MediaTopMenu" | "NavigateIn" | "NavigateNext" | "NavigateOut" | "NavigatePrevious" | "NextFavoriteChannel" | "NextUserProfile" | "OnDemand" | "Pairing" | "PinPDown" | "PinPMove" | "PinPToggle" | "PinPUp" | "PlaySpeedDown" | "PlaySpeedReset" | "PlaySpeedUp" | "RandomToggle" | "RcLowBattery" | "RecordSpeedNext" | "RfBypass" | "ScanChannelsToggle" | "ScreenModeNext" | "Settings" | "SplitScreenToggle" | "STBInput" | "STBPower" | "Subtitle" | "Teletext" | "VideoModeNext" | "Wink" | "ZoomToggle" | "F1" | "F2" | "F3" | "F4" | "F5" | "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12" | "F13" | "F14" | "F15" | "F16" | "F17" | "F18" | "F19" | "F20" | "F21" | "F22" | "F23" | "F24" | "F25" | "F26" | "F27" | "F28" | "F29" | "F30" | "F31" | "F32" | "F33" | "F34" | "F35"; state?: "Pressed" | "Released"; text?: string | null; repeat?: boolean; window?: Entity }; window: Entity }>;
 export type FocusedInputKeyboardInput = InstanceType<typeof FocusedInputKeyboardInput>;
 
+/** `Res<InputFocus>` and `ResMut<InputFocus>` in systems, read and written through reflection. */
+export declare const InputFocus: ReflectClass<{ current_focus?: Entity | null; recorded_changes?: readonly (readonly [Entity, "Navigated" | "Pressed" | "Auto"] | null)[]; original_focus?: Entity | null }, { current_focus: Entity | null; recorded_changes: readonly (readonly [Entity, "Navigated" | "Pressed" | "Auto"] | null)[]; original_focus: Entity | null }>;
+export type InputFocus = InstanceType<typeof InputFocus>;
+
 export declare class InputFocusVisible extends Resource {
   static readonly path: "bevy_input_focus::InputFocusVisible";
   static readonly native: true;
@@ -461,6 +501,14 @@ export declare class InputFocusVisible extends Resource {
 /** `AutoFocus.of(...)` in commands: the value written over its default. */
 export declare const AutoFocus: ReflectClass<{  }, {}>;
 export type AutoFocus = InstanceType<typeof AutoFocus>;
+
+/** `Res<AutoNavigationConfig>` and `ResMut<AutoNavigationConfig>` in systems, read and written through reflection. */
+export declare const AutoNavigationConfig: ReflectClass<{ min_alignment_factor?: number; max_search_distance?: number | null; prefer_aligned?: boolean }, { min_alignment_factor: number; max_search_distance: number | null; prefer_aligned: boolean }>;
+export type AutoNavigationConfig = InstanceType<typeof AutoNavigationConfig>;
+
+/** `Res<DirectionalNavigationMap>` and `ResMut<DirectionalNavigationMap>` in systems, read and written through reflection. */
+export declare const DirectionalNavigationMap: ReflectClass<{ neighbors?: readonly (readonly [Entity, { neighbors?: readonly ("Auto" | "Blocked" | { Set: Entity })[] }])[] }, { neighbors: readonly (readonly [Entity, { neighbors?: readonly ("Auto" | "Blocked" | { Set: Entity })[] }])[] }>;
+export type DirectionalNavigationMap = InstanceType<typeof DirectionalNavigationMap>;
 
 export declare class TabGroup extends Component {
   static readonly path: "bevy_input_focus::tab_navigation::TabGroup";
@@ -557,6 +605,10 @@ export declare class DirectionalLight extends Component {
 }
 export interface DirectionalLight extends Holes<{ color: ColorValue; soft_shadow_size: number | null }> {}
 
+/** `Res<DirectionalLightShadowMap>` and `ResMut<DirectionalLightShadowMap>` in systems, read and written through reflection. */
+export declare const DirectionalLightShadowMap: ReflectClass<{ size?: number | string }, { size: number | string }>;
+export type DirectionalLightShadowMap = InstanceType<typeof DirectionalLightShadowMap>;
+
 /** `DirectionalLightTexture.of(...)` in commands: the value written over its default. */
 export declare const DirectionalLightTexture: ReflectClass<{ image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; tiled?: boolean }, { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; tiled: boolean }>;
 export type DirectionalLightTexture = InstanceType<typeof DirectionalLightTexture>;
@@ -582,6 +634,10 @@ export declare class PointLight extends Component {
   declare shadow_map_near_z: f32;
 }
 export interface PointLight extends Holes<{ color: ColorValue }> {}
+
+/** `Res<PointLightShadowMap>` and `ResMut<PointLightShadowMap>` in systems, read and written through reflection. */
+export declare const PointLightShadowMap: ReflectClass<{ size?: number | string }, { size: number | string }>;
+export type PointLightShadowMap = InstanceType<typeof PointLightShadowMap>;
 
 /** `PointLightTexture.of(...)` in commands: the value written over its default. */
 export declare const PointLightTexture: ReflectClass<{ image?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; cubemap_layout?: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }, { image: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; cubemap_layout: "CrossVertical" | "CrossHorizontal" | "SequenceVertical" | "SequenceHorizontal" }>;
@@ -886,10 +942,26 @@ export declare class PickingSettings extends Resource {
 }
 export interface PickingSettings extends Holes<{ multi_click_interval: number }> {}
 
+/** `Res<RayMap>` and `ResMut<RayMap>` in systems, read and written through reflection. */
+export declare const RayMap: ReflectClass<{ map?: readonly (readonly [{ camera?: Entity; pointer?: "Mouse" | { Touch: number | string } | { Custom: string } }, { origin?: readonly [number, number, number]; direction?: readonly [number, number, number] }])[] }, { map: readonly (readonly [{ camera?: Entity; pointer?: "Mouse" | { Touch: number | string } | { Custom: string } }, { origin?: readonly [number, number, number]; direction?: readonly [number, number, number] }])[] }>;
+export type RayMap = InstanceType<typeof RayMap>;
+
+/** `Res<DefaultCursor>` and `ResMut<DefaultCursor>` in systems, read and written through reflection. */
+export declare const DefaultCursor: ReflectClass<{ Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" }, { value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } }>;
+export type DefaultCursor = InstanceType<typeof DefaultCursor>;
+
 /** As an element, `<EntityCursor value={...} />`: the whole value, in Bevy's shape; `EntityCursor.of(...)` in commands. */
 export declare const EntityCursor: ReflectClass<EntityCursorValue, ReflectValue<EntityCursorValue>> & { readonly tsxProps: { value?: EntityCursorValue } };
 export type EntityCursorValue = { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" };
 export type EntityCursor = InstanceType<typeof EntityCursor>;
+
+/** `Res<OverrideCursor>` and `ResMut<OverrideCursor>` in systems, read and written through reflection. */
+export declare const OverrideCursor: ReflectClass<{ Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } | null, { value: { Custom: { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; texture_atlas?: { layout?: string | AssetRef<TextureAtlasLayout> | AssetValue<TextureAtlasLayout> | null; index?: number | string } | null; flip_x?: boolean; flip_y?: boolean; rect?: { min?: readonly [number, number]; max?: readonly [number, number] } | null; hotspot?: readonly [number, number] } } | { Url: { url?: string; hotspot?: readonly [number, number] } } } | { System: "Default" | "ContextMenu" | "Help" | "Pointer" | "Progress" | "Wait" | "Cell" | "Crosshair" | "Text" | "VerticalText" | "Alias" | "Copy" | "Move" | "NoDrop" | "NotAllowed" | "Grab" | "Grabbing" | "EResize" | "NResize" | "NeResize" | "NwResize" | "SResize" | "SeResize" | "SwResize" | "WResize" | "EwResize" | "NsResize" | "NeswResize" | "NwseResize" | "ColResize" | "RowResize" | "AllScroll" | "ZoomIn" | "ZoomOut" } | null }>;
+export type OverrideCursor = InstanceType<typeof OverrideCursor>;
+
+/** `Res<PointerState>` and `ResMut<PointerState>` in systems, read and written through reflection. */
+export declare const PointerState: ReflectClass<never, { pointer_buttons: readonly (readonly [readonly ["Mouse" | { Touch: number | string } | { Custom: string }, "Primary" | "Secondary" | "Middle"], { pressing?: readonly (readonly [Entity, readonly [{ target?: { Window: Entity } | { Image: { handle?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; scale_factor?: number } } | { TextureView: number } | { None: { width?: number; height?: number } }; position?: readonly [number, number] }, unknown, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }]])[]; clicking?: readonly (readonly [Entity, readonly [unknown, number]])[]; dragging?: readonly (readonly [Entity, { start_pos?: readonly [number, number]; latest_pos?: readonly [number, number] }])[]; dragging_over?: readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[] }])[]; hovered_entity_ancestors: readonly (readonly [Entity, readonly Entity[]])[] }>;
+export type PointerState = InstanceType<typeof PointerState>;
 
 /** Immutable: read-only in TS. */
 export declare class DirectlyHovered extends Component {
@@ -897,6 +969,10 @@ export declare class DirectlyHovered extends Component {
   static readonly native: true;
   declare readonly value: bool;
 }
+
+/** `Res<HoverMap>` and `ResMut<HoverMap>` in systems, read and written through reflection. */
+export declare const HoverMap: ReflectClass<readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[], { value: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[] }>;
+export type HoverMap = InstanceType<typeof HoverMap>;
 
 /** Immutable: read-only in TS. */
 export declare class Hovered extends Component {
@@ -910,6 +986,10 @@ export declare class PickingInteraction extends Component {
   static readonly native: true;
   declare value: "Pressed" | "Hovered" | "None";
 }
+
+/** `Res<PreviousHoverMap>` and `ResMut<PreviousHoverMap>` in systems, read and written through reflection. */
+export declare const PreviousHoverMap: ReflectClass<readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[], { value: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, readonly (readonly [Entity, { camera?: Entity; depth?: number; position?: readonly [number, number, number] | null; normal?: readonly [number, number, number] | null }])[]])[] }>;
+export type PreviousHoverMap = InstanceType<typeof PreviousHoverMap>;
 
 export declare class PointerInputSettings extends Resource {
   static readonly path: "bevy_picking::input::PointerInputSettings";
@@ -949,6 +1029,10 @@ export type PointerInteraction = InstanceType<typeof PointerInteraction>;
 /** `PointerLocation.of(...)` in commands: the value written over its default. */
 export declare const PointerLocation: ReflectClass<{  }, {}>;
 export type PointerLocation = InstanceType<typeof PointerLocation>;
+
+/** `Res<PointerMap>` and `ResMut<PointerMap>` in systems, read and written through reflection. */
+export declare const PointerMap: ReflectClass<{ inner?: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, Entity])[] }, { inner: readonly (readonly ["Mouse" | { Touch: number | string } | { Custom: string }, Entity])[] }>;
+export type PointerMap = InstanceType<typeof PointerMap>;
 
 export declare class PointerPressState extends Component {
   static readonly path: "bevy_picking::pointer::PointerPressState";
@@ -1027,6 +1111,10 @@ export declare class MotionBlur extends Component {
   declare shutter_angle: f32;
   declare samples: u32;
 }
+
+/** `Res<SchemaTypesMetadata>` and `ResMut<SchemaTypesMetadata>` in systems, read and written through reflection. */
+export declare const SchemaTypesMetadata: ReflectClass<{ type_data_map?: readonly (readonly [never, string])[] }, { type_data_map: readonly (readonly [never, string])[] }>;
+export type SchemaTypesMetadata = InstanceType<typeof SchemaTypesMetadata>;
 
 /** `CameraRenderGraph.of(...)` in commands: the value written over its default. */
 export declare const CameraRenderGraph: ReflectClass<never, {}>;
@@ -1174,6 +1262,10 @@ export interface Wireframe2dConfig extends Holes<{ default_color: ColorValue }> 
 export declare const TilemapChunk: ReflectClass<{ chunk_size?: readonly [number, number]; tile_display_size?: readonly [number, number]; tileset?: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; alpha_mode?: "Opaque" | { Mask: number } | "Blend" }, { chunk_size: readonly [number, number]; tile_display_size: readonly [number, number]; tileset: string | AssetRef<Image> | AssetValue<Image> | AssetLoad<Image> | null; alpha_mode: "Opaque" | { Mask: number } | "Blend" }>;
 export type TilemapChunk = InstanceType<typeof TilemapChunk>;
 
+/** `Res<TilemapChunkMeshCache>` and `ResMut<TilemapChunkMeshCache>` in systems, read and written through reflection. */
+export declare const TilemapChunkMeshCache: ReflectClass<readonly (readonly [readonly [number, number], string | AssetRef<Mesh> | AssetValue<Mesh> | null])[], { value: readonly (readonly [readonly [number, number], string | AssetRef<Mesh> | AssetValue<Mesh> | null])[] }>;
+export type TilemapChunkMeshCache = InstanceType<typeof TilemapChunkMeshCache>;
+
 /** `TilemapChunkTileData.of(...)` in commands: the value written over its default. */
 export declare const TilemapChunkTileData: ReflectClass<readonly ({ tileset_index?: number; color?: ColorValue; visible?: boolean; orientation?: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[], { value: readonly ({ tileset_index?: number; color?: ColorValue; visible?: boolean; orientation?: "Default" | "Rotate90" | "Rotate180" | "Rotate270" | "MirrorH" | "MirrorHRotate90" | "MirrorHRotate180" | "MirrorHRotate270" } | null)[] }>;
 export type TilemapChunkTileData = InstanceType<typeof TilemapChunkTileData>;
@@ -1292,6 +1384,10 @@ export declare class Save extends Component {
 /** `TsSaved.of(...)` in commands: the value written over its default. */
 export declare const TsSaved: ReflectClass<Record<string, string>, { value: Record<string, string> }>;
 export type TsSaved = InstanceType<typeof TsSaved>;
+
+/** `Res<TsSavedResources>` and `ResMut<TsSavedResources>` in systems, read and written through reflection. */
+export declare const TsSavedResources: ReflectClass<Record<string, string>, { value: Record<string, string> }>;
+export type TsSavedResources = InstanceType<typeof TsSavedResources>;
 
 /** Holes, not columns: clip: an enum with data (bevy_asset::handle::Handle<bevy_animation::AnimationClip>); graph: an enum with data (bevy_asset::handle::Handle<bevy_animation::graph::AnimationGraph>); repeat: an enum with data (bevy_animation::RepeatAnimation). */
 export declare class PlayAnimation extends Component {
@@ -1422,6 +1518,10 @@ export declare class ComputedStackIndex extends Component {
   static readonly native: true;
   declare value: u32;
 }
+
+/** `Res<UiStack>` and `ResMut<UiStack>` in systems, read and written through reflection. */
+export declare const UiStack: ReflectClass<{ partition?: readonly ({ start: number | string; end: number | string })[]; uinodes?: readonly Entity[] }, { partition: readonly ({ start: number | string; end: number | string })[]; uinodes: readonly Entity[] }>;
+export type UiStack = InstanceType<typeof UiStack>;
 
 /** `BackgroundColor.of(...)` in commands: the value written over its default. */
 export declare const BackgroundColor: ReflectClass<ColorValue, { value: ColorValue }>;
@@ -1824,6 +1924,10 @@ export declare class TabList extends Component {
   declare orientation: "Horizontal" | "Vertical";
   declare activation: "Manual" | "Automatic";
 }
+
+/** `Res<QueuedSelectAll>` and `ResMut<QueuedSelectAll>` in systems, read and written through reflection. */
+export declare const QueuedSelectAll: ReflectClass<Entity | null, { value: Entity | null }>;
+export type QueuedSelectAll = InstanceType<typeof QueuedSelectAll>;
 
 /** `SelectAllOnFocus.of(...)` in commands: the value written over its default. */
 export declare const SelectAllOnFocus: ReflectClass<{  }, {}>;
