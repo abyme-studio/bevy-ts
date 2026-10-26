@@ -737,6 +737,17 @@ declare module "bevy-ts/input" {
     RightStickY = 8452,
     RightZ = 8453,
   }
+  /** Bevy's `CompassOctant`: a direction for `DirectionalNavigation.navigate`. */
+  export enum CompassOctant {
+    North = 8454,
+    NorthEast = 8455,
+    East = 8456,
+    SouthEast = 8457,
+    South = 8458,
+    SouthWest = 8459,
+    West = 8460,
+    NorthWest = 8461,
+  }
   /** Bevy's `input_pressed`: true while the key or button is down. Evaluated in Rust. */
   export function inputPressed(code: KeyCode | MouseButton): Condition;
   /** Bevy's `input_just_pressed`: true on the frame the key or button goes down. */
@@ -762,6 +773,14 @@ declare module "bevy-ts/input" {
   /** `bevy_ts_cli::input::FocusParam<'_>`, a system param exported from Rust; take it as a system parameter. */
   export interface InputFocus {
     get(): Entity | undefined;
+  }
+  /** `bevy_ts_cli::input::FocusVisibleParam<'_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface InputFocusVisible {
+    get(): boolean;
+  }
+  /** `bevy_ts_cli::input::NavigationParam<'_, '_>`, a system param exported from Rust; take it as a system parameter. */
+  export interface DirectionalNavigation {
+    navigate(direction: number): Entity | undefined;
   }
   /** `bevy_ts_cli::input::MouseButtonsParam<'_>`, a system param exported from Rust; take it as a system parameter. */
   export interface MouseButtons {
