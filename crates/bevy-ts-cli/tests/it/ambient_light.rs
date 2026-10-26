@@ -75,6 +75,12 @@ fn render(name: &str, insert: &str) -> (Option<AmbientLight>, f64) {
 
 #[test]
 fn a_script_inserted_ambient_light_keeps_its_white_and_its_brightness_lights_the_scene() {
+    // A render that never returns blocks `app.update()`, past what `until` can bound: four
+    // renders get `BOUND` each, then the binary fails rather than hangs.
+    let _hang = common::watchdog(
+        "a_script_inserted_ambient_light_keeps_its_white_and_its_brightness_lights_the_scene",
+        common::BOUND * 4,
+    );
     let (_, global) = render("ambient-global", "");
     let insert = |b: u32| format!("commands.entity(cam).insert(AmbientLight.of({{ brightness: {b} }}));");
     let (light, at80) = render("ambient-80", &insert(80));
