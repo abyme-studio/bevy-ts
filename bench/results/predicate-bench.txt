@@ -20,3 +20,37 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 420 filtered out; fi
 8 systems, distributive: 186.2 us per frame, 8.0 predicate calls, +51.8 us, 6.47 us per evaluation
 8 systems, 64 calls: 515.0 us per frame, 64.0 predicate calls, +380.5 us, 5.95 us per evaluation
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 420 filtered out; finished in 4.71s
+== Mon Oct 26 18:05:15 AEDT 2026 load { 30.52 16.72 20.49 } (run 1 started in its slot)
+quiet stage, 1 systems, rust: 78.0 us per frame, 0.0 predicate calls, +0.0 us
+quiet stage, 1 systems, collective: 94.2 us per frame, 1.0 predicate calls, +16.2 us, 16.17 us per evaluation
+quiet stage, 8 systems, rust: 64.1 us per frame, 0.0 predicate calls, +0.0 us
+quiet stage, 8 systems, collective: 85.8 us per frame, 1.0 predicate calls, +21.7 us, 21.71 us per evaluation
+quiet stage, 8 systems, distributive: 108.3 us per frame, 8.0 predicate calls, +44.2 us, 5.53 us per evaluation
+quiet stage, 8 systems, 64 calls: 248.6 us per frame, 64.0 predicate calls, +184.5 us, 2.88 us per evaluation
+busy stage, 8 systems, rust: 99.9 us per frame, 0.0 predicate calls, +0.0 us
+busy stage, 8 systems, collective: 94.8 us per frame, 1.0 predicate calls, -5.1 us, -5.08 us per evaluation
+busy stage, 8 systems, distributive: 109.8 us per frame, 8.0 predicate calls, +9.9 us, 1.24 us per evaluation
+busy stage, 8 systems, 64 calls: 251.2 us per frame, 64.0 predicate calls, +151.3 us, 2.36 us per evaluation
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 420 filtered out; finished in 1.40s
+quiet stage, 1 systems, rust: 186.2 us per frame, 0.0 predicate calls, +0.0 us
+quiet stage, 1 systems, collective: 219.0 us per frame, 1.0 predicate calls, +32.8 us, 32.75 us per evaluation
+quiet stage, 8 systems, rust: 184.2 us per frame, 0.0 predicate calls, +0.0 us
+quiet stage, 8 systems, collective: 209.8 us per frame, 1.0 predicate calls, +25.6 us, 25.63 us per evaluation
+quiet stage, 8 systems, distributive: 241.9 us per frame, 8.0 predicate calls, +57.7 us, 7.21 us per evaluation
+quiet stage, 8 systems, 64 calls: 527.7 us per frame, 64.0 predicate calls, +343.5 us, 5.37 us per evaluation
+busy stage, 8 systems, rust: 232.6 us per frame, 0.0 predicate calls, +0.0 us
+busy stage, 8 systems, collective: 230.2 us per frame, 1.0 predicate calls, -2.4 us, -2.38 us per evaluation
+busy stage, 8 systems, distributive: 237.2 us per frame, 8.0 predicate calls, +4.6 us, 0.58 us per evaluation
+busy stage, 8 systems, 64 calls: 559.0 us per frame, 64.0 predicate calls, +326.4 us, 5.10 us per evaluation
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 420 filtered out; finished in 3.29s
+quiet stage, 1 systems, rust: 80.7 us per frame, 0.0 predicate calls, +0.0 us
+quiet stage, 1 systems, collective: 102.8 us per frame, 1.0 predicate calls, +22.2 us, 22.17 us per evaluation
+quiet stage, 8 systems, rust: 74.8 us per frame, 0.0 predicate calls, +0.0 us
+quiet stage, 8 systems, collective: 99.3 us per frame, 1.0 predicate calls, +24.6 us, 24.58 us per evaluation
+quiet stage, 8 systems, distributive: 115.8 us per frame, 8.0 predicate calls, +41.0 us, 5.13 us per evaluation
+quiet stage, 8 systems, 64 calls: 262.9 us per frame, 64.0 predicate calls, +188.1 us, 2.94 us per evaluation
+busy stage, 8 systems, rust: 105.4 us per frame, 0.0 predicate calls, +0.0 us
+busy stage, 8 systems, collective: 99.5 us per frame, 1.0 predicate calls, -5.8 us, -5.83 us per evaluation
+busy stage, 8 systems, distributive: 122.3 us per frame, 8.0 predicate calls, +16.9 us, 2.11 us per evaluation
+busy stage, 8 systems, 64 calls: 266.5 us per frame, 64.0 predicate calls, +161.2 us, 2.52 us per evaluation
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 420 filtered out; finished in 1.83s
