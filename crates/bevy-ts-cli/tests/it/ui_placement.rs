@@ -12,7 +12,7 @@ use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts_cli::cli::{Display, Engine, base_app};
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_tsx::TsxNode;
-use bevy_ts_viewport::offscreen::{OffscreenPointerPlugin, Pending};
+use bevy_ts_viewport::offscreen::{OffscreenInputPlugin, Pending};
 use common::{messages, project, reload};
 use std::sync::Arc;
 
@@ -48,7 +48,7 @@ fn scene(name: &str) -> App {
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
     let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, Default::default(), &[], false);
     let image = app.world().resource::<bevy_ts_cli::headless::Offscreen>().0.clone();
-    app.add_plugins(OffscreenPointerPlugin { image });
+    app.add_plugins(OffscreenInputPlugin { image });
     app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.tsx"), true).unwrap())));
     app.finish();
     app.cleanup();
@@ -109,7 +109,7 @@ fn click(app: &mut App, x: f64, y: f64, said: &str) -> usize {
         x,
         y,
     });
-    app.world_mut().resource_mut::<Pending>().0.extend(events);
+    app.world_mut().resource_mut::<Pending>().0.extend(events.map(Into::into));
     common::updates(app, 6);
     messages(app).into_iter().filter(|m| m == said).count()
 }
