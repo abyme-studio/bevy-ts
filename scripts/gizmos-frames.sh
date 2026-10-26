@@ -2,6 +2,7 @@
 # Change script-gizmos task 2.11: examples/gizmos headless on main's engine without src/gizmos.ts
 # (before.png), then on this tree's engine with it (after.png), into ~/dev/bevy-ts-frames/script-gizmos.
 #   scripts/gizmos-frames.sh <main engine> <this engine>
+# Stage 3: `scripts/gizmos-frames.sh --retained <this engine>` writes only after-retained.png.
 set -euo pipefail
 out=$HOME/dev/bevy-ts-frames/script-gizmos
 mkdir -p "$out"
@@ -20,6 +21,10 @@ shot() { # <engine> <project dir> <png>
   if grep -q "generation [0-9]* failed" "$3.log"; then echo "$3: the script failed:"; grep "failed" "$3.log"; exit 1; fi
   echo "wrote $3"
 }
+if [ "$1" = --retained ]; then
+  shot "$2" "$PWD/examples/gizmos" "$out/after-retained.png"
+  exit 0
+fi
 before=$(mktemp -d)
 cp -R examples/gizmos/src examples/gizmos/tsconfig.json "$before/"
 rm "$before/src/gizmos.ts"

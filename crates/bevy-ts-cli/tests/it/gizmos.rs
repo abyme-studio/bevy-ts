@@ -439,7 +439,7 @@ fn rows() -> Vec<Row> {
 fn ts_draws_what_rust_draws() {
     use bevy_ts_native::gizmos::draw::{Entry, builders};
     use bevy_ts_native::gizmos::primitives::{CURVES, PRIMITIVES_2D, PRIMITIVES_3D};
-    let rows: Vec<Row> = rows().into_iter().chain(primitive_rows()).collect();
+    let rows = all_rows();
     // Every entry, builder setting, primitive and curve type has a row.
     let covered: std::collections::BTreeSet<&str> = rows.iter().flat_map(|r| r.covers.iter().copied()).collect();
     let mut want: Vec<String> = Entry::ALL.iter().map(|e| e.ts().to_string()).collect();
@@ -458,10 +458,19 @@ fn ts_draws_what_rust_draws() {
     );
     let mut app = gizmo_app("gizmos-same-buffer", &body, |_| {});
     app.update();
-    let got = drawn::<DefaultGizmoConfigGroup>(&app);
+    assert_same_as_rows(&drawn::<DefaultGizmoConfigGroup>(&app), &rows);
+}
+
+/// Every row's TS calls (`rows`, `primitive_rows`), each checked for a row first.
+fn all_rows() -> Vec<Row> {
+    rows().into_iter().chain(primitive_rows()).collect()
+}
+
+/// `got` holds what the rows' Rust calls draw, vertex for vertex; a difference names its row.
+fn assert_same_as_rows(got: &Drawn, rows: &[Row]) {
     let mut buf = Buf::default();
     let mut ends = Vec::new();
-    for r in &rows {
+    for r in rows {
         (r.rust)(&mut buf);
         ends.push((buf.list_positions.len(), buf.strip_positions.len()));
     }
@@ -482,6 +491,55 @@ fn ts_draws_what_rust_draws() {
         assert!(same_c(*g, *w) || (g.red.is_nan() && w.red.is_nan()), "{}: strip colour {k}: {g:?} != {w:?}", row_of(k, true));
     }
     assert_eq!((got.lines.len(), got.strips.len()), (buf.list_positions.len(), buf.strip_positions.len()), "vertex counts");
+}
+
+/// The `GizmoAsset` a script's ref `n` names, as drawn.
+fn asset_drawn(app: &App, n: u64) -> Drawn {
+    let handle = app.world().resource::<bevy_ts::reflect_asset::ScriptAssets>().handle(n).unwrap();
+    let b = app.world().resource::<Assets<GizmoAsset>>().get(handle.id().typed::<GizmoAsset>()).expect("in Assets<GizmoAsset>").buffer();
+    Drawn { lines: b.list_positions.clone(), line_colors: b.list_colors.clone(), strips: b.strip_positions.clone(), strip_colors: b.strip_colors.clone() }
+}
+
+const RETAINED: &str = "import { assets, srgb } from \"bevy-ts\";\nimport { GizmoAsset } from \"bevy-ts/gizmos\";\n";
+
+/// Every same-buffer row recorded on a `GizmoAsset` and added: the asset holds what `Gizmos`
+/// draws, so the replay covers every entry, setting, primitive and curve.
+#[test]
+fn a_gizmo_asset_holds_what_gizmos_would_draw() {
+    let rows = all_rows();
+    let calls: String = rows.iter().map(|r| format!("  {};\n", r.ts)).collect();
+    let body = format!(
+        "{RETAINED}export function draw(l: Local<{{ n: u32 }}>) {{\n  if (l.n++ > 0) return;\n  const g = new GizmoAsset();\n{calls}  const r = assets.add(GizmoAsset, g);\n  console.log(`ref ${{r.$asset}} ${{g.calls.length}}`);\n}}\napp.addSystems(Update, draw);\n"
+    );
+    let mut app = gizmo_app("gizmos-asset", &body, |_| {});
+    app.update();
+    let got = logged(&mut app, "ref ");
+    let (n, calls) = got.first().and_then(|l| l.split_once(' ')).unwrap_or_else(|| panic!("{:?}", messages(&app)));
+    assert!(calls.parse::<usize>().unwrap() >= rows.len(), "every row recorded: {calls}");
+    assert_same_as_rows(&asset_drawn(&app, n.parse().unwrap()), &rows);
+    assert_eq!(drawn::<DefaultGizmoConfigGroup>(&app), Drawn::default(), "nothing drawn immediately");
+}
+
+/// `assets.set(ref, g2)` replaces the asset's calls whole; `assets.get` reads the record back.
+#[test]
+fn set_replaces_a_gizmo_assets_calls() {
+    let body = format!(
+        "{RETAINED}import type {{ AssetRef }} from \"bevy-ts\";\nimport type {{ GizmoAssetValue }} from \"bevy-ts/gizmos\";\nlet r: AssetRef<GizmoAssetValue> | undefined;\nexport function draw(l: Local<{{ n: u32 }}>) {{\n  const g = new GizmoAsset();\n  if (l.n === 0) {{ g.line([0, 0, 0], [1, 0, 0], \"#f00\"); g.circle([0, 0, 0], 1, \"#f00\").resolution(4); r = assets.add(GizmoAsset, g); console.log(`ref ${{r.$asset}}`); }}\n  if (l.n === 1) {{ g.line([0, 0, 0], [0, 2, 0], \"#00f\"); assets.set(r!, g); console.log(`calls ${{JSON.stringify(assets.get(r!)!.calls.map((c) => (c as unknown[])[0]))}}`); }}\n  l.n++;\n}}\napp.addSystems(Update, draw);\n"
+    );
+    let mut app = gizmo_app("gizmos-asset-set", &body, |_| {});
+    app.update();
+    let n: u64 = logged(&mut app, "ref ").first().unwrap_or_else(|| panic!("{:?}", messages(&app))).parse().unwrap();
+    let first = Row { covers: &[], ts: "the first record", rust: |g| {
+        g.line(Vec3::ZERO, Vec3::X, RED);
+        g.circle(Vec3::ZERO, 1.0, RED).resolution(4);
+    } };
+    assert_same_as_rows(&asset_drawn(&app, n), &[first]);
+    app.update();
+    assert_eq!(logged(&mut app, "calls "), vec![r#"["line"]"#.to_string()], "{:?}", messages(&app));
+    let second = asset_drawn(&app, n);
+    assert_eq!(second.lines, vec![Vec3::ZERO, Vec3::new(0.0, 2.0, 0.0)]);
+    assert_eq!(second.line_colors, vec![LinearRgba::BLUE; 2]);
+    assert!(second.strips.is_empty(), "the circle is gone: {:?}", second.strips);
 }
 
 #[test]
@@ -704,6 +762,25 @@ fn line_width_and_style_render() {
     assert!((8..=14).contains(&thick), "a 10 px line, {thick} px thick");
     let gaps = (W / 4..3 * W / 4).filter(|&x| thickness(&img, x) == 0).count();
     assert!(gaps > 10, "a dashed line has gaps along it: {gaps} empty columns");
+}
+
+/// A `GizmoAsset` added at load and shown by `<Gizmo handle={ref} line_config={{ width: 4 }} />`
+/// reaches the pixels: a red line about 4 px thick, drawn with no `Gizmos` call.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_retained_gizmo_renders() {
+    use rendered::*;
+    let src = format!(
+        "{CAMERA_2D}import {{ assets }} from \"bevy-ts\";\nimport {{ Gizmo }} from \"bevy-ts/bevy\";\nimport {{ GizmoAsset }} from \"bevy-ts/gizmos\";\nconst g = new GizmoAsset();\ng.line2d([-100, 0], [100, 0], \"#f00\");\nconst line = assets.add(GizmoAsset, g);\napp.scene(\"s\", () => <>\n  <entity name=\"cam\"><Camera2d /><Tonemapping value=\"None\" /></entity>\n  <entity name=\"line\"><Gizmo handle={{line}} line_config={{{{ width: 4 }}}} /></entity>\n</>);\n"
+    );
+    let mut app = render_app("gizmos-retained-render", &src);
+    let red = |p: [u8; 3]| p[0] > 128 && p[1] < 64 && p[2] < 64;
+    let thickness = |img: &Image, x: u32| (0..H).filter(|&y| red(px(img, x, y))).count();
+    let img = picture(&mut app, |i| red(px(i, W / 2, H / 2)) || red(px(i, W / 2, H / 2 - 1)));
+    for x in [10, W / 4, W / 2, 3 * W / 4, W - 10] {
+        assert!((3..=6).contains(&thickness(&img, x)), "a 4 px line at x {x}: {} px", thickness(&img, x));
+    }
+    assert_eq!(px(&img, W / 2, H / 2 + 10), [0, 0, 0], "nothing well off the line");
 }
 
 #[cfg(target_os = "macos")]

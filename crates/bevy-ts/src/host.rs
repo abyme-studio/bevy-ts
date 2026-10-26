@@ -1423,22 +1423,7 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
         if method.of.is_some() {
             let _ = writeln!(s, "    H.live(this, {:?});", method.name);
         }
-        s.push_str("    const a = H.slots; let i = 0;\n    ");
-        let mut slices = Vec::new();
-        for arg in &method.args {
-            match arg {
-                ArgSpec::Value(n, k) => write_js(k, &format!("${n}"), &mut s),
-                ArgSpec::Slice(sl) => slices.push(format!("H.bytes(${}, {}, NAME, {:?}, {:?})", sl.name, sl.view, method.name, sl.name)),
-                ArgSpec::Points(sl, lanes) => slices.push(format!("H.points(${}, {lanes}, NAME, {:?}, {:?})", sl.name, method.name, sl.name)),
-            }
-        }
-        while slices.len() < MAX_SLICES {
-            slices.push("H.EMPTY".into());
-        }
-        // A list or string past the slots was dropped by the typed array; refuse the call.
-        if method.args.iter().any(|a| matches!(a, ArgSpec::Value(_, k) if varies(k))) {
-            let _ = write!(s, "\n    if (i > H.slots.length) throw new RangeError(`${{NAME}}.{}: the arguments need ${{i}} slots, past the call's ${{H.slots.length}}; split the call`);", method.name);
-        }
+        let slices = write_args(method, &mut s);
         let _ = writeln!(s, "\n    const n = H.call({id}, i, {});", slices.join(", "));
         let _ = writeln!(s, "    if (n < 0) H.fail(NAME, {:?});", method.name);
         if let Some(builder) = method.chain {
@@ -1450,6 +1435,85 @@ fn glue(spec: &ParamSpec, first: u32) -> String {
         }
     }
     s.push_str("};\n");
+    s
+}
+
+/// JS that writes `method`'s arguments into `H.slots` from slot 0, leaving `i` past them; returns
+/// the slice arguments' expressions, padded to [`MAX_SLICES`].
+fn write_args(method: &MethodSpec, s: &mut String) -> Vec<String> {
+    s.push_str("    const a = H.slots; let i = 0;\n    ");
+    let mut slices = Vec::new();
+    for arg in &method.args {
+        match arg {
+            ArgSpec::Value(n, k) => write_js(k, &format!("${n}"), s),
+            ArgSpec::Slice(sl) => slices.push(format!("H.bytes(${}, {}, NAME, {:?}, {:?})", sl.name, sl.view, method.name, sl.name)),
+            ArgSpec::Points(sl, lanes) => slices.push(format!("H.points(${}, {lanes}, NAME, {:?}, {:?})", sl.name, method.name, sl.name)),
+        }
+    }
+    while slices.len() < MAX_SLICES {
+        slices.push("H.EMPTY".into());
+    }
+    // A list or string past the slots was dropped by the typed array; refuse the call.
+    if method.args.iter().any(|a| matches!(a, ArgSpec::Value(_, k) if varies(k))) {
+        let _ = write!(s, "\n    if (i > H.slots.length) throw new RangeError(`${{NAME}}.{}: the arguments need ${{i}} slots, past the call's ${{H.slots.length}}; split the call`);", method.name);
+    }
+    slices
+}
+
+/// The methods a recorder of `spec` has: those that draw (return nothing or a builder) and the
+/// builders' settings, each name once.
+fn recorded(spec: &ParamSpec) -> impl Iterator<Item = &MethodSpec> {
+    let mut seen = std::collections::HashSet::new();
+    spec.methods.iter().filter(|m| m.ret == Kind::Unit && !m.args.iter().any(|a| matches!(a, ArgSpec::Slice(_)))).filter(move |m| seen.insert(m.name.as_str()))
+}
+
+/// A recorder of `spec`'s calls (a retained `GizmoAsset`): JS for `new Function("H", src)`, which
+/// returns a class with the param's drawing methods and settings. Each call writes its arguments
+/// as the param's glue does, then `H.record` keeps its name, its slots as `u32` words and its
+/// point lists' floats as words, in `calls`; Rust replays them through the param's own entries.
+/// Builder settings record as calls after the builder's; a setting on a builder another call
+/// replaced throws, as on the param. `toJSON` gives `{ calls }`. Methods with a byte slice or a
+/// result are left out.
+pub fn recorder_glue(spec: &ParamSpec, name: &str) -> String {
+    let mut s = format!("const NAME = {name:?};\nreturn class {name} {{\n  constructor() {{ this.calls = []; }}\n  toJSON() {{ return {{ calls: this.calls }}; }}\n");
+    for method in recorded(spec) {
+        let names: Vec<String> = method
+            .args
+            .iter()
+            .map(|a| match a {
+                ArgSpec::Value(n, _) => format!("${n}"),
+                ArgSpec::Slice(sl) | ArgSpec::Points(sl, _) => format!("${}", sl.name),
+            })
+            .collect();
+        let _ = writeln!(s, "  {}({}) {{", method.name, names.join(", "));
+        if method.of.is_some() {
+            let _ = writeln!(s, "    H.live(this, {:?});", method.name);
+        }
+        let mut slices = write_args(method, &mut s);
+        slices.truncate(method.args.iter().filter(|a| a.slice().is_some()).count());
+        let rest: String = slices.iter().map(|e| format!(", {e}")).collect();
+        let _ = writeln!(s, "\n    H.record(this.calls, {:?}, i{rest});", method.name);
+        match method.chain {
+            Some(builder) => {
+                let _ = writeln!(s, "    return H.open(this, {builder:?});\n  }}");
+            }
+            None if method.of.is_some() => s.push_str("    return this;\n  }\n"),
+            None => s.push_str("  }\n"),
+        }
+    }
+    s.push_str("};\n");
+    s
+}
+
+/// The TS interface of [`recorder_glue`]'s class under `head`: its drawing methods, typed as the
+/// param's; the builders are the param's own declarations.
+pub fn recorder_declaration(spec: &ParamSpec, head: &str) -> String {
+    let mut s = format!("export interface {head} {{\n");
+    for m in recorded(spec).filter(|m| m.of.is_none()) {
+        let ret = m.chain.unwrap_or("void");
+        let _ = writeln!(s, "  {}({}): {ret};", m.name, ts_args(m));
+    }
+    s.push_str("}\n");
     s
 }
 
@@ -1781,6 +1845,24 @@ mod tests {
         // A module that declares the param itself takes the whole declaration under its own head.
         let all = declaration_as(&spec, "Probe<G>");
         assert!(all.contains("export interface CircleBuilder {") && all.contains("export interface Probe<G> {"), "{all}");
+    }
+
+    #[test]
+    fn a_recorder_records_drawing_calls_and_settings() {
+        let mut spec = probe(vec![ArgSpec::Value("radius", Kind::Num("f32")), <HostPoints<Vec3> as HostArg>::spec("positions")], Some("CircleBuilder"), None);
+        let method = |name: &str, ret, of| MethodSpec { name: name.into(), args: vec![ArgSpec::Value("n", Kind::Num("u32"))], ret, call: |_, _, _, _, _, _| Ok(()), chain: None, of };
+        spec.methods.push(method("resolution", Kind::Unit, Some("CircleBuilder")));
+        spec.methods.push(method("config", Kind::Json("GizmoConfig"), None));
+        let js = recorder_glue(&spec, "Rec");
+        // Arguments are written as the param's glue writes them, then recorded with the one
+        // point list, not the padding slices.
+        assert!(js.contains("return class Rec {") && js.contains("toJSON() { return { calls: this.calls }; }"), "{js}");
+        assert!(js.contains("H.record(this.calls, \"m\", i, H.points($positions, 3, NAME, \"m\", \"positions\"));"), "{js}");
+        assert!(js.contains("return H.open(this, \"CircleBuilder\");"), "{js}");
+        assert!(js.contains("H.live(this, \"resolution\");") && js.contains("H.record(this.calls, \"resolution\", i);"), "{js}");
+        assert!(!js.contains("config(") && !js.contains("H.call("), "a reader is left out, and nothing calls the host: {js}");
+        let d = recorder_declaration(&spec, "Rec");
+        assert!(d.contains("  m(radius: number, positions: ") && d.contains("): CircleBuilder;") && !d.contains("resolution") && !d.contains("config"), "{d}");
     }
 
     #[test]

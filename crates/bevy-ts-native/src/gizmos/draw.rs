@@ -22,7 +22,7 @@ use bevy_ts::host::{self, ArgSpec, HostArg, HostList, HostPoints, HostTransform,
 use bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell;
 
 use super::TsGizmos;
-use super::primitives::{self, Curve2d, Curve3d, Primitive2d, Primitive3d};
+use super::primitives::{self, Curve2d, Curve3d, Primitive2d, Primitive3d, Registry};
 
 /// Bevy's `Aabb3d` (`min`, `max`) as TS passes it to `aabb3d`.
 #[derive(crate::HostRecord, Clone, Copy, Debug, Default)]
@@ -270,7 +270,7 @@ macro_rules! entries {
             /// Reads the arguments and makes the Bevy call, giving a builder its settings.
             /// `registry` reads primitives and curves.
             #[allow(non_snake_case)]
-            pub fn draw<C: GizmoConfigGroup>(self, buf: &mut GizmoBuffer<C, ()>, registry: &AppTypeRegistry, r: &mut SlotReader, slices: &[&[u8]], settings: &Settings) -> Result<(), String> {
+            pub fn draw<C: GizmoConfigGroup>(self, buf: &mut GizmoBuffer<C, ()>, registry: Registry, r: &mut SlotReader, slices: &[&[u8]], settings: &Settings) -> Result<(), String> {
                 #[allow(unused_mut, unused_variables)]
                 let mut slices = slices.iter().copied();
                 match self {
@@ -385,7 +385,7 @@ fn call_entry<C: GizmoConfigGroup, const E: usize>(
     let entry = Entry::ALL[E];
     let buf: &mut GizmoBuffer<C, ()> = &mut p.gizmos;
     let start = lengths(buf);
-    entry.draw(buf, &p.registry, r, &views(slices), &[])?;
+    entry.draw(buf, Registry::App(&p.registry), r, &views(slices), &[])?;
     let open = &mut *p.open;
     open.live = entry.builder().is_some();
     if open.live {
@@ -424,7 +424,7 @@ fn call_setting<C: GizmoConfigGroup, const S: usize>(
     let arg = r.bytes(setting.slots() * 8)?.to_vec();
     open.settings.push((setting, arg));
     truncate(buf, open.start);
-    let redraw = |buf: &mut GizmoBuffer<C, ()>, settings: &Settings| entry.draw(buf, registry, &mut SlotReader::new(&open.args), &[], settings);
+    let redraw = |buf: &mut GizmoBuffer<C, ()>, settings: &Settings| entry.draw(buf, Registry::App(registry), &mut SlotReader::new(&open.args), &[], settings);
     if let Err(e) = redraw(buf, &open.settings) {
         // Not a setting of this builder: draw it as it was.
         truncate(buf, open.start);

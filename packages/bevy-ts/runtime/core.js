@@ -2913,6 +2913,16 @@ const HOST = {
     b.$serial = p.$serial = (p.$serial ?? 0) + 1;
     return b;
   },
+  /**
+   * A recorder's call (`host::recorder_glue`): its name, its `i` slots as `u32` words, then each
+   * point list's floats as words, appended to `calls`. Words are integers, so JSON keeps them
+   * exact, string bytes included.
+   */
+  record(calls, name, i, ...slices) {
+    const call = [name, Array.from(new Uint32Array(HOST.slots.buffer, 0, i * 2))];
+    for (const s of slices) call.push(Array.from(new Uint32Array(s.buffer, s.byteOffset, s.byteLength / 4)));
+    calls.push(call);
+  },
   /** Throws when `b`, a builder, is not the param's latest. */
   live(b, setting) {
     if (b.$param !== undefined && b.$serial !== b.$param.$serial) {
@@ -3509,6 +3519,20 @@ function resolveReflect(C, res) {
 }
 
 const PORT_CLASSES = new Map();
+
+/**
+ * An asset class whose instances record drawing calls (`GizmoAsset`): `src` is
+ * `host::recorder_glue`'s, `assets.add(T, instance)` sends its `{ calls }` to the type's hand map,
+ * and `T.of(instance)` is a value of it.
+ */
+export function __hostAsset(typePath, src) {
+  const C = new Function("H", src)(HOST);
+  C.typePath = typePath;
+  C.source = "rust";
+  C[KIND] = "asset";
+  C.of = (props = {}) => Object.freeze({ $of: typePath, props: JSON.parse(JSON.stringify(props)) });
+  return C;
+}
 
 /** The class of an exported param, built from the glue Rust sent with the resolution. */
 function portClass(res, name) {

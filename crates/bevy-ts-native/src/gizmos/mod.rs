@@ -3,11 +3,13 @@
 //! [`crate::BevyTsNativeExt::ts_gizmo_group`]. Its methods come from [`draw`]'s table.
 //!
 //! `ExportParam` is written by hand from the table, not with `#[export]`: the export is generic
-//! over the group, which `#[export]` does not take, and the same table drives the retained replay.
+//! over the group, which `#[export]` does not take, and the same table drives the retained replay
+//! ([`retained`]).
 
 pub mod config;
 pub mod draw;
 pub mod primitives;
+pub mod retained;
 
 use bevy::app::{App, Plugin};
 use bevy::ecs::system::SystemParam;
@@ -101,6 +103,7 @@ pub(crate) fn expose<G: GizmoConfigGroup>(app: &mut App) {
     if !app.is_plugin_added::<GizmoGroupCheck>() {
         app.add_plugins(GizmoGroupCheck);
         primitives::register_types(app);
+        retained::register(app);
     }
     let mut groups = app.world_mut().get_resource_or_init::<TsGizmoGroups>();
     if groups.0.iter().any(|g| g.type_id == TypeId::of::<G>()) {

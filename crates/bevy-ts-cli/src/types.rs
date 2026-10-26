@@ -202,18 +202,20 @@ fn glam_ts(path: &str) -> Option<String> {
 
 /// A `Handle<T>`'s TS type: an asset path, or `null` for a handle with none; for a `T` with
 /// `ReflectAsset`, also a ref from `assets.add`, a value `T.of(...)`, and `T.load(...)` for a `T`
-/// with loader settings (reflect-assets), `T` named by [`asset_name`].
+/// with loader settings (reflect-assets), `T` named by [`asset_name`]; for a hand-mapped `T` with
+/// no `Reflect` (`GizmoAsset`, whose class another module declares), a ref or value of any asset
+/// with `T`'s type path.
 fn handle_ts(registry: &TypeRegistry, path: &str) -> String {
-    let asset = registry
-        .get_with_type_path(path)
-        .and_then(|r| r.data::<bevy::asset::ReflectHandle>())
-        .map(|h| h.asset_type_id())
+    let id = registry.get_with_type_path(path).and_then(|r| r.data::<bevy::asset::ReflectHandle>()).map(|h| h.asset_type_id());
+    let asset = id
         .filter(|id| registry.get_type_data::<bevy::asset::ReflectAsset>(*id).is_some())
         .and_then(|id| Some((asset_name(registry, id)?, registry.get(id)?.type_info().type_path())));
-    match asset {
-        Some((name, p)) if bevy_ts::reflect_asset::loadable(p) => format!("string | AssetRef<{name}> | AssetValue<{name}> | AssetLoad<{name}> | null"),
-        Some((name, _)) => format!("string | AssetRef<{name}> | AssetValue<{name}> | null"),
-        None => "string | null".into(),
+    let hand = id.filter(|id| bevy_ts::reflect_asset::is_hand_mapped(*id)).and_then(|_| path.strip_prefix("bevy_asset::handle::Handle<")?.strip_suffix('>'));
+    match (asset, hand) {
+        (Some((name, p)), _) if bevy_ts::reflect_asset::loadable(p) => format!("string | AssetRef<{name}> | AssetValue<{name}> | AssetLoad<{name}> | null"),
+        (Some((name, _)), _) => format!("string | AssetRef<{name}> | AssetValue<{name}> | null"),
+        (None, Some(t)) => format!("string | AssetRef<AssetFields<{t:?}, unknown>> | AssetValue<AssetFields<{t:?}, unknown>> | null"),
+        (None, None) => "string | null".into(),
     }
 }
 

@@ -80,6 +80,29 @@ export function toggle(store: ResMut<GizmoConfigStore>) {
 `insert` writes over the current value (keys left out keep theirs) and changes nothing when a field
 is bad. `Res<GizmoConfigStore>` reads (`config`, `groups`) and has no `insert`.
 
+## Retained
+
+Lines that do not change are drawn once into a `GizmoAsset` and shown by a `Gizmo` component, as
+Bevy's retained gizmos are:
+
+```tsx
+import { assets } from "bevy-ts";
+import { Gizmo } from "bevy-ts/bevy";
+import { GizmoAsset } from "bevy-ts/gizmos";
+
+const g = new GizmoAsset();
+g.grid([0, 0, 0], [10, 10], [1, 1], "#444").outerEdges();
+const grid = assets.add(GizmoAsset, g);
+// <entity><Gizmo handle={grid} line_config={{ width: 2 }} /></entity>
+```
+
+`GizmoAsset` has every `Gizmos` drawing method and builder setting. Calls are recorded in JS (each
+call's arguments as the param would send them) and drawn in Rust when `assets.add` or
+`assets.set(ref, g2)` runs; `set` replaces the asset's calls whole, and `assets.get(ref)` gives
+back `{ calls }`. A bad call throws from `add` or `set`, naming it. It reaches `Assets<GizmoAsset>`
+by reflect-assets' hand map ([assets.md](assets.md#hand-mapped-types)), since `GizmoAsset` has no
+`Reflect`.
+
 ## Cost
 
 Every gizmo call crosses from JS to Rust. `bench/gizmos` measures 1,000 calls a frame on a headless
@@ -206,9 +229,9 @@ reflected value under its type name, `{ Cuboid: { half_size: [0.5, 0.5, 0.5] } }
 
 | Bevy | TS | Status | Test |
 |---|---|---|---|
-| `GizmoAsset` (`lib.rs:325`), `GizmoAsset::new`, `Default`, the drawing API through `DerefMut` (`retained.rs:16-28`) | `const g = new GizmoAsset(); g.sphere([0, 0, 0], 1, "#f00").resolution(64);` every `Gizmos` drawing method, recorded in JS and replayed in Rust on add | planned: stage 3, after reflect-assets | `a_gizmo_asset_holds_what_gizmos_would_draw` |
-| `Assets<GizmoAsset>::add` | `assets.add(GizmoAsset, g)` on reflect-assets' path, a hand-map entry for `GizmoAsset`; returns an `AssetRef<GizmoAsset>`. `assets.set(ref, g2)` replaces its calls | planned: stage 3, after reflect-assets | `a_gizmo_asset_holds_what_gizmos_would_draw`, `set_replaces_a_gizmo_assets_calls` |
-| `Gizmo { handle, line_config, depth_bias }` (`retained.rs:67`) | `<Gizmo handle={ref} line_config={{ width: 4 }} depth_bias={-0.1} />`: `depth_bias` a column (works), `line_config` a reflected hole prop, `handle` an asset ref through reflect-assets' handle hook | `depth_bias` works; the rest planned: stage 3 | `a_retained_gizmo_renders`, render frame |
+| `GizmoAsset` (`lib.rs:325`), `GizmoAsset::new`, `Default`, the drawing API through `DerefMut` (`retained.rs:16-28`) | `const g = new GizmoAsset(); g.sphere([0, 0, 0], 1, "#f00").resolution(64);` every `Gizmos` drawing method, recorded in JS and replayed in Rust on add | works | `a_gizmo_asset_holds_what_gizmos_would_draw` |
+| `Assets<GizmoAsset>::add` | `assets.add(GizmoAsset, g)` through reflect-assets' hand map (`app.ts_hand_map`); returns an `AssetRef<GizmoAssetValue>`. `assets.set(ref, g2)` replaces its calls; `assets.get(ref)` gives `{ calls }` | works | `a_gizmo_asset_holds_what_gizmos_would_draw`, `set_replaces_a_gizmo_assets_calls` |
+| `Gizmo { handle, line_config, depth_bias }` (`retained.rs:67`) | `<Gizmo handle={ref} line_config={{ width: 4 }} depth_bias={-0.1} />`: `depth_bias` a column, `line_config` a reflected hole prop, `handle` an asset ref through reflect-assets' handle hook | works | `a_retained_gizmo_renders`, frame `after-retained.png` |
 | `GizmoAsset::buffer`, `config_typeid` (`lib.rs:333,348`) | no TS form: internals | — | — |
 | `GizmoHandles` (`lib.rs:205`) | no TS form: Bevy's per-group asset handles | — | — |
 
