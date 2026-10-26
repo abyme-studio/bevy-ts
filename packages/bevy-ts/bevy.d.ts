@@ -1038,6 +1038,8 @@ export interface AutoExposure extends Holes<{ range: { start: number; end: numbe
 export declare class Bloom extends Component {
   static readonly path: "bevy_post_process::bloom::settings::Bloom";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { intensity: number; low_frequency_boost: number; low_frequency_boost_curvature: number; high_pass_frequency: number; prefilter: { threshold?: number; threshold_softness?: number }; composite_mode: "EnergyConserving" | "Additive"; max_mip_dimension: number; scale: readonly [number, number] };
   static readonly tsxProps: { prefilter?: { threshold?: number; threshold_softness?: number } };
   declare intensity: f32;
   declare low_frequency_boost: f32;
@@ -1075,6 +1077,8 @@ export interface ChromaticAberration extends Holes<{ color_lut: string | AssetRe
 export declare class Vignette extends Component {
   static readonly path: "bevy_post_process::effect_stack::vignette::Vignette";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { intensity: number; radius: number; smoothness: number; roundness: number; center: readonly [number, number]; edge_compensation: number; color: ColorValue };
   static readonly tsxProps: { color?: ColorValue };
   declare intensity: f32;
   declare radius: f32;
@@ -1105,6 +1109,8 @@ export declare class MipBias extends Component {
 export declare class TemporalJitter extends Component {
   static readonly path: "bevy_render::camera::TemporalJitter";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { offset: readonly [number, number] };
   declare readonly offset: Vec2;
 }
 
@@ -1170,6 +1176,8 @@ export interface SpritePickingSettings extends Holes<{ picking_mode: "BoundingBo
 export declare class Anchor extends Component {
   static readonly path: "bevy_sprite::sprite::Anchor";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: readonly [number, number] };
   declare readonly value: Vec2;
 }
 
@@ -1192,6 +1200,8 @@ export type Text2d = InstanceType<typeof Text2d>;
 export declare class Text2dShadow extends Component {
   static readonly path: "bevy_sprite::text2d::Text2dShadow";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { offset: readonly [number, number]; color: ColorValue };
   static readonly tsxProps: { color?: ColorValue };
   declare readonly offset: Vec2;
 }
@@ -1398,6 +1408,8 @@ export type WorldText = InstanceType<typeof WorldText>;
 export declare class WorldTextStyle extends Component {
   static readonly path: "bevy_ts_material::world_text::WorldTextStyle";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { size: number; letter_spacing: number; width: number | null; anchor: readonly [number, number]; outline: readonly [number, ColorValue] | null; lit: boolean };
   static readonly tsxProps: { width?: number | null; outline?: readonly [number, ColorValue] | null };
   declare size: f32;
   declare letter_spacing: f32;
@@ -1508,6 +1520,8 @@ export type CalculatedClip = InstanceType<typeof CalculatedClip>;
 export declare class ComputedNode extends Component {
   static readonly path: "bevy_ui::ui_node::ComputedNode";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { size: readonly [number, number]; content_size: readonly [number, number]; scrollbar_size: readonly [number, number]; scroll_position: readonly [number, number]; outline_width: number; outline_offset: number; unrounded_size: readonly [number, number]; border: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; border_radius: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }; padding: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; inverse_scale_factor: number; em_size: number; rem_size: number };
   static readonly tsxProps: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; border_radius?: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }; padding?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; em_size?: number; rem_size?: number };
   declare readonly size: Vec2;
   declare readonly content_size: Vec2;
@@ -1597,6 +1611,8 @@ export type OverrideClip = InstanceType<typeof OverrideClip>;
 export declare class ScrollPosition extends Component {
   static readonly path: "bevy_ui::ui_node::ScrollPosition";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { value: readonly [number, number] };
   declare readonly value: Vec2;
 }
 
@@ -1618,6 +1634,8 @@ export type UiGlobalTransform = InstanceType<typeof UiGlobalTransform>;
 export declare class UiTransform extends Component {
   static readonly path: "bevy_ui::ui_transform::UiTransform";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { translation: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; scale: readonly [number, number]; rotation: { cos?: number; sin?: number } };
   static readonly tsxProps: { translation?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; rotation?: { cos?: number; sin?: number } };
   declare readonly scale: Vec2;
 }
@@ -1676,6 +1694,8 @@ export interface TextNodeFlags extends Holes<{ no_wrap_measure: readonly [number
 export declare class TextShadow extends Component {
   static readonly path: "bevy_ui::widget::text::TextShadow";
   static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { offset: readonly [number, number]; color: ColorValue };
   static readonly tsxProps: { color?: ColorValue };
   declare readonly offset: Vec2;
 }
