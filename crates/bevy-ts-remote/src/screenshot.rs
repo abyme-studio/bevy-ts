@@ -3,7 +3,8 @@
 //! Bevy's `Screenshot` observed by Bevy's `save_to_disk`. A shot waits for a ready run: the script
 //! started, Bevy's pipeline cache with nothing waiting, and no asset load in flight ([`ReadyPlugin`],
 //! [`loads`]). Under [`FixedStep`]
-//! time advances 1/60 s a ready frame and not at all otherwise, so a shot is the same at any load.
+//! time advances 1/60 s a ready frame and not at all otherwise, and every camera draws without
+//! Bevy's GPU culling, so a shot is the same at any load.
 
 use crate::{frame, internal, invalid, protocol, required};
 use bevy::asset::{RecursiveDependencyLoadState, ReflectAsset, ReflectHandle, UntypedAssetId, UntypedHandle};
@@ -15,6 +16,7 @@ use bevy::reflect::enums::VariantInfo;
 use bevy::reflect::{ReflectRef, TypeInfo, TypeRegistry};
 use bevy::remote::{BrpError, BrpResult};
 use bevy::render::render_resource::PipelineCache;
+use bevy::render::view::NoIndirectDrawing;
 use bevy::render::view::screenshot::{Captured, Capturing, Screenshot, ScreenshotCaptured, save_to_disk};
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::time::{TimeSystems, TimeUpdateStrategy};
@@ -92,6 +94,8 @@ pub fn pipelines_waiting(world: &World) -> Option<u64> {
 #[derive(Resource, Default, Debug)]
 pub struct Ready {
     pub frames: u64,
+    /// [`STEP`]s of [`FixedStep`] time taken so far.
+    pub steps: u64,
     /// This frame's [`loads`].
     pub loads: Loads,
 }
@@ -109,7 +113,12 @@ pub struct Loads {
 struct HandleTypes(HashMap<TypeId, bool>);
 
 /// Time advances [`STEP`] a ready frame and nothing otherwise, by Bevy's
-/// `TimeUpdateStrategy::ManualDuration`. Under `BEVY_TS_SCREENSHOT` or `BEVY_TS_FIXED_STEP=1`.
+/// `TimeUpdateStrategy::ManualDuration`. While a [`ShotWhenReady`] waits, it stops at the shot's
+/// `at` steps: a ready frame before a frame that was not (a load not yet asked for) stepped time
+/// too, and the shot's clock must not count it. Every camera spawned under it gets Bevy's
+/// `NoIndirectDrawing`: GPU culling places each instance with an atomic add, so the order of a
+/// batch's instances, and which of two at the same depth is drawn last, changes from frame to
+/// frame. Under `BEVY_TS_SCREENSHOT` or `BEVY_TS_FIXED_STEP=1`.
 #[derive(Resource)]
 pub struct FixedStep;
 
@@ -137,6 +146,11 @@ impl Plugin for ReadyPlugin {
             .init_resource::<Ready>()
             .init_resource::<HandleTypes>()
             .init_resource::<UpdateFrame>()
+            .add_observer(|add: On<Add<Camera>>, fixed: Option<Res<FixedStep>>, mut commands: Commands| {
+                if fixed.is_some() {
+                    commands.entity(add.entity).insert(NoIndirectDrawing);
+                }
+            })
             .add_systems(First, (note_frame, count_ready).chain().before(TimeSystems))
             .add_systems(Update, shoot_when_ready.run_if(resource_exists::<ShotWhenReady>));
     }
@@ -194,11 +208,14 @@ fn count_ready(world: &mut World) {
     let idle = pipelines_idle(world);
     let loads = loads(world);
     let now = started && idle && loads.loading == 0;
+    let cap = world.get_resource::<ShotWhenReady>().map_or(u64::MAX, |s| s.at);
     let mut ready = world.resource_mut::<Ready>();
     ready.frames = if now { ready.frames + 1 } else { 0 };
     ready.loads = loads;
+    let step = fixed && now && ready.steps < cap;
+    ready.steps += u64::from(step);
     if fixed && let Some(mut strategy) = world.get_resource_mut::<TimeUpdateStrategy>() {
-        *strategy = TimeUpdateStrategy::ManualDuration(if now { STEP } else { Duration::ZERO });
+        *strategy = TimeUpdateStrategy::ManualDuration(if step { STEP } else { Duration::ZERO });
     }
 }
 
@@ -585,5 +602,35 @@ mod tests {
         }
         let seen = &app.world().resource::<Seen>().0;
         assert_eq!(seen[2..], [Some(0); 4], "every update after the first render reads it: {seen:?}");
+    }
+
+    /// A ready frame, then one with a pipeline waiting, then ready frames: the shot's clock is its
+    /// `at` steps, not one more for the early ready frame.
+    #[test]
+    fn the_shot_clock_skips_a_ready_frame_before_a_wait() {
+        let mut app = App::new();
+        app.add_plugins((bevy::time::TimePlugin, FrameCountPlugin, ReadyPlugin))
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+            .insert_resource(FixedStep)
+            .insert_resource({
+                let mut shot = ShotWhenReady::new(std::env::temp_dir().join("bevy-ts-remote-never-written.png"));
+                shot.at = 5;
+                shot
+            });
+        app.finish();
+        app.cleanup();
+        let renders = app.world().resource::<PipelinesWaiting>().clone();
+        // Pipelines waiting after each render: none, then one, then none.
+        let mut waiting = [0, 1].into_iter().chain(std::iter::repeat(0));
+        let mut elapsed = None;
+        for _ in 0..20 {
+            let drawing = app.world().resource::<FrameCount>().0;
+            app.update();
+            renders.0.lock().unwrap().push_back((drawing, waiting.next().unwrap()));
+            if elapsed.is_none() && !app.world().contains_resource::<ShotWhenReady>() {
+                elapsed = Some(app.world().resource::<Time>().elapsed());
+            }
+        }
+        assert_eq!(elapsed, Some(STEP * 5), "the shot's clock");
     }
 }

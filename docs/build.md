@@ -70,9 +70,14 @@ needs once it loads are only queued in the render after; an asset that failed is
 --headless`) takes one shot with `BEVY_TS_SCREENSHOT=<path>`, at the 60th ready frame in a row: a
 frame on which the script has started, no pipeline is waiting and nothing is loading (after 60 s it shoots anyway,
 and warns). Under it, time runs on a fixed step, through Bevy's
-`TimeUpdateStrategy::ManualDuration`: 1/60 s a ready frame and none on a frame that is not ready. So the shot is the
-same picture at any machine load. `BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the
-same clock. `BEVY_TS_PIPELINE_TRACE=1` prints when the pipelines are ready
+`TimeUpdateStrategy::ManualDuration`: 1/60 s a ready frame and none on a frame that is not ready.
+The shot's clock is always 60 steps: a ready frame before one that was not (a load the script had
+not asked for yet) stepped time too, so the steps stop at 60. And every camera draws with Bevy's
+`NoIndirectDrawing`: Bevy's GPU culling places each instance with an atomic add, so which of two
+instances at the same depth is drawn last changes from frame to frame (a leaf of one tree over
+another's, in a few pixels). So the shot is the same picture, byte for byte, at any machine load.
+`BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the same clock and drawing; a
+`bevy-ts/screenshot` without it can differ in such pixels. `BEVY_TS_PIPELINE_TRACE=1` prints when the pipelines are ready
 ([native.md](native.md#project-engines)). Every bound above runs inside Update, so a frame that never
 finishes (a GPU driver that stops taking the engine's work, a script that never returns) would hang
 the run. The stall watchdog bounds it: a frame open for 30 s of wall time prints one line to

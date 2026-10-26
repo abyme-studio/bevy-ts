@@ -13,6 +13,7 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
 use bevy::remote::{BrpMessage, BrpSender, RemotePlugin};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::world_serialization::WorldAssetRoot;
 use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts::runtime::RuntimeInfo;
@@ -201,6 +202,45 @@ fn the_fixed_step_shot_is_the_same_at_any_load() {
     let quick = turning_shot("ready-fixed-quick", std::time::Duration::ZERO);
     let loaded = turning_shot("ready-fixed-loaded", std::time::Duration::from_millis(30));
     assert!(quick == loaded, "the two shots differ in {} of {} bytes", quick.iter().zip(&loaded).filter(|(a, b)| a != b).count(), quick.len());
+}
+
+/// `QUADS` copies of one textured quad in one plane facing the camera, each turned about the view
+/// axis: every pixel is at the same depth in all of them, so the copy drawn last decides its colour.
+/// Shot at the 30th ready frame on the fixed step, with `work` of extra time each frame.
+fn stacked_shot(name: &str, work: Duration) -> Vec<u8> {
+    const QUADS: usize = 64;
+    let dir = shots_dir(name);
+    let path = dir.join("stacked.png");
+    let mut app = engine(name, &path, 30);
+    app.insert_resource(FixedStep)
+        .add_systems(Startup, |mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {
+            let size = 64;
+            let texels = (0..size * size).flat_map(|i| [(i % size * 4) as u8, (i / size * 4) as u8, 128, 255]).collect();
+            let extent = Extent3d { width: size, height: size, depth_or_array_layers: 1 };
+            let texture = images.add(Image::new(extent, TextureDimension::D2, texels, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default()));
+            let material = materials.add(StandardMaterial { base_color: Color::WHITE, base_color_texture: Some(texture), unlit: true, ..default() });
+            let mesh = meshes.add(Rectangle::new(2.5, 2.5));
+            for i in 0..QUADS {
+                let turn = Quat::from_rotation_z(i as f32 * std::f32::consts::TAU / QUADS as f32);
+                commands.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(material.clone()), Transform::from_rotation(turn)));
+            }
+        })
+        .add_systems(Update, move || std::thread::sleep(work));
+    start(&mut app);
+    apply_script(&mut app);
+    until_shot(&mut app, &path);
+    png(&path).data.expect("the shot's pixels")
+}
+
+#[test]
+fn stacked_instances_at_one_depth_are_the_same_every_shot() {
+    let first = stacked_shot("ready-stacked-quick", Duration::ZERO);
+    let colours = first.chunks(4).map(|p| [p[0], p[1], p[2]]).collect::<std::collections::HashSet<_>>().len();
+    assert!(colours > 100, "the quads' texture is in the shot: {colours} colours");
+    for (i, work) in [Duration::from_millis(30), Duration::ZERO, Duration::from_millis(30)].into_iter().enumerate() {
+        let again = stacked_shot(&format!("ready-stacked-{i}"), work);
+        assert!(first == again, "shot {} differs in {} of {} bytes", i + 2, first.iter().zip(&again).filter(|(a, b)| a != b).count(), first.len());
+    }
 }
 
 /// A PNG of 4 x 4 RGBA pixels, one colour.
