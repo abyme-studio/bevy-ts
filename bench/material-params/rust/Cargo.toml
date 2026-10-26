@@ -1,0 +1,23 @@
+[package]
+name = "material-params-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# material-params, task 4.2: N owned script materials written every frame with assets.set, against
+# the same values re-keyed through <material kind> props. The whole engine (V8, TSX, the material
+# crate) from this tree, release, Bevy linked statically as what ships.
+
+[dependencies]
+bevy = { version = "0.20", default-features = false, features = ["3d", "png"] }
+bevy-ts = { path = "../../../crates/bevy-ts", features = ["pbr", "engine_type_data"] }
+bevy-ts-v8 = { path = "../../../crates/bevy-ts-v8" }
+bevy-ts-tsx = { path = "../../../crates/bevy-ts-tsx" }
+bevy-ts-material = { path = "../../../crates/bevy-ts-material" }
+bevy-ts-cli = { path = "../../../crates/bevy-ts-cli" }
+
+[patch.crates-io]
+bevy_render = { path = "../../../vendor/bevy_render" }
+
+[profile.release]
+debug = false
