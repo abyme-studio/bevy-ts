@@ -104,21 +104,15 @@ pub enum TsDepth {
 /// The deepest chain of sub and computed states the depth sets order.
 pub const MAX_DEPTH: u8 = 8;
 
-/// Orders the depth sets inside Bevy's transition sets; called once by the plugin.
+/// Orders the depth sets; called once by the plugin. They are not put in Bevy's transition sets:
+/// Bevy already puts each slot's sets there, and a second path is a redundant edge Bevy warns of.
 pub(crate) fn configure_depths(schedule: &mut Schedule) {
-    for d in 1..=MAX_DEPTH {
+    for d in 2..=MAX_DEPTH {
         schedule.configure_sets((
-            TsDepth::Exit(d).in_set(StateTransitionSystems::ExitSchedules),
-            TsDepth::Transition(d).in_set(StateTransitionSystems::TransitionSchedules),
-            TsDepth::Enter(d).in_set(StateTransitionSystems::EnterSchedules),
+            TsDepth::Exit(d).before(TsDepth::Exit(d - 1)),
+            TsDepth::Transition(d - 1).before(TsDepth::Transition(d)),
+            TsDepth::Enter(d - 1).before(TsDepth::Enter(d)),
         ));
-        if d > 1 {
-            schedule.configure_sets((
-                TsDepth::Exit(d).before(TsDepth::Exit(d - 1)),
-                TsDepth::Transition(d - 1).before(TsDepth::Transition(d)),
-                TsDepth::Enter(d - 1).before(TsDepth::Enter(d)),
-            ));
-        }
     }
 }
 
@@ -814,5 +808,24 @@ mod tests {
         s.slots.vacated.clear();
         assert_eq!(s.assign("game::Late", 1), Ok(0), "a vacated slot is reused at its own depth");
         assert_eq!(s.assign("game::Deep", 2), Ok(4), "never at another");
+    }
+
+    #[test]
+    fn the_depth_sets_add_no_redundant_edge() {
+        use bevy::ecs::schedule::{LogLevel, ScheduleBuildSettings};
+        let mut world = World::new();
+        world.init_resource::<Schedules>();
+        {
+            let mut schedules = world.resource_mut::<Schedules>();
+            let schedule = schedules.entry(StateTransition);
+            schedule.set_build_settings(ScheduleBuildSettings { hierarchy_detection: LogLevel::Error, ..default() });
+            configure_depths(schedule);
+        }
+        make::<0>(&mut world);
+        make::<1>(&mut world);
+        set_depth::<0>(&mut world, 1);
+        set_depth::<1>(&mut world, 2);
+        let mut schedule = world.resource_mut::<Schedules>().remove(StateTransition).unwrap();
+        schedule.initialize(&mut world).expect("no redundant edge");
     }
 }
