@@ -53,7 +53,7 @@ const processes = {
   "rust-events-affected": { cmd: "bash -c 'set -o pipefail; mkdir -p target; LAND_BASE=origin/main scripts/affected-gate.sh 2>&1 | tee target/rust-events-affected.log | tail -60'" },
   // rust-events: bevy-ts alone and with reflect, and the CLI, checked in the gate slot.
   "rust-events-check": {
-    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo check -p bevy-ts --all-targets && cargo check -p bevy-ts --features reflect --all-targets && cargo check -p bevy-ts-cli --all-targets\" 2>&1 | grep -v ld64 | tee target/rust-events-check.log | grep -E \"^error|^warning|-->|Finished\" | tail -80'",
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:rust-events -- bash -c \"cargo check -p bevy-ts -p bevy-ts-remote -p bevy-ts-levels -p bevy-ts-cli --all-targets && cargo check -p bevy-ts --features reflect --all-targets && cargo check -p bevy-ts-cli --all-targets\" 2>&1 | grep -v ld64 | tee target/rust-events-check.log | grep -E \"^error|^warning|-->|Finished\" | tail -80'",
   },
   // ts-component-heap-fields: protocol types regenerated, the touched crates' unit tests and their heap, save, protocol and TSX tests, tsc, in the gate slot.
   "ts-heap-fields-test": {
@@ -669,6 +669,10 @@ const processes = {
   },
   // Change pixel-art-2d, design 8: bench/pixel-2d's arms, 3 runs each (8 with RUNS=8), in a check slot.
   "pixel-2d-bench": { cmd: "bash -c 'set -o pipefail; bench/pixel-2d/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tee -a bench/pixel-2d/results/runs.txt | grep -E \"^arm=|load|error\"'" },
+||||||| parent of 39eda8057 (feat(relationships): ts relationship pairs registered by id with bevy's hooks, accessors and packed target reads)
+  // Change custom-relationships: bevy-ts checked with and without reflect, in a check slot.
+  "custom-relationships-check": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"cargo check -p bevy-ts -p bevy-ts-remote -p bevy-ts-levels -p bevy-ts-cli --all-targets && cargo check -p bevy-ts --features reflect --all-targets\" 2>&1 | grep -v ld64 | tee target/custom-relationships-check.log | grep -E -A7 \"^error|^warning|Finished\" | tail -150'" },
+  "custom-relationships-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"scripts/gen-protocol.sh && cargo test -p bevy-ts -p bevy-ts-remote -p bevy-ts-levels --lib --tests && cargo test -p bevy-ts --features reflect --lib && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --test it -- relationships:: ecs_queries:: heap_fields:: protocol:: saves:: reload:: tsx::\" 2>&1 | grep -v ld64 | tee target/custom-relationships-test.log | grep -E -A12 \"^error|panicked|FAILED|^test result\" | tail -150'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

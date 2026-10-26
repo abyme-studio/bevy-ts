@@ -266,6 +266,43 @@ export declare abstract class SceneComponent extends Component {
   // `static scene(props)` is not declared here, so a subclass writes it without `override`
   // (deno checks with noImplicitOverride). JSX reads its props type from the subclass.
 }
+/**
+ * A relationship source, Bevy's `#[relationship]`: `class Likes extends Relationship { declare
+ * target: Entity }`. The first field is `target: Entity`; other fields may follow. Inserting it
+ * puts its entity on the target's list (a `RelationshipTarget(Likes)` class names the pair). It
+ * is immutable, as `ChildOf` is: `Mut<Likes>` fails the load, and a script retargets by inserting
+ * it again, `commands.entity(e).insert(Likes.of({ target }))`. A target that does not exist, or
+ * the source's own entity, removes it with a warning.
+ */
+export declare abstract class Relationship extends Component {
+  /** Lets the source point at its own entity (Bevy's `allow_self_referential`). */
+  static readonly allowSelfReferential?: boolean;
+}
+declare const targetBrand: unique symbol;
+/** A relationship target's base: no fields, read-only query data. */
+export declare abstract class RelationshipTargetBase extends Component {
+  readonly [targetBrand]: true;
+}
+export interface RelationshipTargetOptions {
+  /** Despawning the target despawns its sources; linked cloning clones them. Bevy's `linked_spawn`. */
+  readonly linkedSpawn?: boolean;
+}
+/**
+ * A relationship target, Bevy's `#[relationship_target]`: `class LikedBy extends
+ * RelationshipTarget(Likes) {}`. The list of entities whose `Likes` points here, kept by Bevy's
+ * hooks. A query reads it as a `TargetList` (`Query<[Entity, LikedBy]>`, `Option<LikedBy>`, and
+ * in filters); writes go through the source. It is never inserted, saved or authored: it is
+ * derived from the sources.
+ */
+export declare function RelationshipTarget(source: abstract new () => Relationship, options?: RelationshipTargetOptions): typeof RelationshipTargetBase;
+/** A target's row in a query: its sources, read-only. Reused per row; `toArray()` copies it. */
+export interface TargetList extends Iterable<Entity> {
+  readonly length: number;
+  /** The `i`th source, from the end when negative. */
+  at(i: number): Entity | undefined;
+  includes(e: Entity): boolean;
+  toArray(): Entity[];
+}
 /** A Rust component reachable only through reflection (a ported type the layout rule refuses). */
 export declare abstract class ReflectComponent extends Data { readonly [tierBrand]?: "reflect" }
 export declare abstract class Resource extends Data { readonly [resourceBrand]?: true }
@@ -721,6 +758,7 @@ type Item<D> =
   D extends Entity ? Entity
   : D extends OptionData<infer X> ? Item<X> | undefined
   : D extends Has<unknown> ? boolean
+  : D extends { readonly [targetBrand]: true } ? TargetList
   : D extends Ref<infer T> ? (T extends ReflectComponent ? ReadView<ReflectRow<T>> : LayoutRow<T>) & RefTicks
   : D extends AnyOf<infer Ts> ? { -readonly [I in keyof Ts]: Item<Ts[I]> | undefined }
   : D extends Mut<infer T> ? (T extends { readonly [computedBrand]: true } ? Computed : T extends ReflectComponent ? ReflectRow<T> : MutView<T> & HolesOf<T>)

@@ -585,6 +585,39 @@ class Data {
   }
 }
 export class Component extends Data {}
+
+/** A target class's source class (custom-relationships). */
+const TARGET_OF = Symbol("bevy-ts.targetOf");
+
+/**
+ * A relationship source, Bevy's `#[relationship]`: its first field is `target: Entity`, and
+ * inserting it puts its entity on the target's list. Immutable, as `ChildOf` is: retarget by
+ * inserting it again. `static allowSelfReferential = true` lets it point at its own entity.
+ */
+export class Relationship extends Component {}
+
+/**
+ * A relationship target, Bevy's `#[relationship_target]`: the list of entities whose `Source`
+ * points here, kept by Bevy's hooks. No fields; read-only query data. `{ linkedSpawn: true }`
+ * despawns (and, with linked cloning, clones) the sources with it.
+ */
+export function RelationshipTarget(Source, opts = {}) {
+  if (typeof Source !== "function" || !(Source.prototype instanceof Relationship)) {
+    throw new TypeError(`RelationshipTarget(${Source && Source.name}): pass a class that extends Relationship`);
+  }
+  const T = class extends Component {};
+  T[TARGET_OF] = { source: Source, linkedSpawn: opts.linkedSpawn === true };
+  return T;
+}
+
+/** A component class's half of a relationship, as the manifest carries it. */
+function relationshipOf(C) {
+  const t = C[TARGET_OF];
+  if (t) return { role: "target", counterpart: t.source.componentName, ...(t.linkedSpawn ? { linkedSpawn: true } : {}) };
+  if (C.prototype instanceof Relationship) return { role: "source", ...(C.allowSelfReferential === true ? { allowSelfReferential: true } : {}) };
+  return undefined;
+}
+
 /** Bevy's `#[derive(SceneComponent)]`: a component whose `static scene(props)` is spawned with it. */
 export class SceneComponent extends Component {}
 /** A Rust component reachable only through reflection: typed, usable in filters and TSX. */
@@ -778,6 +811,8 @@ function dataFn(C, d) {
     });
     const decl = { name: d.name, fields, location: at };
     if (d.id) decl.id = d.id;
+    const relationship = d.kind === "component" ? relationshipOf(C) : undefined;
+    if (relationship) decl.relationship = relationship;
     if (d.kind === "entityEvent") Object.assign(decl, { entity: true, propagate: !!d.propagate });
     if (d.kind === "event") Object.assign(decl, { entity: false, propagate: false });
     own("decl", decl);
@@ -2691,6 +2726,12 @@ function end() {
     }
     seen.set(key, C);
   }
+  // A source's counterpart is the target that names it.
+  for (const C of g.classes) {
+    const t = C[KIND] === "component" && C.decl && C.decl.relationship;
+    const source = t && t.role === "target" && C[TARGET_OF].source;
+    if (source && source.decl && source.decl.relationship) source.decl.relationship.counterpart = C.componentName;
+  }
   S.gens.set(g.number, g);
   const byKind = (k) => g.classes.filter((C) => C[KIND] === k);
   // A computed state's function, called by Rust when a source transitions.
@@ -3000,6 +3041,49 @@ function resolveClass(C, r) {
   C.size = r.layout.size;
   C.Read = generateAccessor(C.componentName, r.layout, false);
   C.Write = generateAccessor(C.componentName, r.layout, true);
+  // A target's column is Rust's packed lists: row offsets, then entity pairs, as `u32`s.
+  if (C[TARGET_OF]) {
+    C.views = ["u32"];
+    C.Read = C.Write = TargetList;
+  }
+}
+
+/**
+ * A relationship target's row in a query: its sources, read-only. The frame is one `u32` array:
+ * `len + 1` row offsets into the array itself, then (index, generation) pairs. Reused per row,
+ * as every accessor is; `toArray()` copies it.
+ */
+class TargetList {
+  get length() {
+    const o = this[VIEW_KEY.u32], r = this[ROW];
+    return (o[r + 1] - o[r]) >>> 1;
+  }
+  /** The `i`th source, from the end when negative. */
+  at(i) {
+    const o = this[VIEW_KEY.u32], r = this[ROW];
+    const n = (o[r + 1] - o[r]) >>> 1;
+    if (i < 0) i += n;
+    if (!(i >= 0 && i < n)) return undefined;
+    const k = o[r] + i * 2;
+    return o[k] + o[k + 1] * 4294967296;
+  }
+  includes(e) {
+    const o = this[VIEW_KEY.u32], r = this[ROW];
+    for (let k = o[r]; k < o[r + 1]; k += 2) if (o[k] + o[k + 1] * 4294967296 === e) return true;
+    return false;
+  }
+  toArray() {
+    const o = this[VIEW_KEY.u32], r = this[ROW];
+    const out = [];
+    for (let k = o[r]; k < o[r + 1]; k += 2) out.push(o[k] + o[k + 1] * 4294967296);
+    return out;
+  }
+  *[Symbol.iterator]() {
+    yield* this.toArray();
+  }
+  toJSON() {
+    return this.toArray();
+  }
 }
 
 /** Accessor classes for a layout that is not a class (a `Local`). */

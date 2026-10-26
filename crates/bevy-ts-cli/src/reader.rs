@@ -247,7 +247,7 @@ struct Param {
 
 /// Bases a data class extends, from `bevy-ts`. `States(...)`, `SystemSet` and `ScheduleLabel` are
 /// read too.
-const DATA: &[&str] = &["Component", "SceneComponent", "ReflectComponent", "Resource", "Message", "Event", "EntityEvent"];
+const DATA: &[&str] = &["Component", "SceneComponent", "ReflectComponent", "Relationship", "Resource", "Message", "Event", "EntityEvent"];
 
 /// `On<E>`'s own members, beside the event's fields it derefs to: no TS event field may take one
 /// of these names (an `EntityEvent`'s `entity` is its target, skipped before the check).
@@ -375,6 +375,11 @@ fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
         }
         Expression::CallExpression(call) => {
             let Expression::Identifier(callee) = &call.callee else { return None };
+            // `RelationshipTarget(Likes, { linkedSpawn: true })`: a component the runtime pairs.
+            if bevy_ts_name(f, callee.name.as_str()) == Some("RelationshipTarget") {
+                let d = DataClass { name: id.name.to_string(), span: id.span, base: "RelationshipTarget".into(), states: Vec::new(), path: None, propagate: false, fields: Vec::new(), scene: None, errors: Vec::new() };
+                return Some(class_body(d, c, f));
+            }
             if !matches!(bevy_ts_name(f, callee.name.as_str()), Some("States" | "SubStates" | "ComputedStates")) {
                 return None;
             }
@@ -386,7 +391,12 @@ fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
         }
         _ => return None,
     };
-    let mut d = DataClass { name: id.name.to_string(), span: id.span, base, states, path: None, propagate: false, fields: Vec::new(), scene: None, errors: Vec::new() };
+    let d = DataClass { name: id.name.to_string(), span: id.span, base, states, path: None, propagate: false, fields: Vec::new(), scene: None, errors: Vec::new() };
+    Some(class_body(d, c, f))
+}
+
+/// A data class's static options, fields and scene props.
+fn class_body(mut d: DataClass, c: &Class, f: &FileInfo) -> DataClass {
     for el in &c.body.body {
         match el {
             ClassElement::PropertyDefinition(p) if !p.computed => {
@@ -435,7 +445,7 @@ fn data_class(c: &Class, f: &FileInfo) -> Option<DataClass> {
             _ => {}
         }
     }
-    Some(d)
+    d
 }
 
 /// The Rust-style module path of a root-relative file: `src/units/tank.ts` is `units::tank`.
@@ -856,7 +866,7 @@ impl Reader<'_> {
         let (line, column) = at(c.span);
         let export = file.exports.get(&c.name).and_then(|e| e.first()).cloned();
         let kind = match c.base.as_str() {
-            "Component" => "component",
+            "Component" | "Relationship" | "RelationshipTarget" => "component",
             "SceneComponent" => "sceneComponent",
             "ReflectComponent" => "reflectComponent",
             "Resource" => "resource",
