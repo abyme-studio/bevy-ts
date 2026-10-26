@@ -3,7 +3,7 @@
 // type registry. Do not edit.
 // `bevy-ts/bevy`: Rust components and resources TS can name. Column classes have a native
 // layout read from reflection; the rest are handles for With/Without filters and TSX.
-import { array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, reflectClass, u16, u32, u8, vec2, vec3, vec4 } from "bevy-ts";
+import { array, asset, bool, entity, enumOf, f32, f64, i16, i32, i8, nativeComponent, nativeResource, quat, reflectClass, rustAsset, rustEntityEvent, rustEvent, rustGeneric, rustMessage, u16, u32, u8, vec2, vec3, vec4 } from "bevy-ts";
 
 export { Time, Transform } from "bevy-ts";
 
@@ -630,3 +630,85 @@ export const ShaderBuffer = asset("bevy_render::storage::ShaderBuffer");
 export const ColorMaterial = asset("bevy_sprite_render::mesh2d::color_material::ColorMaterial");
 
 export const SpriteMeshMaterial = asset("bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial", { of: false });
+
+// Rust messages and events, by type path (rust-events).
+export const AppExit = rustMessage("bevy_app::app::AppExit");
+export const GamepadAxisChangedEvent = rustMessage("bevy_input::gamepad::GamepadAxisChangedEvent");
+export const GamepadButtonChangedEvent = rustMessage("bevy_input::gamepad::GamepadButtonChangedEvent");
+export const GamepadButtonStateChangedEvent = rustMessage("bevy_input::gamepad::GamepadButtonStateChangedEvent");
+export const GamepadConnectionEvent = rustMessage("bevy_input::gamepad::GamepadConnectionEvent");
+export const GamepadEvent = rustMessage("bevy_input::gamepad::GamepadEvent");
+export const GamepadRumbleRequest = rustMessage("bevy_input::gamepad::GamepadRumbleRequest");
+export const RawGamepadAxisChangedEvent = rustMessage("bevy_input::gamepad::RawGamepadAxisChangedEvent");
+export const RawGamepadButtonChangedEvent = rustMessage("bevy_input::gamepad::RawGamepadButtonChangedEvent");
+export const RawGamepadEvent = rustMessage("bevy_input::gamepad::RawGamepadEvent");
+export const DoubleTapGesture = rustMessage("bevy_input::gestures::DoubleTapGesture");
+export const PanGesture = rustMessage("bevy_input::gestures::PanGesture");
+export const PinchGesture = rustMessage("bevy_input::gestures::PinchGesture");
+export const RotationGesture = rustMessage("bevy_input::gestures::RotationGesture");
+export const KeyboardFocusLost = rustMessage("bevy_input::keyboard::KeyboardFocusLost");
+export const KeyboardInput = rustMessage("bevy_input::keyboard::KeyboardInput");
+export const MouseButtonInput = rustMessage("bevy_input::mouse::MouseButtonInput");
+export const MouseMotion = rustMessage("bevy_input::mouse::MouseMotion");
+export const MouseWheel = rustMessage("bevy_input::mouse::MouseWheel");
+export const TouchInput = rustMessage("bevy_input::touch::TouchInput");
+export const AcquireFocus = rustEntityEvent("bevy_input_focus::AcquireFocus");
+export const FocusGained = rustEntityEvent("bevy_input_focus::gained_and_lost::FocusGained");
+export const FocusLost = rustEntityEvent("bevy_input_focus::gained_and_lost::FocusLost");
+export const PointerHits = rustMessage("bevy_picking::backend::PointerHits");
+export const PointerCancel = rustEntityEvent("bevy_picking::events::PointerCancel", true);
+export const PointerClick = rustEntityEvent("bevy_picking::events::PointerClick", true);
+export const PointerDrag = rustEntityEvent("bevy_picking::events::PointerDrag", true);
+export const PointerDragDrop = rustEntityEvent("bevy_picking::events::PointerDragDrop", true);
+export const PointerDragEnd = rustEntityEvent("bevy_picking::events::PointerDragEnd", true);
+export const PointerDragEnter = rustEntityEvent("bevy_picking::events::PointerDragEnter", true);
+export const PointerDragLeave = rustEntityEvent("bevy_picking::events::PointerDragLeave", true);
+export const PointerDragOver = rustEntityEvent("bevy_picking::events::PointerDragOver", true);
+export const PointerDragStart = rustEntityEvent("bevy_picking::events::PointerDragStart", true);
+export const PointerEnter = rustEntityEvent("bevy_picking::events::PointerEnter", true);
+export const PointerLeave = rustEntityEvent("bevy_picking::events::PointerLeave", true);
+export const PointerMove = rustEntityEvent("bevy_picking::events::PointerMove", true);
+export const PointerOut = rustEntityEvent("bevy_picking::events::PointerOut", true);
+export const PointerOver = rustEntityEvent("bevy_picking::events::PointerOver", true);
+export const PointerPress = rustEntityEvent("bevy_picking::events::PointerPress", true);
+export const PointerRelease = rustEntityEvent("bevy_picking::events::PointerRelease", true);
+export const PointerScroll = rustEntityEvent("bevy_picking::events::PointerScroll", true);
+export const PointerInput = rustMessage("bevy_picking::pointer::PointerInput");
+export const ScreenshotCaptured = rustEntityEvent("bevy_render::view::window::screenshot::ScreenshotCaptured");
+export const WorldLoaded = rustMessage("bevy_ts::saves::WorldLoaded");
+export const WorldSaved = rustMessage("bevy_ts::saves::WorldSaved");
+export const Activate = rustEntityEvent("bevy_ui_widgets::Activate");
+export const SetChecked = rustEntityEvent("bevy_ui_widgets::checkbox::SetChecked");
+export const ToggleChecked = rustEntityEvent("bevy_ui_widgets::checkbox::ToggleChecked");
+export const RequestClose = rustEntityEvent("bevy_ui_widgets::dialog::RequestClose");
+export const ReselectListRow = rustEntityEvent("bevy_ui_widgets::list::ReselectListRow");
+export const SetSelected = rustEntityEvent("bevy_ui_widgets::list::SetSelected");
+export const MenuEvent = rustEntityEvent("bevy_ui_widgets::menu::MenuEvent");
+export const SetSliderValue = rustEntityEvent("bevy_ui_widgets::slider::SetSliderValue");
+export const AppLifecycle = rustMessage("bevy_window::event::AppLifecycle");
+export const CursorEntered = rustMessage("bevy_window::event::CursorEntered");
+export const CursorLeft = rustMessage("bevy_window::event::CursorLeft");
+export const CursorMoved = rustMessage("bevy_window::event::CursorMoved");
+export const FileDragAndDrop = rustMessage("bevy_window::event::FileDragAndDrop");
+export const Ime = rustMessage("bevy_window::event::Ime");
+export const RequestRedraw = rustMessage("bevy_window::event::RequestRedraw");
+export const WindowBackendScaleFactorChanged = rustMessage("bevy_window::event::WindowBackendScaleFactorChanged");
+export const WindowCloseRequested = rustMessage("bevy_window::event::WindowCloseRequested");
+export const WindowClosed = rustMessage("bevy_window::event::WindowClosed");
+export const WindowClosing = rustMessage("bevy_window::event::WindowClosing");
+export const WindowCreated = rustMessage("bevy_window::event::WindowCreated");
+export const WindowDestroyed = rustMessage("bevy_window::event::WindowDestroyed");
+export const WindowEvent = rustMessage("bevy_window::event::WindowEvent");
+export const WindowFocused = rustMessage("bevy_window::event::WindowFocused");
+export const WindowMoved = rustMessage("bevy_window::event::WindowMoved");
+export const WindowOccluded = rustMessage("bevy_window::event::WindowOccluded");
+export const WindowResized = rustMessage("bevy_window::event::WindowResized");
+export const WindowScaleFactorChanged = rustMessage("bevy_window::event::WindowScaleFactorChanged");
+export const WindowThemeChanged = rustMessage("bevy_window::event::WindowThemeChanged");
+export const WorldInstanceReady = rustEntityEvent("bevy_world_serialization::world_asset_spawner::WorldInstanceReady");
+export const Gltf = rustAsset("bevy_gltf::assets::Gltf");
+export const Shader = rustAsset("bevy_shader::shader::Shader");
+export const Font = rustAsset("bevy_text::font::Font");
+export const AssetEvent = rustGeneric("AssetEvent", { "AnimationClip": rustMessage("bevy_asset::event::AssetEvent<bevy_animation::AnimationClip>"), "AnimationGraph": rustMessage("bevy_asset::event::AssetEvent<bevy_animation::graph::AnimationGraph>"), "Gltf": rustMessage("bevy_asset::event::AssetEvent<bevy_gltf::assets::Gltf>"), "Image": rustMessage("bevy_asset::event::AssetEvent<bevy_image::image::Image>"), "TextureAtlasLayout": rustMessage("bevy_asset::event::AssetEvent<bevy_image::texture_atlas::TextureAtlasLayout>"), "Mesh": rustMessage("bevy_asset::event::AssetEvent<bevy_mesh::mesh::Mesh>"), "StandardMaterial": rustMessage("bevy_asset::event::AssetEvent<bevy_pbr::pbr_material::StandardMaterial>"), "ShaderBuffer": rustMessage("bevy_asset::event::AssetEvent<bevy_render::storage::ShaderBuffer>"), "Shader": rustMessage("bevy_asset::event::AssetEvent<bevy_shader::shader::Shader>"), "ColorMaterial": rustMessage("bevy_asset::event::AssetEvent<bevy_sprite_render::mesh2d::color_material::ColorMaterial>"), "SpriteMeshMaterial": rustMessage("bevy_asset::event::AssetEvent<bevy_sprite_render::sprite_mesh::sprite_mesh_material::SpriteMeshMaterial>"), "Font": rustMessage("bevy_asset::event::AssetEvent<bevy_text::font::Font>") });
+export const FocusedInput = rustGeneric("FocusedInput", { "KeyboardInput": rustEntityEvent("bevy_input_focus::FocusedInput<bevy_input::keyboard::KeyboardInput>") });
+export const ValueChange = rustGeneric("ValueChange", { "Entity": rustEntityEvent("bevy_ui_widgets::ValueChange<bevy_ecs::entity::Entity>"), "bool": rustEntityEvent("bevy_ui_widgets::ValueChange<bool>"), "Option<Entity>": rustEntityEvent("bevy_ui_widgets::ValueChange<core::option::Option<bevy_ecs::entity::Entity>>"), "f32": rustEntityEvent("bevy_ui_widgets::ValueChange<f32>") });
