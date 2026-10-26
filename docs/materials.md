@@ -133,13 +133,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
   first line (as `bevy_ts_get_tag`), so errors on that line keep their columns.
 - On a glTF scene root, each mesh it swaps takes the root's values and follows them.
 - An owned instance (`<material asset>`) takes no instance props; its entities read the defaults.
-- Limits: Bevy packs every entity's values into one storage buffer (`GpuComponentArrayBuffer`) and
-  gives each entity a `MeshTag`, its row. An entity may have one `MeshTag`: one bevy-ts did not
-  set is kept, the entity takes no instance params, and an error names the entity and element. A
-  tag set after bevy-ts gave the entity its row is not caught, and Bevy then writes the row it
-  names: set none on an entity with instance params. A kind's own
-  prepass or shadow shader cannot read instance values. Any change uploads the whole buffer, 256
-  bytes per entity (2.5 MB at 10k).
+- Limits: bevy-ts packs every entity's values into one storage buffer and gives each entity a
+  `MeshTag`, its row. An entity may have one `MeshTag`: one bevy-ts did not set is kept, the
+  entity takes no instance params, and an error names the entity and element. A tag set after
+  bevy-ts gave the entity its row is not caught, and the entity then draws the row it names: set
+  none on an entity with instance params. A kind's own prepass or shadow shader cannot read
+  instance values. Any change uploads the whole buffer once that frame, 256 bytes per entity
+  (2.5 MB at 10k).
 
 ## What lives where
 

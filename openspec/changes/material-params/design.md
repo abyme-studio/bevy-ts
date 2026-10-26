@@ -63,8 +63,11 @@ through its own instance param); a kind's own prepass shader reading instance va
    - Types as `params`, laid out by the same `ParamsLayout` rules (they hold in a storage buffer).
      At most 256 bytes; more fails at `material()`. Names follow the param rules and may not equal
      a param, texture, sampler, `instance`, `instances`, or `<Struct>Instance`.
-   - One global component, `ScriptInstance([u32; 64])`, with Bevy's `GpuComponentArrayBuffer`:
-     one storage buffer, each entity's index in its `MeshTag`. Each kind with instance params adds
+   - One global component, `ScriptInstance([u32; 64])`, packed by bevy-ts into one storage
+     buffer, each entity's index in its `MeshTag`. Not Bevy's `GpuComponentArrayBuffer`: its
+     packing system is private and unordered, so an entity that got its values and lost them
+     before it ran panicked its removal. A row is written with the component, dropped by its
+     remove hook, and the buffer uploaded once a frame in `Last`. Each kind with instance params adds
      a read-only storage binding after its textures and appends
      `struct GlowInstance { hover: f32, ... }`, `var<storage, read> instances: array<GlowInstance>`
      and `fn instance(i: u32) -> GlowInstance`, read as `instance(in.instance_index)`.

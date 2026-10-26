@@ -753,3 +753,34 @@ fn a_kind_without_instance_params_adds_no_script_instance() {
     assert!(app.world().get::<bevy_ts_material::ScriptInstance>(e).is_none());
     assert!(app.world().get::<bevy::mesh::MeshTag>(e).is_none());
 }
+
+/// Each `ScriptInstance` holder's `MeshTag` indexes its own values, and there is one row each.
+fn rows_hold(app: &mut App) {
+    let world = app.world_mut();
+    let held: Vec<(Entity, [u32; 64])> = world.query::<(Entity, &bevy_ts_material::ScriptInstance)>().iter(world).map(|(e, s)| (e, s.data)).collect();
+    for (e, data) in &held {
+        assert_eq!(bevy_ts_material::instance::packed(world, *e), Some(*data), "{e}'s MeshTag reads its own row");
+    }
+    assert_eq!(bevy_ts_material::instance::rows(world), held.len(), "one row per holder");
+}
+
+#[test]
+fn an_entity_spawned_and_gone_the_next_frame_packs_and_unpacks_its_row() {
+    // A new bullet each frame, keyed by the frame: last frame's leaves as this one's mounts.
+    let src = "import { app, signal, For, Update, type Local, type u32 } from \"bevy-ts\";\nimport { color, f32, material } from \"bevy-ts/material\";\nimport glow from \"./glow.wgsl\";\n\nexport const Glow = material(\"game::Glow\", { params: { color: color }, instance: { hover: f32 }, fragment: glow });\nexport const [shots, setShots] = signal<number[]>([0]);\nexport function tick(frames: Local<{ n: u32 }>) { frames.n += 1; setShots([frames.n]); }\napp.addSystems(Update, tick);\n\napp.scene(\"s\", () => (\n  <>\n    <entity name=\"still\"><mesh shape=\"cuboid\" /><material kind={Glow} color=\"#f80\" hover={7} /></entity>\n    <For each={shots} key={(n: number) => `${n}`}>{(n: number) => <entity name=\"bullet\"><mesh shape=\"cuboid\" /><material kind={Glow} color=\"#f80\" hover={n} /></entity>}</For>\n  </>\n));\n";
+    let (_dir, mut app) = setup("materials-instance-churn", src);
+    // Rust despawns a bullet the frame after it took its values, before the reconcile runs.
+    app.add_systems(Update, |q: Query<(Entity, &Name), With<bevy_ts_material::ScriptInstance>>, mut commands: Commands| {
+        for (e, n) in &q {
+            if n.as_str() == "bullet" {
+                commands.entity(e).despawn();
+            }
+        }
+    });
+    for _ in 0..12 {
+        app.update();
+        rows_hold(&mut app);
+    }
+    assert_eq!(hover(&mut app, "still"), Some(7.0));
+    assert!(bevy_ts_material::instance::rows(app.world()) >= 1);
+}

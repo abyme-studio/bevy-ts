@@ -1,15 +1,23 @@
 //! Per-entity `instance` params (design decision 4): one global component, [`ScriptInstance`],
-//! packed by Bevy's `GpuComponentArrayBuffer` into one storage buffer that every kind with
-//! instance params binds after its textures; each entity's index is its `MeshTag`. Opt-in: only
-//! an entity of a kind that declares `instance` gets one. A `MeshTag` bevy-ts did not set is kept,
-//! and the entity gets no `ScriptInstance`.
+//! packed into one storage buffer that every kind with instance params binds after its textures;
+//! each entity's row is its `MeshTag`. Opt-in: only an entity of a kind that declares `instance`
+//! gets one. A `MeshTag` bevy-ts did not set is kept, and the entity gets no `ScriptInstance`.
+//!
+//! bevy-ts packs the rows itself, not through Bevy's `GpuComponentArrayBuffer`, whose packing
+//! system cannot be ordered: an entity that got its values and lost them before it ran panicked
+//! Bevy's removal. Here a row is written when [`put`] writes the component, taken by the
+//! component's remove hook (a despawn too), and the buffer is uploaded once, in `Last`.
 
 use crate::layout::{Bindings, INSTANCE_BYTES};
 use crate::render::{ScriptMaterial, ScriptMaterial3d};
-use bevy::ecs::query::QueryItem;
+use bevy::asset::RenderAssetUsages;
+use bevy::ecs::entity::EntityHashMap;
+use bevy::ecs::lifecycle::HookContext;
+use bevy::ecs::world::DeferredWorld;
 use bevy::mesh::MeshTag;
 use bevy::prelude::*;
-use bevy::render::gpu_component_array_buffer::{GpuComponentArray, GpuComponentArrayBuffer, GpuComponentArrayBufferPlugin};
+use bevy::render::render_resource::BufferUsages;
+use bevy::render::storage::{ShaderBuffer, ShaderBufferData};
 use bevy_ts::backend::SourceLocation;
 use bevy_ts::log::{LogLevel, ScriptLog};
 use serde_json::{Map, Value};
@@ -17,8 +25,11 @@ use serde_json::{Map, Value};
 /// Words of one entity's instance params: [`INSTANCE_BYTES`] bytes.
 pub const WORDS: usize = INSTANCE_BYTES / 4;
 
-/// One entity's instance params, laid out by its kind's instance struct.
+/// One entity's instance params, laid out by its kind's instance struct. Given and taken only
+/// through [`put`] and [`remove`] (a despawn is fine): a `ScriptInstance` removed another way
+/// leaves its `MeshTag`, which the next [`put`] would take for a user's.
 #[derive(Component, Clone, Debug, PartialEq)]
+#[component(on_remove = take_row)]
 pub struct ScriptInstance {
     pub data: [u32; WORDS],
     /// The kind it is laid out for, so a changed schema re-encodes it by name.
@@ -38,33 +49,101 @@ impl ScriptInstance {
 #[derive(Component, Clone, Debug)]
 pub struct KeptMeshTag;
 
-impl GpuComponentArrayBuffer for ScriptInstance {
-    type QueryData = &'static ScriptInstance;
-    // Every holder gets a row, a glTF root too (its meshes copy it): Bevy's buffer drops a row for
-    // each removed `ScriptInstance` and panics on one it never packed. A quiet frame packs nothing.
-    type QueryFilter = Changed<ScriptInstance>;
-    type Out = [u32; WORDS];
+/// Every `ScriptInstance`'s row: row `i` is `entities[i]`'s values, and its `MeshTag` is `i`.
+#[derive(Resource, Default)]
+pub struct Instances {
+    /// The storage buffer, with an app that has a renderer's `ShaderBuffer` assets.
+    buffer: Option<Handle<ShaderBuffer>>,
+    rows: EntityHashMap<u32>,
+    entities: Vec<Entity>,
+    data: Vec<[u32; WORDS]>,
+    dirty: bool,
+}
 
-    fn extract_component(item: QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {
-        Some(item.data)
-    }
-
-    fn label() -> std::borrow::Cow<'static, str> {
-        "script_material instances".into()
+impl Instances {
+    fn write(&mut self, e: Entity, data: [u32; WORDS]) -> u32 {
+        let row = match self.rows.get(&e) {
+            Some(r) => *r,
+            None => {
+                let r = self.entities.len() as u32;
+                self.rows.insert(e, r);
+                self.entities.push(e);
+                self.data.push(data);
+                r
+            }
+        };
+        self.data[row as usize] = data;
+        self.dirty = true;
+        row
     }
 }
 
-/// The buffer needs Bevy's `ShaderBuffer` assets: an app with no renderer packs nothing, and its
-/// entities still hold their `ScriptInstance`.
 pub(crate) fn plugin(app: &mut App) {
-    if app.world().contains_resource::<Assets<bevy::render::storage::ShaderBuffer>>() {
-        app.add_plugins(GpuComponentArrayBufferPlugin::<ScriptInstance>::default());
-    }
+    let buffer = app.world_mut().get_resource_mut::<Assets<ShaderBuffer>>().map(|mut b| {
+        b.add(ShaderBuffer {
+            data: ShaderBufferData::Initialized { data: vec![0u8; INSTANCE_BYTES].into(), buffer_size: INSTANCE_BYTES as u64 },
+            label: "script_material instances".into(),
+            buffer_usage: BufferUsages::STORAGE | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+            asset_usage: RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+            copy_on_resize: true,
+        })
+    });
+    app.insert_resource(Instances { buffer, ..default() }).add_systems(Last, upload);
 }
 
 /// The storage buffer every kind with instance params binds.
-pub fn buffer(world: &World) -> Option<Handle<bevy::render::storage::ShaderBuffer>> {
-    world.get_resource::<GpuComponentArray<ScriptInstance>>().map(|a| a.buffer.clone())
+pub fn buffer(world: &World) -> Option<Handle<ShaderBuffer>> {
+    world.get_resource::<Instances>().and_then(|i| i.buffer.clone())
+}
+
+/// The values `e`'s `MeshTag` indexes in the buffer, when that row is `e`'s.
+pub fn packed(world: &World, e: Entity) -> Option<[u32; WORDS]> {
+    let inst = world.get_resource::<Instances>()?;
+    let row = world.get::<MeshTag>(e)?.value as usize;
+    (inst.entities.get(row) == Some(&e)).then(|| inst.data[row])
+}
+
+/// Rows packed: one per `ScriptInstance`.
+pub fn rows(world: &World) -> usize {
+    world.get_resource::<Instances>().map_or(0, |i| i.entities.len())
+}
+
+/// The remove hook: the last row moves into the gap, and its entity's `MeshTag` follows it.
+fn take_row(mut world: DeferredWorld, ctx: HookContext) {
+    let Some(mut inst) = world.get_resource_mut::<Instances>() else { return };
+    let Some(row) = inst.rows.remove(&ctx.entity) else { return };
+    inst.entities.swap_remove(row as usize);
+    inst.data.swap_remove(row as usize);
+    inst.dirty = true;
+    let Some(&moved) = inst.entities.get(row as usize) else { return };
+    inst.rows.insert(moved, row);
+    if let Some(mut tag) = world.get_mut::<MeshTag>(moved) {
+        *tag = MeshTag::new(row);
+    }
+}
+
+/// The rows to the GPU, once a frame when any changed. The buffer grows by half again when full
+/// and never shrinks, so a steady count allocates nothing.
+fn upload(mut inst: ResMut<Instances>, buffers: Option<ResMut<Assets<ShaderBuffer>>>) {
+    if !inst.dirty {
+        return;
+    }
+    inst.dirty = false;
+    let Some(mut buffers) = buffers else { return };
+    let Some(mut b) = inst.buffer.as_ref().and_then(|h| buffers.get_mut(h)) else { return };
+    let ShaderBufferData::Initialized { data, buffer_size } = &mut b.data else { return };
+    let needed = inst.data.len().max(1) * INSTANCE_BYTES;
+    if data.len() < needed {
+        let grown = (data.len() * 3 / 2).max(needed).next_multiple_of(INSTANCE_BYTES);
+        data.resize(grown, 0);
+        *buffer_size = grown as u64;
+    }
+    let out: &mut [u8] = data.as_mut();
+    for (chunk, row) in out.chunks_exact_mut(INSTANCE_BYTES).zip(&inst.data) {
+        for (w, v) in chunk.chunks_exact_mut(4).zip(row) {
+            w.copy_from_slice(&v.to_le_bytes());
+        }
+    }
 }
 
 fn bytes(data: &[u32; WORDS]) -> Vec<u8> {
@@ -104,13 +183,16 @@ fn log(world: &mut World, message: String, at: Option<SourceLocation>) {
     }
 }
 
-/// Gives `e` instance params `si`: written in place when it has them, inserted when it has no
-/// `MeshTag`, refused (and reported once) when it has a `MeshTag` bevy-ts did not set.
+/// Gives `e` instance params `si`: written in place when it has them, inserted with its row's
+/// `MeshTag` when it has no `MeshTag`, refused (and reported once) when it has one bevy-ts did not
+/// set. The row is written at once, so the frame's upload carries it.
 pub fn put(world: &mut World, e: Entity, si: ScriptInstance) {
     let Ok(mut em) = world.get_entity_mut(e) else { return };
     if let Some(mut old) = em.get_mut::<ScriptInstance>() {
         if old.data != si.data || old.kind != si.kind {
+            let data = si.data;
             *old = si;
+            world.resource_mut::<Instances>().write(e, data);
         }
         return;
     }
@@ -125,11 +207,12 @@ pub fn put(world: &mut World, e: Entity, si: ScriptInstance) {
         }
         return;
     }
-    em.insert(si);
+    let row = world.resource_mut::<Instances>().write(e, si.data);
+    world.entity_mut(e).insert((si, MeshTag::new(row)));
 }
 
-/// Takes `e`'s instance params, and the `MeshTag` that indexed them, away. Bevy's buffer drops
-/// its row; a tag it did not set is never touched.
+/// Takes `e`'s instance params, and the `MeshTag` that indexed them, away: the one way out besides
+/// a despawn. The remove hook drops its row; a tag bevy-ts did not set is never touched.
 pub fn remove(world: &mut World, e: Entity) {
     let Ok(mut em) = world.get_entity_mut(e) else { return };
     em.remove::<KeptMeshTag>();

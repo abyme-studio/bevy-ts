@@ -27,7 +27,7 @@
 
 - [x] 3.1 `packages/bevy-ts/runtime/material.js`, `material.d.ts`: `instance` schema, name rules, 256-byte limit, typed instance props
 - [x] 3.2 `crates/bevy-ts-material/src/layout.rs`, `src/wgsl.rs`: `<Name>Instance` struct, storage binding after textures, `fn instance(i)`, appended; reserved names refused; tests on the generated WGSL
-- [x] 3.3 `crates/bevy-ts-material/src/instance.rs` (new): `ScriptInstance([u32; 64])` with `GpuComponentArrayBuffer`; encode from props by the instance layout; inserted only for kinds with `instance`; a user `MeshTag` kept, no `ScriptInstance`, an error naming entity and element
+- [x] 3.3 `crates/bevy-ts-material/src/instance.rs` (new): `ScriptInstance([u32; 64])` packed by bevy-ts (rows written with the component, dropped by its remove hook, uploaded in `Last`; Bevy's `GpuComponentArrayBuffer` cannot be ordered); encode from props by the instance layout; inserted only for kinds with `instance`; a user `MeshTag` kept, no `ScriptInstance`, an error naming entity and element
 - [x] 3.4 `crates/bevy-ts-material/src/render.rs`: the kind's layout binds the array's buffer (`UnpreparedBindingResource::ShaderBuffer`)
 - [x] 3.5 `crates/bevy-ts-tsx/src/resolve.rs`, `src/intrinsics.rs`: instance props split from the key; bound instance props allowed and written to `ScriptInstance`; bound params still fail with today's message
 - [x] 3.6 `crates/bevy-ts-material/src/scene.rs`: copy the root's `ScriptInstance` to swapped meshes, follow changes, remove on restore
