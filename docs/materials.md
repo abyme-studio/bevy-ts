@@ -305,14 +305,15 @@ shares only with other elements: Bevy does not reflect it, so it is set in Rust 
 
 A texture repeats under a `uvTransform` scale above 1 when its image's sampler repeats. Load it with
 one: `Image.load`'s `sampler` is Bevy's `ImageSampler` in the writer's shape, its fields unset
-keeping `ImageSamplerDescriptor::default()`.
+keeping Bevy's default plugin sampler, `ImageSamplerDescriptor::linear()` (linear filters). Pixel art
+names its filters.
 
 ```tsx
 import { Image } from "bevy-ts/bevy";
 
 // A pixel-art atlas, tiled four times across the face.
 const atlas = Image.load("textures/atlas.png", {
-  sampler: { Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat", mag_filter: "Nearest" } },
+  sampler: { Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat", mag_filter: "Nearest", min_filter: "Nearest" } },
 });
 
 <entity>
@@ -322,7 +323,7 @@ const atlas = Image.load("textures/atlas.png", {
 ```
 
 A path keeps the settings of its first load, so a file tiled in one place and clamped in another
-needs two files, or `assets.set` on a script-made image's sampler.
+needs two files.
 
 ### Blocked on Bevy (16-sampler default limit)
 

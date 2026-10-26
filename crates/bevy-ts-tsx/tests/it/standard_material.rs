@@ -310,16 +310,18 @@ fn equal_props_share_one_handle() {
 #[test]
 fn a_missing_texture_file_reports_its_path() {
     let (mut app, fake) = app();
-    applied(&load(&mut app, &fake, &scene(vec![entity("a", Some("cuboid"), Some(json!({ "baseColorTexture": "textures/nope.png" })))])));
+    let load_value = json!({ "normalMapTexture": { "$load": "textures/nope_n.png" } });
+    applied(&load(&mut app, &fake, &scene(vec![entity("a", Some("cuboid"), Some(json!({ "baseColorTexture": "textures/nope.png" }))), entity("b", Some("cuboid"), Some(load_value))])));
     for _ in 0..200 {
         app.update();
-        if !errors(&app).is_empty() {
+        if errors(&app).len() >= 2 {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     let errs = errors(&app);
     assert!(errs.iter().any(|(m, line)| m.contains("textures/nope.png") && *line == Some(5)), "{errs:?}");
+    assert!(errs.iter().any(|(m, line)| m.contains("textures/nope_n.png") && line.is_some()), "an Image.load value's path is reported too: {errs:?}");
 }
 
 const NORMAL: &str = "textures/checker.png";

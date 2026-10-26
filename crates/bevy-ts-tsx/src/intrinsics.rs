@@ -515,12 +515,16 @@ impl MaterialProps {
                             props.insert(field.to_string(), v);
                         }
                     }
-                    // An `Image.load` with no `is_srgb` takes the field's colour space.
-                    Some(Value::Object(o)) if !*srgb && o.contains_key("$load") && o.get("settings").and_then(|s| s.get("is_srgb")).is_none() => {
+                    // An `Image.load`: its path is reported at the element if it fails to load, and
+                    // with no `is_srgb` it takes the field's colour space.
+                    Some(Value::Object(o)) if o.get("$load").is_some_and(Value::is_string) => {
+                        textures.push((*prop, *field, o["$load"].as_str().unwrap_or_default().to_string()));
                         let mut v = o.clone();
-                        let settings = v.entry("settings").or_insert_with(|| json!({}));
-                        if let Some(s) = settings.as_object_mut() {
-                            s.insert("is_srgb".into(), false.into());
+                        if !*srgb && v.get("settings").and_then(|s| s.get("is_srgb")).is_none() {
+                            let settings = v.entry("settings").or_insert_with(|| json!({}));
+                            if let Some(s) = settings.as_object_mut() {
+                                s.insert("is_srgb".into(), false.into());
+                            }
                         }
                         props.insert(field.to_string(), Value::Object(v));
                     }

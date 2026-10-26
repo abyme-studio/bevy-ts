@@ -73,8 +73,9 @@ To edit one entity's asset alone, give it its own with `assets.add`.
 reflection. `assets.add(Image, { sampler })` builds Bevy's default 1 x 1 image with that sampler,
 `assets.get` reads `{ sampler }`, and `assets.set` changes the sampler and keeps the pixels. The
 sampler is Bevy's `ImageSampler` in the writer's shape: `"Default"` (the `ImagePlugin`'s), or
-`{ Descriptor: { address_mode_u: "Repeat", mag_filter: "Nearest", ... } }`, unset fields keeping
-`ImageSamplerDescriptor::default()`.
+`{ Descriptor: { address_mode_u: "Repeat", mag_filter: "Nearest", ... } }`. Unset fields keep the
+current sampler's, or for a new one Bevy's default plugin sampler, `ImageSamplerDescriptor::linear()`:
+linear filters, clamped to the edge. Name `mag_filter: "Nearest"` (and `min_filter`) for pixel art.
 
 `Image.load(path, settings)` is a path loaded with loader settings, for any `Handle<Image>` slot:
 

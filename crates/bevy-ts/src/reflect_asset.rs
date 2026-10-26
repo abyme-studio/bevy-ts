@@ -526,7 +526,9 @@ fn load_image(slots: &Slots, path: &str, settings: &Map<String, Value>) -> Resul
 fn image_sampler(slots: &Slots, base: Option<&ImageSampler>, json: &Value) -> Result<ImageSampler, String> {
     let mut s = match (json.as_object(), base) {
         (Some(o), Some(b @ ImageSampler::Descriptor(_))) if o.contains_key("Descriptor") => b.clone(),
-        (Some(o), _) if o.contains_key("Descriptor") => ImageSampler::Descriptor(ImageSamplerDescriptor::default()),
+        // Unset fields keep `ImagePlugin::default()`'s sampler, not the descriptor's own default,
+        // whose filters are Nearest: a repeating photo stays smooth.
+        (Some(o), _) if o.contains_key("Descriptor") => ImageSampler::Descriptor(ImageSamplerDescriptor::linear()),
         _ => ImageSampler::Default,
     };
     reflect_value::write_with(slots.cx(), &mut s, None, json).map_err(|e| format!("sampler: {e}"))?;
@@ -1178,8 +1180,8 @@ mod tests {
         call(&app, "assets.set", serde_json::json!([r, { "sampler": repeat }])).unwrap();
         flush(app.world_mut());
         let ImageSampler::Descriptor(d) = image_of(&app, &r).sampler else { panic!("a descriptor sampler") };
-        let want = ImageSamplerDescriptor { address_mode_u: bevy::image::ImageAddressMode::Repeat, address_mode_v: bevy::image::ImageAddressMode::Repeat, ..default() };
-        assert_eq!(d, want, "the fields not given keep the descriptor's default");
+        let want = ImageSamplerDescriptor { address_mode_u: bevy::image::ImageAddressMode::Repeat, address_mode_v: bevy::image::ImageAddressMode::Repeat, ..ImageSamplerDescriptor::linear() };
+        assert_eq!(d, want, "the fields not given keep the default plugin's linear sampler");
         let got = call(&app, "assets.get", serde_json::json!([r])).unwrap();
         assert_eq!(got["sampler"]["Descriptor"]["address_mode_u"], "Repeat");
         assert_eq!(got["sampler"]["Descriptor"]["anisotropy_clamp"], 1);

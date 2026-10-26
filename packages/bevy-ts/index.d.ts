@@ -400,7 +400,7 @@ export interface AssetLoad<F = unknown> {
 }
 /** An asset type with loader settings (`Image`): `load` gives a path with them (docs/assets.md). */
 export interface Loadable<F, S> {
-  /** `Image.load("atlas.png", { sampler: { Descriptor: { address_mode_u: "Repeat" } } })`. A path loaded again with other settings keeps the first. */
+  /** `Image.load("atlas.png", { sampler: { Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat" } } })`. Unset sampler fields keep Bevy's default plugin sampler (linear filters); pixel art names `mag_filter: "Nearest"`. A path loaded again with other settings keeps the first. */
   load(path: string, settings?: S): AssetLoad<F>;
 }
 /** A Rust asset type by type path; `bevy-ts/bevy` declares every one Bevy reflects. */
