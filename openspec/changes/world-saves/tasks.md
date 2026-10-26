@@ -12,7 +12,7 @@ variables, waits on conditions with deadlines.
 
 ## 2. Save
 
-- [x] 2.1 `crates/bevy-ts/src/commands.rs`: `OP_SAVE_WORLD` (14) and `OP_LOAD_WORLD` (15), `Op::SaveWorld { name, options }` and `Op::LoadWorld { name, parent }`, decoded and applied through `saves.rs`; decode round-trip tests beside the existing ones
+- [x] 2.1 `crates/bevy-ts/src/commands.rs`: `OP_SAVE_WORLD` (15) and `OP_LOAD_WORLD` (16; 14 went to state-scoped components), `Op::SaveWorld { name, options }` and `Op::LoadWorld { name, parent }`, decoded and applied through `saves.rs`; decode round-trip tests beside the existing ones
 - [x] 2.2 `saves.rs` `save`: the saved set (`Save`-marked, or the given query or entities; resource entities never); `DynamicWorldBuilder` with `WorldFilter`s from Rust classes by registry `TypeId`, plus the always-denied list (`TsSpawned`, `ScriptHidden`, bevy-ts internals, and 3.2's list); `extract_entities`; with `resources`, `extract_resources` under a resource filter; then push `TsSaved` per entity (TS components through `TsComponents` and `value::decode_component`, filtered by TS class, merged over any leftover `TsSaved`) and `TsSavedResources`; `serialize`; write on `IoTaskPool` to `<name>.scn.ron.tmp` then rename; `WorldSaved` on finish or failure
 - [x] 2.3 A class neither a registered Rust component nor a declared TS component fails the op with `WorldSaved.error` naming it
 
