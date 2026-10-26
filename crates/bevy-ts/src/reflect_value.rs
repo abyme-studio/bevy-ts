@@ -589,7 +589,34 @@ pub fn default_of(registry: &TypeRegistry, id: TypeId) -> Option<Box<dyn Partial
         return Some(d.default().into_partial_reflect());
     }
     let fw = reg.data::<ReflectFromWorld>()?.clone();
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fw.from_world(&mut World::new()))).ok().map(<dyn Reflect>::into_partial_reflect)
+    from_world(id, &fw).map(<dyn Reflect>::into_partial_reflect)
+}
+
+thread_local! {
+    /// `FromWorld` defaults by type, made once on an empty world and cloned after: a `World::new()`
+    /// costs tens of µs, which every write to an `OrthographicProjection` paid. `None` when
+    /// `from_world` panicked.
+    static FROM_WORLD: std::cell::RefCell<std::collections::HashMap<TypeId, Option<Box<dyn Reflect>>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// `fw`'s value on an empty world: a clone of the one made first, or a new one when the type does
+/// not clone through reflection.
+fn from_world(id: TypeId, fw: &ReflectFromWorld) -> Option<Box<dyn Reflect>> {
+    let cached = FROM_WORLD.with_borrow(|c| c.get(&id).map(|v| v.as_ref().map(|v| v.reflect_clone())));
+    match cached {
+        Some(None) => return None,
+        Some(Some(Ok(v))) => return Some(v),
+        Some(Some(Err(_))) | None => {}
+    }
+    let made = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fw.from_world(&mut World::new()))).ok();
+    match &made {
+        None => FROM_WORLD.with_borrow_mut(|c| c.insert(id, None)),
+        Some(v) => match v.reflect_clone() {
+            Ok(keep) => FROM_WORLD.with_borrow_mut(|c| c.insert(id, Some(keep))),
+            Err(_) => None,
+        },
+    };
+    made
 }
 
 fn type_path(v: &dyn PartialReflect) -> String {
@@ -975,6 +1002,30 @@ mod tests {
         let mut v = T::default();
         write(&r, None, &mut v, None, &json)?;
         Ok(v)
+    }
+
+    /// Counts its `from_world` calls.
+    #[derive(Reflect, Debug, PartialEq, Clone)]
+    #[reflect(FromWorld, Clone)]
+    struct Made(u32);
+
+    static MADE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    impl FromWorld for Made {
+        fn from_world(_: &mut World) -> Self {
+            Made(MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 7)
+        }
+    }
+
+    #[test]
+    fn a_from_world_default_is_made_once_and_cloned_after() {
+        let mut r = TypeRegistry::new();
+        r.register::<Made>();
+        let a = default_of(&r, TypeId::of::<Made>()).expect("a default");
+        let b = default_of(&r, TypeId::of::<Made>()).expect("a default");
+        assert_eq!(MADE.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(Made::from_reflect(a.as_ref()), Some(Made(7)));
+        assert_eq!(Made::from_reflect(b.as_ref()), Some(Made(7)));
     }
 
     fn ortho(p: &Projection) -> &OrthographicProjection {
