@@ -205,7 +205,7 @@ fn read_reflected(world: &World, entity: Entity, name: &str) -> Result<Value, St
     let value = rc.reflect(e).ok_or_else(|| format!("entity {entity} has no {name}"))?;
     // A handle a script made reads as its asset ref.
     let assets = world.get_resource::<ScriptAssets>().cloned().unwrap_or_default();
-    let slots = Slots { registry: &registry, server: world.get_resource::<AssetServer>(), assets: &assets, check: false };
+    let slots = Slots { registry: &registry, server: world.get_resource::<AssetServer>(), assets: &assets, world: Some(world), check: false };
     bevy_ts::reflect_value::read_component_with(&registry, Some(&slots), value.as_partial_reflect())
 }
 
@@ -221,7 +221,7 @@ fn write_reflected(world: &mut World, entity: Entity, name: &str, path: &str, v:
     let parsed = (!path.is_empty()).then(|| ParsedPath::parse(path).map_err(|e| invalid(format!("{name}: path {path}: {e}")))).transpose()?;
     // Asset refs and values go in handle slots; a value's new asset goes in after the write.
     let assets = world.get_resource::<ScriptAssets>().cloned().unwrap_or_default();
-    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
+    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, world: None, check: false };
     let wrote = {
         let mut e = world.get_entity_mut(entity).map_err(|_| BrpError::entity_not_found(entity))?;
         let mut m = rc.reflect_mut(&mut e).ok_or_else(|| invalid(format!("entity {entity} has no {name}")))?;

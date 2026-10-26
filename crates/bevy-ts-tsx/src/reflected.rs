@@ -70,7 +70,7 @@ pub fn check(registry: &TypeRegistry, type_path: &str, props: &Map<String, Value
     let (_, reg) = component(registry, type_path)?;
     let Some(mut value) = default(registry, reg) else { return Ok(()) };
     let assets = ScriptAssets::default();
-    let slots = Slots { registry, server: None, assets: &assets, check: true };
+    let slots = Slots { registry, server: None, assets: &assets, world: None, check: true };
     for (f, v) in props {
         set(&slots, value.as_mut(), None, type_path, f, v)?;
     }
@@ -86,7 +86,7 @@ pub fn insert(world: &mut World, e: Entity, type_path: &str, props: &Map<String,
     let (rc, reg) = component(&registry, type_path)?;
     let mut value = default(&registry, reg).ok_or_else(|| format!("{type_path} has neither a reflected Default nor a reflected FromWorld, so a level cannot insert it"))?;
     let assets = slots_of(world);
-    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
+    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, world: Some(world), check: false };
     for (f, v) in props {
         set(&slots, value.as_mut(), None, type_path, f, v)?;
     }
@@ -106,7 +106,7 @@ pub fn write(world: &mut World, e: Entity, type_path: &str, field: &str, v: &Val
     let (rc, reg) = component(&registry, type_path)?;
     let base = default(&registry, reg);
     let assets = slots_of(world);
-    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
+    let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, world: None, check: false };
     {
         let mut em = world.entity_mut(e);
         let Some(mut m) = rc.reflect_mut(&mut em) else { return Ok(false) };

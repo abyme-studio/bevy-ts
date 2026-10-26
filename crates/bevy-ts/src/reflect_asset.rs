@@ -343,7 +343,7 @@ pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String
     let arg = |i: usize| args.get(i).unwrap_or(&Value::Null);
     let assets = world.get_resource::<ScriptAssets>().ok_or_else(|| "assets need BevyTsPlugin".to_string())?;
     let registry = world.resource::<AppTypeRegistry>().read();
-    let slots = Slots { registry: &registry, server: world.get_resource::<AssetServer>(), assets, check: false };
+    let slots = Slots { registry: &registry, server: world.get_resource::<AssetServer>(), assets, world: Some(world), check: false };
     let out = match name {
         "assets.add" => {
             let path = arg(0).as_str().ok_or_else(|| format!("assets.add: the type is a type path, not {}", arg(0)))?;
@@ -360,13 +360,15 @@ pub fn host_call(world: &World, name: &str, args: &str) -> Result<String, String
 }
 
 /// What writing and reading assets reach, and the `Handle<T>` hook `reflect_value` calls for refs
-/// and asset values. Borrows no `World`, so TSX can hold one while it writes a component in place.
-/// In `check` mode nothing is made: a ref the table does not know is checked by its form and named
-/// type, values are built and dropped.
+/// and asset values. `world` is the app's world for a hand map that reads its resources; it is
+/// `None` in `check` mode and where the world is borrowed mutably meanwhile (TSX and the remote
+/// writing a component in place). In `check` mode nothing is made: a ref the table does not know
+/// is checked by its form and named type, values are built and dropped.
 pub struct Slots<'a> {
     pub registry: &'a TypeRegistry,
     pub server: Option<&'a AssetServer>,
     pub assets: &'a ScriptAssets,
+    pub world: Option<&'a World>,
     pub check: bool,
 }
 
@@ -917,7 +919,7 @@ mod tests {
         let app = pbr_app();
         let registry = app.world().resource::<AppTypeRegistry>().read();
         let assets = app.world().resource::<ScriptAssets>();
-        let slots = Slots { registry: &registry, server: None, assets, check: false };
+        let slots = Slots { registry: &registry, server: None, assets, world: None, check: false };
         use reflect_value::HandleSlots;
         let id = TypeId::of::<StandardMaterial>();
         let a = slots.write(id, &serde_json::json!({ "$of": MAT, "props": { "unlit": true, "base_color": "#fff" } })).unwrap();
@@ -1001,7 +1003,7 @@ mod tests {
         let app = note_app();
         let registry = app.world().resource::<AppTypeRegistry>().read();
         let assets = app.world().resource::<ScriptAssets>();
-        let slots = Slots { registry: &registry, server: None, assets, check: false };
+        let slots = Slots { registry: &registry, server: None, assets, world: None, check: false };
         use reflect_value::HandleSlots;
         let id = TypeId::of::<Note>();
         let a = slots.write(id, &serde_json::json!({ "$of": NOTE, "props": { "text": "x", "count": 1 } })).unwrap();
@@ -1011,7 +1013,7 @@ mod tests {
         assert_eq!(slots.read(&a), Some(ref_json(1, NOTE)), "a ref names the hand-mapped type's path");
         let e = slots.write(TypeId::of::<Image>(), &ref_json(1, NOTE)).unwrap_err();
         assert!(e.contains("Note") && e.contains("Image"), "{e}");
-        let check = Slots { registry: &registry, server: None, assets: &ScriptAssets::default(), check: true };
+        let check = Slots { registry: &registry, server: None, assets: &ScriptAssets::default(), world: None, check: true };
         check.write(id, &ref_json(9, NOTE)).expect("a check knows the hand-mapped type by its path");
     }
 
@@ -1020,7 +1022,7 @@ mod tests {
         let app = pbr_app();
         let registry = app.world().resource::<AppTypeRegistry>().read();
         let assets = ScriptAssets::default();
-        let slots = Slots { registry: &registry, server: None, assets: &assets, check: true };
+        let slots = Slots { registry: &registry, server: None, assets: &assets, world: None, check: true };
         let mut m = StandardMaterial::default();
         let img = ref_json(7, IMG);
         reflect_value::write_with(slots.cx(), m.as_partial_reflect_mut(), None, &serde_json::json!({ "base_color_texture": img })).expect("a ref the table does not know passes a check by its type");
@@ -1036,7 +1038,7 @@ mod tests {
         let app = pbr_app();
         let registry = app.world().resource::<AppTypeRegistry>().read();
         let assets = app.world().resource::<ScriptAssets>();
-        let slots = Slots { registry: &registry, server: None, assets, check: true };
+        let slots = Slots { registry: &registry, server: None, assets, world: None, check: true };
         use reflect_value::HandleSlots;
         slots.write(TypeId::of::<StandardMaterial>(), &serde_json::json!({ "$of": MAT, "props": { "unlit": true } })).unwrap();
         assert!(assets.is_empty());

@@ -594,7 +594,7 @@ fn material_handle(world: &mut World, p: &MaterialProps, at: Option<SourceLocati
             // A section's check and a mount fail a texture with no AssetServer first; any other
             // way in draws the material untextured and says why.
             let unloaded = if server.is_none() { of.textures.first().map(|t| t.0) } else { None };
-            let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, check: false };
+            let slots = Slots { registry: &registry, server: server.as_ref(), assets: &assets, world: Some(world), check: false };
             let made = slots.value_with::<StandardMaterial>(&of.props, &of.extra, &mut |m| {
                 if let Some(f) = of.cull_mode {
                     m.cull_mode = f;
