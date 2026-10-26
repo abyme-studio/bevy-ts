@@ -45,7 +45,7 @@ unless a path is given; each `ecs-coverage` row's test is written with its featu
 - [x] 6.1 `iterDescendants` on a query with `Children` data, once reflect-coverage stage 3 has landed on main; `iter_ancestors_and_descendants`. If it has not landed when stages 1 to 5 are done, land them and leave this task for a follow-up commit on main
 - [x] 6.2 `docs/ecs.md`: queries (filters, data, `Single`/`Populated`, methods), `RemovedComponents`, lifecycle observers and the copied value, commands (the `spawn(<el/>)` root rule, marked breaking), hierarchy, `Disabled`, sparse-set limits; link it from `docs/scripts.md`
 - [x] 6.3 Every `ecs-coverage` row's test exists; rows not landed say so
-- [ ] 6.4 Gate once: workspace build, tests and clippy; `pnpm` type tests for `index.d.ts`
+- [x] 6.4 Gate once: workspace build, tests and clippy; `pnpm` type tests for `index.d.ts` (on 0eaec932: build, clippy and pnpm green; of the workspace tests, five failures were main's and pass after rebasing on d851f31a5, and `screenshot_ready::the_method_waits_for_a_texture_on_a_slow_disk` still fails on main, outside this change)
 
 ## 7. Ask-first (operator's go given 2026-10-22; each item lands on its own)
 

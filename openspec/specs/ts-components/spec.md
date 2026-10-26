@@ -58,6 +58,10 @@ Each TS component SHALL be registered with `World::register_component_with_descr
 - **WHEN** entities with a `string` field are spawned, cloned with `cloneAndSpawn`, migrated by a reload, despawned, and the world is dropped
 - **THEN** every string built is freed exactly once, and each clone's string is its own
 
+#### Scenario: cloneAndSpawn copies a TS component
+- **WHEN** a system calls `commands.entity(e).cloneAndSpawn()` on an entity with `Health.of({ hp: 7 })`
+- **THEN** the new entity has `Health` with the same bytes, `hp` 7, and changing one leaves the other as it was
+
 ### Requirement: A component name keeps its identity
 Declaring the same name (default or pinned) with the same layout in a later generation SHALL reuse the existing `ComponentId`. Two declarations of one name in one generation SHALL fail the load. Moving or renaming a class without a pinned `path` SHALL be reported as a new component; its old data stays with the old name (hot-reload, undeclared components are kept).
 
