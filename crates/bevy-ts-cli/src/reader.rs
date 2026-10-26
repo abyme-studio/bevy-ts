@@ -986,7 +986,7 @@ impl Reader<'_> {
     }
 
     /// A field type: `f32`, `bool`, `Vec3`, `Entity`, a string-literal union, or an alias of one.
-    /// `string` only where `strings` (components, resources and scene props).
+    /// `string` only where `strings` (components, resources, `Local` and scene props).
     fn field_ty(&mut self, t: &Ty, scope: &Scope, strings: bool, depth: u32) -> Result<Value, (Span, String)> {
         const NAMED: &[(&str, &str)] = &[
             ("f32", "f32"), ("f64", "f64"), ("i8", "i8"), ("u8", "u8"), ("i16", "i16"), ("u16", "u16"), ("i32", "i32"), ("u32", "u32"),
@@ -1004,8 +1004,8 @@ impl Reader<'_> {
             Ty::Strings(v, _) => Ok(json!({ "kind": "enum", "variants": v })),
             Ty::Keyword("boolean", _) => Ok(json!({ "kind": "bool" })),
             Ty::Keyword("string", _) if strings => Ok(json!({ "kind": "string" })),
-            Ty::Keyword("string", span) => Err((*span, "heap fields (string, T[]) are allowed on components and resources only".into())),
-            // `T[]`: a list of numbers, bool or string, on components and resources only.
+            Ty::Keyword("string", span) => Err((*span, "heap fields (string, T[]) are allowed on components, resources and Local only".into())),
+            // `T[]`: a list of numbers, bool or string, on components, resources and `Local` only.
             Ty::Array(of, span) if strings => {
                 let item = self.field_ty(of, scope, true, depth + 1)?;
                 match item["kind"].as_str() {
@@ -1013,7 +1013,7 @@ impl Reader<'_> {
                     _ => Err((*span, "a list holds numbers (f32, f64, i8..u32), bool or string".into())),
                 }
             }
-            Ty::Array(_, span) => Err((*span, "heap fields (string, T[]) are allowed on components and resources only".into())),
+            Ty::Array(_, span) => Err((*span, "heap fields (string, T[]) are allowed on components, resources and Local only".into())),
             Ty::Keyword(k, span) => Err(bad(*span, k)),
             Ty::Ref { name, args, span } if args.is_empty() => {
                 if let Some((t, s)) = scope.subst.get(name) {
@@ -1225,7 +1225,7 @@ impl Reader<'_> {
                 let fields = match self.head(self.arg(&name, &args, 0, span, s)?, s, 0)? {
                     Head::Bundle(members, ls) => members
                         .into_iter()
-                        .map(|(n, t, sp, _)| match t.as_ref().map(|t| self.field_ty(t, &ls, false, 0)) {
+                        .map(|(n, t, sp, _)| match t.as_ref().map(|t| self.field_ty(t, &ls, true, 0)) {
                             Some(Ok(ft)) => Ok(json!({ "name": n, "type": ft })),
                             Some(Err((sp, why))) => Err(self.fail(&ls, sp, format!("Local field {n}: {why}"))),
                             None => Err(self.fail(&ls, sp, format!("Local field {n} needs a field type"))),
@@ -1818,7 +1818,7 @@ class Local extends Component { x: f32 = vec3(1, 2).x }
         );
         let err = |c: &str| d[c]["error"].as_str().unwrap_or_default().to_string();
         assert!(err("Bad").starts_with("src/units/my-tank.ts:9:"), "{}", err("Bad"));
-        assert!(err("Bad").contains("Bad field name: heap fields (string, T[]) are allowed on components and resources only"), "{}", err("Bad"));
+        assert!(err("Bad").contains("Bad field name: heap fields (string, T[]) are allowed on components, resources and Local only"), "{}", err("Bad"));
         assert_eq!(
             d["Tag"]["fields"],
             json!([

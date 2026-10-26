@@ -2721,6 +2721,74 @@ function accessorPair(name, layout) {
   return { layout, views: viewsFor(layout), size: layout.size, Read: generateAccessor(name, layout, false), Write: generateAccessor(name, layout, true) };
 }
 
+/** A `Local`'s heap values read this generation, per field: it is their only writer. */
+const LOCAL_CACHE = Symbol("localCache");
+
+/**
+ * A `Local`'s accessor class, with its heap fields read and written at its place (`places.rs`:
+ * -2, the `Local`'s index in the system, the field's index in its layout). A read is cached until
+ * the accessor writes that field; a list reads frozen.
+ */
+function localPair(fields, index) {
+  const layout = cLayout(fields);
+  const T = accessorPair("Local", layout);
+  layout.fields.forEach((f, i) => {
+    if (!isHeap(f.type)) return;
+    const path = `Local.${f.name}`;
+    const encode = heapEncoder(f.type);
+    const decode = heapDecoder(f.type);
+    Object.defineProperty(T.Write.prototype, f.name, {
+      configurable: true,
+      get() {
+        const c = (this[LOCAL_CACHE] ??= []);
+        if (!(i in c)) c[i] = localFetch(index, i, decode);
+        return c[i];
+      },
+      set(v) {
+        localSet(index, i, encode, v, path);
+        if (this[LOCAL_CACHE]) delete this[LOCAL_CACHE][i];
+      },
+    });
+  });
+  return T;
+}
+
+const PLACE_LOCAL = -2;
+
+/** A `Local` heap field's value, read through the host. */
+function localFetch(index, field, decode) {
+  if (!core) throw new Error("heap fields need the engine");
+  const H = HOST;
+  for (;;) {
+    H.slots[0] = PLACE_LOCAL;
+    H.slots[1] = index;
+    H.slots[2] = field;
+    REFLECT.calls++;
+    const n = core.ops.op_bevyts_host(REFLECT_READ, H.slotBytes, H.resultBytes, REFLECT.buf, H.EMPTY, H.EMPTY, H.EMPTY);
+    if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
+    const len = H.result[0];
+    if (len <= REFLECT.buf.length) return decode(REFLECT.view, REFLECT.buf);
+    REFLECT.buf = new Uint8Array(Math.max(len, REFLECT.buf.length * 2));
+    REFLECT.view = new DataView(REFLECT.buf.buffer);
+  }
+}
+
+/** Writes a `Local` heap field at once as the codec's bytes. */
+function localSet(index, field, encode, value, path) {
+  if (!core) throw new Error("heap fields need the engine");
+  const w = new Writer();
+  encode(w, value, path);
+  const bytes = w.bytes();
+  const H = HOST;
+  H.slots[0] = PLACE_LOCAL;
+  H.slots[1] = index;
+  H.slots[2] = field;
+  H.slots[3] = bytes.length;
+  REFLECT.calls++;
+  const n = core.ops.op_bevyts_host(REFLECT_WRITE, H.slotBytes, H.resultBytes, bytes, H.EMPTY, H.EMPTY, H.EMPTY);
+  if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
+}
+
 /** Points a `Res`/`ResMut` accessor at its frame: a reflected one's buffer is its changed tick. */
 function bindRes(acc, C, frame, tick) {
   if (!C.reflectInfo) return bindRow(acc, C, frame[0], frame[1], tick);
@@ -2740,17 +2808,20 @@ function bindRow(acc, T, buffer, ticks, tick) {
 
 const DUMMY_TICKS = new Uint32Array(1);
 
-/** C layout rules, mirrored for `Local`s (Rust lays them out the same way). */
+/** C layout rules, mirrored for `Local`s (Rust lays them out the same way, `ComponentLayout::c_layout`):
+ * a heap field (`String`, `Vec<T>`, 24 bytes) puts Rust's 8-byte header first. */
 function cLayout(fields) {
   const size = (t) => {
+    if (isHeap(t)) return 24;
     if (LANES[t.kind]) return LANES[t.kind] * 4;
     if (t.kind === "enum") return { u8: 1, u16: 2, u32: 4 }[enumView(t)];
     if (t.kind === "array") return size(t.of) * t.len;
     if (STRUCT_SIZE[t.kind]) return STRUCT_SIZE[t.kind];
     return { f32: 4, f64: 8, i8: 1, u8: 1, i16: 2, u16: 2, i32: 4, u32: 4, bool: 1, entity: 8 }[t.kind];
   };
-  const align = (t) => (LANES[t.kind] ? 4 : t.kind === "array" ? align(t.of) : STRUCT_SIZE[t.kind] ? 8 : size(t));
-  let offset = 0, max = 1;
+  const align = (t) => (isHeap(t) ? 8 : LANES[t.kind] ? 4 : t.kind === "array" ? align(t.of) : STRUCT_SIZE[t.kind] ? 8 : size(t));
+  const header = fields.some((f) => isHeap(f.type));
+  let offset = header ? 8 : 0, max = header ? 8 : 1;
   const out = [];
   for (const f of fields) {
     const a = align(f.type);
@@ -4138,6 +4209,8 @@ function buildSystem(g, s) {
   const ctx = makeCtx();
   const marks = [];
   const consumers = []; // per flat frame: (frame, tick, index) => void
+  // `Local`s in Rust's order (depth first through bundles): a heap field's place names its index.
+  let locals = 0;
   // `set` places a param whose value changes per run (an optional res: `undefined` when absent).
   const make = (p, set) => {
     switch (p.kind) {
@@ -4182,7 +4255,7 @@ function buildSystem(g, s) {
         return acc;
       }
       case "local": {
-        const T = accessorPair("Local", cLayout(p.fields));
+        const T = localPair(p.fields, locals++);
         const acc = new T.Write();
         consumers.push((frame) => bindRow(acc, T, frame[0], null, 0));
         return acc;
@@ -5065,10 +5138,21 @@ function encodeWithHeap(C, layout, values) {
 }
 
 /** A heap field type's codec encoder (the op Rust builds from the type). */
+/** A heap field type's codec op, as Rust's `ReflectTargets::ts_heap` makes it. */
+function heapNode(t) {
+  if (t.kind === "string") return { k: "str" };
+  if (t.kind === "list") return { k: "list", of: t.of.kind === "string" ? { k: "str" } : { k: "num", t: t.of.kind } };
+  throw new Error(`no heap codec for ${t.kind}`);
+}
+
 function heapEncoder(t) {
-  if (t.kind === "string") return codecEncoder({ k: "str" });
-  if (t.kind === "list") return codecEncoder({ k: "list", of: t.of.kind === "string" ? { k: "str" } : { k: "num", t: t.of.kind } });
-  throw new Error(`no heap encoder for ${t.kind}`);
+  return codecEncoder(heapNode(t));
+}
+
+/** A heap field type's decoder; a list reads frozen, as a component's does. */
+function heapDecoder(t) {
+  const dec = reflectDecoder({ wrap: false, node: heapNode(t) });
+  return t.kind === "list" ? (dv, buf) => Object.freeze(dec(dv, buf)) : dec;
 }
 
 // ---------------------------------------------------------------------------------------------

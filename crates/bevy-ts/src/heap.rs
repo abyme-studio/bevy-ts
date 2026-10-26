@@ -22,7 +22,7 @@ use std::sync::{LazyLock, Mutex};
 pub const HEADER: usize = 8;
 
 /// Why a heap field where none is held yet (a message, an event, a `Local`) fails the load.
-pub const REFUSED: &str = "heap fields (string, T[]) are allowed on components and resources only";
+pub const REFUSED: &str = "heap fields (string, T[]) are allowed on components, resources and Local only";
 
 /// A heap slot's bytes: a `String` or a `Vec<T>`.
 const HEAP_SLOT: usize = 24;
@@ -322,6 +322,15 @@ impl HeapShape {
     pub fn live(&self) -> isize {
         self.live.load(Ordering::SeqCst)
     }
+}
+
+/// Drops every heap value of a value that is no column's (a `Local`'s store).
+///
+/// # Safety
+/// `p` points at a live value of `shape` that owns its heap values; they are dropped once, here.
+pub unsafe fn drop_value(p: *mut u8, shape: &HeapShape) {
+    // SAFETY: the caller's contract.
+    unsafe { drop_values(p, shape) }
 }
 
 /// The shape a value's header points at.

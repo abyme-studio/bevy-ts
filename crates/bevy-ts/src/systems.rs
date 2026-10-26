@@ -1108,9 +1108,6 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 }
             }
             ParamDecl::Local { fields } => {
-                if let Some(f) = fields.iter().find(|f| f.ty.is_heap()) {
-                    return Err(err(format!("Local field {}: {}", f.name, crate::heap::REFUSED)));
-                }
                 locals.push(fields.clone());
                 RunParam::Local(locals.len() - 1)
             }
@@ -1880,6 +1877,10 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
             scratch.arena.resize(crate::commands::ARENA_BYTES, 0);
             let pool = std::mem::take(&mut rt.pool);
             let mut params = world.remove_resource::<crate::host::HostParams>().unwrap_or_default();
+            // A `Local`'s heap field is read and written through its place; observers the run
+            // triggers set their own and put this one back.
+            let locals = crate::places::RunLocals::of(&mut mem.locals);
+            let locals_before = std::mem::replace(&mut world.get_resource_or_init::<crate::places::RunPlace>().locals, Some(locals));
             let r = {
                 // The world is held exclusively for the run and not touched until it ends; host
                 // calls fetch their params from this cell at the run's ticks.
@@ -1891,6 +1892,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                 (r, host.reserved, host.reserves)
             };
             let (r, reserved, reserves) = r;
+            world.resource_mut::<crate::places::RunPlace>().locals = locals_before;
             world.insert_resource(params);
             rt.pool = pool;
             rt.pool.extend(reserved);

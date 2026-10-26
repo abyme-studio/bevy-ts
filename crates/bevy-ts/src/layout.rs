@@ -36,10 +36,10 @@ pub enum FieldType {
     Timer,
     /// Bevy's `Stopwatch` as plain data: the fields of [`stopwatch_layout`].
     Stopwatch,
-    /// A heap field: Rust's `String`, in the component's own bytes (components only).
+    /// A heap field: Rust's `String`, in the value's own bytes (components, resources, `Local`).
     #[serde(rename = "string")]
     Str,
-    /// A heap field: Rust's `Vec<T>` of a number kind, `bool` or `string` (components only).
+    /// A heap field: Rust's `Vec<T>` of a number kind, `bool` or `string` (as `Str`).
     List { of: Box<FieldType> },
 }
 

@@ -238,7 +238,7 @@ fn heap_fields_are_refused_on_messages() {
     g.fake.push(FakeProgram { manifest: bad, ..Default::default() });
     let r = generation::apply(g.world(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
     assert_ne!(r.status, ReloadStatus::Applied);
-    assert!(r.errors.iter().any(|e| e.message.contains("it::heap_fields::Said.text") && e.message.contains("allowed on components and resources only")), "{:?}", r.errors);
+    assert!(r.errors.iter().any(|e| e.message.contains("it::heap_fields::Said.text") && e.message.contains("allowed on components, resources and Local only")), "{:?}", r.errors);
 }
 
 /// `name { text: string = "x", n: f32 }`, inserted with `text: "hello"`.

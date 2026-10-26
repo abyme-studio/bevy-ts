@@ -829,6 +829,50 @@ fn value_at(world: &World, t: &Target, place: Place) -> Result<*const u8, String
     }
 }
 
+/// A read's answer: its byte length in slot 0, and the bytes when the slice holds them.
+fn answer(scratch: &[u8], buf: &mut [u8], ret: &mut [u8]) -> Result<usize, String> {
+    if scratch.len() <= buf.len() {
+        buf[..scratch.len()].copy_from_slice(scratch);
+    }
+    let mut w = crate::host::SlotWriter::new(ret);
+    w.push(scratch.len() as f64);
+    w.finish()
+}
+
+/// A heap read or write of the running system's `Local` `i`, field `field` of its layout. A
+/// `Local` has no ticks, so a write marks nothing.
+fn local_call(world: &World, i: u32, field: u32, id: u32, r: &mut crate::host::SlotReader, scratch: &mut Vec<u8>, ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
+    let place = Place::Local(i);
+    let locals = world.get_resource::<crate::places::RunPlace>().and_then(|r| r.locals).ok_or_else(|| format!("{place}: no system is running"))?;
+    // SAFETY: the run that set the locals is in progress; JS holds the store's bytes only as
+    // the frame's raw pointer, which this call does not overlap with a reference.
+    let store = unsafe { locals.get(i) }.ok_or_else(|| format!("{place} does not exist"))?;
+    let f = store.layout.fields.get(field as usize).ok_or_else(|| format!("{place} has no field {field}"))?;
+    let (offset, name) = (f.offset, f.name.clone());
+    let kind = crate::heap::HeapKind::of(&f.ty).ok_or_else(|| format!("Local.{name} is no heap field"))?;
+    let buf = slices.first_mut().ok_or("no buffer")?;
+    match id {
+        READ => {
+            scratch.clear();
+            // SAFETY: the store is a live value of its layout, with a `kind` value at `offset`.
+            unsafe { crate::heap::put_codec_at(store.data().as_ptr(), offset, kind, scratch) };
+            answer(scratch, buf, ret)
+        }
+        WRITE => {
+            let len = r.slot()? as usize;
+            let mut bytes = buf.get(..len).ok_or("write: length past the buffer")?;
+            let v = crate::heap::HeapValue::read_codec(kind, &mut bytes).map_err(|e| format!("Local.{name}: {e}"))?;
+            if !bytes.is_empty() {
+                return Err(format!("Local.{name}: bytes left after the value"));
+            }
+            // SAFETY: as above.
+            unsafe { crate::heap::replace(store.data_mut().as_mut_ptr(), offset, v) };
+            Ok(0)
+        }
+        _ => Err(format!("no reflected host function {id} at {place}")),
+    }
+}
+
 fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
     CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut r = crate::host::SlotReader::new(args);
@@ -836,6 +880,9 @@ fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, 
     let index = r.slot()? as u32;
     // SAFETY: shared read of the resource that holds the targets; nothing writes it mid-run.
     let world = unsafe { cell.world() };
+    if let Place::Local(i) = place {
+        return local_call(world, i, index, id, &mut r, scratch, ret, slices);
+    }
     let targets = world.get_resource::<ReflectTargets>().ok_or("no reflected targets")?;
     let t = targets.get(index).ok_or_else(|| format!("no reflected target {index}"))?;
     let entity = match place {
@@ -845,14 +892,6 @@ fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, 
         _ => None,
     };
     let buf = slices.first_mut().ok_or("no buffer")?;
-    let answer = |scratch: &[u8], buf: &mut [u8], ret: &mut [u8]| {
-        if scratch.len() <= buf.len() {
-            buf[..scratch.len()].copy_from_slice(scratch);
-        }
-        let mut w = crate::host::SlotWriter::new(ret);
-        w.push(scratch.len() as f64);
-        w.finish()
-    };
     let Some(entity) = entity else {
         // A place that is no entity's holds heap values only, and reads them only: a message or
         // an event is `&M` in Bevy, a lifecycle value is a copy.

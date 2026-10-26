@@ -1,7 +1,8 @@
 //! Heap fields in TS systems (openspecs ts-component-heap-fields, ts-heap-fields-2), through V8: a
 //! `string` or `T[]` field of a component or resource read through the host at its place and
 //! cached by its changed tick, assigned whole on a `Mut` row or `ResMut`, read from a lifecycle
-//! value's copy, and refused where heap values are not held yet.
+//! value's copy, kept by a `Local` across runs and reloads, and refused where heap values are not
+//! held yet.
 
 use crate::common;
 
@@ -178,6 +179,36 @@ app.addObserver(gone).addObserver(removed).addSystems(Update, kill);
 }
 
 #[test]
+fn a_local_keeps_its_string_and_list_across_runs_and_a_reload_that_adds_a_field() {
+    let src = |extra: &str| {
+        format!(
+            r#"import {{ app, Update }} from "bevy-ts";
+import type {{ Local, u32 }} from "bevy-ts";
+export function tally(l: Local<{{ log: string; hits: u32[]{extra} }}>) {{
+  try {{
+    (l.hits as u32[]).push(9);
+  }} catch (e) {{
+    if (!(e instanceof TypeError)) throw e;
+  }}
+  l.log = l.log + "x";
+  l.hits = [...l.hits, l.hits.length];
+  console.log("tally " + l.log + " " + JSON.stringify(l.hits));
+}}
+app.addSystems(Update, tally);
+"#
+        )
+    };
+    let (dir, mut app) = load("heap-local", &src(""));
+    updates(&mut app, 3);
+    assert!(messages(&app).iter().any(|l| l == "tally xx [0,1]"), "{:?}", messages(&app));
+    write(&dir, "game.ts", &src("; n: u32"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, bevy_ts::generation::ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    assert!(messages(&app).iter().any(|l| l == "tally xxx [0,1,2]"), "the reload kept the values: {:?}", messages(&app));
+}
+
+#[test]
 fn heap_fields_outside_components_and_unsupported_types_fail_with_file_and_line() {
     let errors = load_errors(
         "heap-message",
@@ -186,7 +217,7 @@ export class Said extends Message { text: string = "x" }
 "#,
     );
     let e = errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join("\n");
-    assert!(e.contains("game.ts:2:") && e.contains("Said field text") && e.contains("allowed on components and resources only"), "{e}");
+    assert!(e.contains("game.ts:2:") && e.contains("Said field text") && e.contains("allowed on components, resources and Local only"), "{e}");
 
     let errors = load_errors(
         "heap-list-of",
