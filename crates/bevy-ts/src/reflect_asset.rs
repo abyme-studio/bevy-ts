@@ -1216,7 +1216,7 @@ mod tests {
         let registry = app.world().resource::<AppTypeRegistry>().read();
         let assets = app.world().resource::<ScriptAssets>();
         let server = app.world().resource::<AssetServer>();
-        let slots = Slots { registry: &registry, server: Some(server), assets, check: false };
+        let slots = Slots { registry: &registry, server: Some(server), assets, world: None, check: false };
         let id = TypeId::of::<Image>();
         let linear = serde_json::json!({ "$load": "a.png", "settings": { "is_srgb": false, "sampler": { "Descriptor": { "address_mode_u": "Repeat" } } } });
         let a = slots.write(id, &linear).unwrap();
@@ -1230,11 +1230,11 @@ mod tests {
         assert!(e.contains("is_srgb"), "{e}");
         let e = slots.write(TypeId::of::<Mesh>(), &serde_json::json!({ "$load": "m.glb" })).unwrap_err();
         assert!(e.contains("Mesh") && e.contains("no loader settings"), "{e}");
-        let check = Slots { registry: &registry, server: None, assets, check: true };
+        let check = Slots { registry: &registry, server: None, assets, world: None, check: true };
         check.write(id, &serde_json::json!({ "$load": "c.png", "settings": { "is_srgb": true } })).expect("a check loads nothing");
         assert!(check.write(id, &serde_json::json!({ "$load": "c.png", "settings": { "nope": 1 } })).is_err());
         assert!(!assets.table().loads.contains_key("c.png"));
-        let none = Slots { registry: &registry, server: None, assets, check: false };
+        let none = Slots { registry: &registry, server: None, assets, world: None, check: false };
         assert!(none.write(id, &serde_json::json!({ "$load": "d.png" })).unwrap_err().contains("AssetServer"));
         assert!(loadable(IMG) && !loadable(MAT));
     }
