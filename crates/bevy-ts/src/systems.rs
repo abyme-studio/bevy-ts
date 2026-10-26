@@ -343,6 +343,8 @@ pub struct ObserverOf(pub Trigger);
 pub struct TsSystem {
     pub key: ScriptKey,
     pub decl: SystemDecl,
+    /// Its key in `SystemMemory`: its identity, or a predicate use's own key.
+    pub memory: String,
     pub params: Vec<RunParam>,
     pub condition: Option<Condition>,
     pub observes: Option<ObserverOf>,
@@ -370,7 +372,7 @@ pub struct TsSystems {
     pub observers: Vec<TsSystem>,
     /// One-shot systems by identity; `None` while one runs.
     pub one_shot: BTreeMap<String, Option<TsSystem>>,
-    /// TS predicate conditions by identity, run when a condition naming one is evaluated.
+    /// TS predicate uses by memory key, run when the condition holding one is evaluated.
     pub predicates: BTreeMap<String, TsSystem>,
     /// Collective `runIf` conditions, by group id.
     pub groups: HashMap<String, Condition>,
@@ -412,7 +414,11 @@ impl TsSystems {
             .chain(self.stages.values().flatten())
             .chain(self.schedules.values().flatten())
             .chain(self.one_shot.values().flatten())
-            .chain(self.predicates.values())
+            .chain({
+                // One entry per predicate, however many uses it has.
+                let mut seen = HashSet::new();
+                self.predicates.values().filter(move |p| seen.insert(p.decl.name.as_str()))
+            })
             .chain(self.slots.values().flatten())
             .chain(self.on_enter.values().flatten())
             .chain(self.on_exit.values().flatten())
@@ -492,6 +498,14 @@ pub type TsEncode<'a> = dyn Fn(&str, &serde_json::Map<String, serde_json::Value>
 
 /// Finds a registered Rust component by type path, or by its short name when only one type has
 /// it: `None` when none has it, and an error naming their paths when several share it.
+/// A resource's entity and location, while the entity holds it: removing a resource leaves its
+/// entity behind, so the entity alone does not say the resource exists.
+pub(crate) fn resource_entity(world: &World, id: ComponentId) -> Option<(Entity, bevy::ecs::entity::EntityLocation)> {
+    let e = world.resource_entities().get(id)?;
+    let loc = world.entities().get_spawned(e).ok()?;
+    world.archetypes()[loc.archetype_id].contains(id).then_some((e, loc))
+}
+
 pub fn rust_component_by_name(world: &World, name: &str) -> Result<Option<ComponentId>, String> {
     let mut short = Vec::new();
     for (id, info) in world.components().iter_registered() {
@@ -745,9 +759,12 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
         }
     }
     let mut out = TsSystems { generation, ..Default::default() };
-    let predicates: HashSet<String> = decls.iter().filter(|d| d.schedule == ScheduleDecl::Predicate).map(|d| d.name.clone()).collect();
+    let mut predicates = conditions::PredicateUses {
+        declared: decls.iter().filter(|d| d.schedule == ScheduleDecl::Predicate).map(|d| d.name.clone()).collect(),
+        uses: Vec::new(),
+    };
     for g in groups {
-        let mut c = conditions::Compile { ts, encode, config: &g.id, natives: &mut out.natives, predicates: &predicates };
+        let mut c = conditions::Compile { ts, encode, config: &g.id, natives: &mut out.natives, predicates: &mut predicates };
         match conditions::compile(world, &g.condition, "", &mut c) {
             Ok(cond) => drop(out.groups.insert(g.id.clone(), cond)),
             Err(e) => {
@@ -759,10 +776,13 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
     let mut lists: BTreeMap<String, ScheduleGroup> = BTreeMap::new();
     let exposed: HashSet<String> = world.get_resource::<crate::sets::TsSets>().map(|s| s.iter().map(|x| x.name.clone()).collect()).unwrap_or_default();
     for (i, d) in decls.iter().enumerate() {
-        if matches!(d.schedule, ScheduleDecl::Observer | ScheduleDecl::OneShot | ScheduleDecl::Predicate) {
-            match build_one(world, generation, i, d, ts, encode, &mut out.natives, &predicates) {
+        if d.schedule == ScheduleDecl::Predicate {
+            // Built once per use, below, when every condition naming it has compiled.
+            continue;
+        }
+        if matches!(d.schedule, ScheduleDecl::Observer | ScheduleDecl::OneShot) {
+            match build_one(world, generation, i, d, ts, encode, &mut out.natives, &mut predicates, None) {
                 Ok(s) if d.schedule == ScheduleDecl::Observer => out.observers.push(s),
-                Ok(s) if d.schedule == ScheduleDecl::Predicate => drop(out.predicates.insert(d.name.clone(), s)),
                 Ok(s) => drop(out.one_shot.insert(d.name.clone(), Some(s))),
                 Err(e) => errors.push(e),
             }
@@ -786,7 +806,7 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
         };
         let mut built = Vec::new();
         for index in ordered {
-            match build_one(world, generation, index, &decls[index], ts, encode, &mut out.natives, &predicates) {
+            match build_one(world, generation, index, &decls[index], ts, encode, &mut out.natives, &mut predicates, None) {
                 Ok(s) => built.push(s),
                 Err(e) => errors.push(e),
             }
@@ -832,13 +852,30 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
             Err(e) => errors.push(e),
         }
     }
+    // Each use of a predicate is its own instance with its own memory; a predicate that fails to
+    // build is reported once.
+    let index_of: HashMap<&str, usize> = decls.iter().enumerate().filter(|(_, d)| d.schedule == ScheduleDecl::Predicate).map(|(i, d)| (d.name.as_str(), i)).collect();
+    let mut failed = HashSet::new();
+    for (system, memory) in std::mem::take(&mut predicates.uses) {
+        let Some(&i) = index_of.get(system.as_str()) else { continue };
+        if failed.contains(&system) || out.predicates.contains_key(&memory) {
+            continue;
+        }
+        match build_one(world, generation, i, &decls[i], ts, encode, &mut out.natives, &mut predicates, Some(&memory)) {
+            Ok(s) => drop(out.predicates.insert(memory, s)),
+            Err(e) => {
+                failed.insert(system);
+                errors.push(e);
+            }
+        }
+    }
     if errors.is_empty() { Ok(out) } else { Err(errors) }
 }
 
 /// An observer for `commands.entity(e).observe(fn)`: its first param must be an entity event. It
 /// carries no `runIf`, so it names no predicate.
 fn build_targeted(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup, encode: &TsEncode, natives: &mut HashSet<String>) -> Result<TsSystem, ScriptError> {
-    let s = build_one(world, generation, index, d, ts, encode, natives, &HashSet::new())?;
+    let s = build_one(world, generation, index, d, ts, encode, natives, &mut conditions::PredicateUses::default(), None)?;
     let entity_event = match &s.observes {
         Some(ObserverOf(Trigger::Event(i))) => world.resource::<TsPayloads>().events[*i].entity,
         Some(ObserverOf(Trigger::Lifecycle(..))) => true,
@@ -1074,7 +1111,16 @@ fn flatten_params<'a>(params: &'a [ParamDecl], out: &mut Vec<&'a ParamDecl>) {
 
 /// The param a predicate may not take, as TS writes it: a predicate only reads.
 fn writing_param(p: &ParamDecl) -> Option<String> {
-    let short = |n: &str| n.rsplit("::").next().unwrap_or(n).to_string();
+    // Each path in a type, generics included, by its last segment: `Time<Virtual>`.
+    let short = |n: &str| {
+        let mut out = String::new();
+        for part in n.split_inclusive(['<', '>', ',']) {
+            let (path, sep) = part.split_at(part.trim_end_matches(['<', '>', ',']).len());
+            out += path.trim().rsplit("::").next().unwrap_or(path);
+            out += sep;
+        }
+        out
+    };
     match p {
         ParamDecl::ResMut { resource, .. } => Some(format!("ResMut<{}>", short(resource))),
         ParamDecl::Commands => Some("Commands".into()),
@@ -1089,8 +1135,10 @@ fn writing_param(p: &ParamDecl) -> Option<String> {
     }
 }
 
+/// Builds a system from its declaration. `memory` is a predicate use's key in `SystemMemory`;
+/// anything else keeps its memory under its identity.
 #[allow(clippy::too_many_arguments)]
-fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup, encode: &TsEncode, natives: &mut HashSet<String>, predicates: &HashSet<String>) -> Result<TsSystem, ScriptError> {
+fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup, encode: &TsEncode, natives: &mut HashSet<String>, predicates: &mut conditions::PredicateUses, memory: Option<&str>) -> Result<TsSystem, ScriptError> {
     let err = |m: String| ScriptError::at(format!("system {}: {m}", d.name), d.location.clone());
     let mut flat = Vec::new();
     flatten_params(&d.params, &mut flat);
@@ -1230,13 +1278,15 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
         None => None,
     };
     let local_refs: Vec<&[crate::manifest::FieldDecl]> = locals.iter().map(|l| l.as_slice()).collect();
-    let mem = world.get_resource_or_init::<SystemMemory>().into_inner().declare(&d.name, &local_refs);
+    let memory = memory.unwrap_or(&d.name).to_string();
+    let mem = world.get_resource_or_init::<SystemMemory>().into_inner().declare(&memory, &local_refs);
     for (path, end) in rust_cursors {
         mem.cursors.entry(path).or_insert(end);
     }
     Ok(TsSystem {
         key: ScriptKey { generation, index: index as u32 },
         decl: d.clone(),
+        memory,
         params,
         condition,
         observes,
@@ -1422,7 +1472,7 @@ fn drive(world: &mut World, key: &ListKey, only: Option<&HashSet<String>>) {
 /// stateful conditions advance. A TS predicate in them is one call into JS per evaluation.
 fn gate(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSystems, sys: &mut TsSystem, groups: &mut HashMap<String, bool>) -> bool {
     let TsSystems { groups: collective, predicates, .. } = systems;
-    let mut predicate = |world: &mut World, name: &str| run_predicate(world, rt, predicates, name);
+    let mut predicate = |world: &mut World, memory: &str| run_predicate(world, rt, predicates, memory);
     let mut ok = true;
     for g in &sys.decl.groups {
         let pass = match groups.get(g) {
@@ -1443,13 +1493,13 @@ fn gate(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSystems, sys:
 
 /// Runs a TS predicate and gives its return: false when it threw, or returned something other
 /// than a boolean, which is warned once.
-fn run_predicate(world: &mut World, rt: &mut ScriptRuntime, predicates: &mut BTreeMap<String, TsSystem>, name: &str) -> bool {
-    let Some(p) = predicates.get_mut(name) else { return false };
+fn run_predicate(world: &mut World, rt: &mut ScriptRuntime, predicates: &mut BTreeMap<String, TsSystem>, memory: &str) -> bool {
+    let Some(p) = predicates.get_mut(memory) else { return false };
     match run_one(world, rt, p, None).returned {
         Some(b) => b,
         None => {
             if p.last_error.is_none() {
-                let short = name.rsplit('#').next().unwrap_or(name);
+                let short = p.decl.name.rsplit('#').next().unwrap_or(&p.decl.name);
                 rt.log_warn(world, format!("predicate {short} returned no boolean; a condition's function returns true or false"), p.decl.location.clone());
             }
             false
@@ -1572,10 +1622,10 @@ struct Ran {
 
 /// Runs one system (or one observer event).
 fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event: Option<(&[u8], (u64, u64))>) -> Ran {
-    let identity = sys.decl.name.clone();
+    let key = sys.memory.clone();
     let dev = rt.dev;
     let tick = world.increment_change_tick();
-    let last_run = world.resource::<SystemMemory>().0.get(&identity).map_or(Tick::new(0), |m| m.last_run);
+    let last_run = world.resource::<SystemMemory>().0.get(&key).map_or(Tick::new(0), |m| m.last_run);
     let frame = runtime::frame_info(world, tick.get());
     let started = Instant::now();
 
@@ -1592,7 +1642,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     // A `Single` or `Populated` that does not match skips the run, as Bevy's param validation does.
     let mut skip = false;
     let mut memory = world.remove_resource::<SystemMemory>().unwrap_or_default();
-    let mem = memory.0.entry(identity.clone()).or_default();
+    let mem = memory.0.entry(key.clone()).or_default();
     // Columns and resource rows the run exposes, for the slice-overlap check of host calls.
     let ports = sys.params.iter().any(|p| matches!(p, RunParam::Port(_)));
     let mut regions: Vec<crate::host::Region> = Vec::new();
@@ -1741,8 +1791,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     skip |= !ok;
                     ParamFrame::Query { tables: out, last_run: last_run.get() }
                 }
-                // A removed resource leaves its entity behind, so it is present only while the entity has it.
-                RunParam::Res { name, id, size, write, heap, optional } => match world.resource_entities().get(*id).filter(|_| world.contains_resource_by_id(*id)).and_then(|e| Some((e, world.entities().get_spawned(e).ok()?))) {
+                RunParam::Res { name, id, size, write, heap, optional } => match resource_entity(world, *id) {
                     // A Rust resource is stored in a sparse set (`#[derive(Resource)]`); a TS one in a table.
                     Some((e, _)) if world.storages().sparse_sets.get(*id).is_some() => {
                         let set = world.storages().sparse_sets.get(*id).expect("sparse set");
@@ -1775,7 +1824,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                         ParamFrame::None
                     }
                 },
-                RunParam::ReflectRes { name, id, write, optional, .. } => match world.resource_entities().get(*id).and_then(|e| changed_cell(world, *id, e)) {
+                RunParam::ReflectRes { name, id, write, optional, .. } => match resource_entity(world, *id).and_then(|(e, _)| changed_cell(world, *id, e)) {
                     Some(cell) => ParamFrame::Row { data: cell as *mut u8, bytes: 4, ticks: write.then_some(cell) },
                     None if *optional => ParamFrame::None,
                     None => {
@@ -2014,7 +2063,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
             }
         }
     }
-    let mem = memory.0.entry(identity.clone()).or_default();
+    let mem = memory.0.entry(key).or_default();
     mem.last_run = tick;
     let mut ran = Ran::default();
     if result.is_ok() {
@@ -2115,6 +2164,12 @@ impl TsSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_writing_param_names_its_type_short_generics_too() {
+        let p = ParamDecl::ResMut { resource: "bevy::time::Time<bevy::time::Virtual>".into(), optional: false, reflect: true };
+        assert_eq!(writing_param(&p).as_deref(), Some("ResMut<Time<Virtual>>"));
+    }
 
     fn sys(name: &str, after: &[&str], before: &[&str], sets: &[&str]) -> SystemDecl {
         SystemDecl {

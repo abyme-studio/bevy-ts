@@ -350,3 +350,42 @@ fn a_predicate_returning_no_boolean_warns_and_is_false() {
     assert_eq!(warned, 1, "{:?}", messages(&app));
     assert!(said(&mut app).is_empty());
 }
+
+#[test]
+fn each_distributive_use_of_a_predicate_has_its_own_cursor() {
+    let body = r#"export function send(w: MessageWriter<Ping>, s: ResMut<Score>) { if (s.value++ === 0) w.write(Ping.of({ n: 1 })); }
+export function hit(r: MessageReader<Ping>): boolean { return r.len > 0; }
+export function a() { console.log("a"); }
+export function b() { console.log("b"); }
+export function c() { console.log("c"); }
+app.addMessage(Ping).insertResource(Score.of({ value: 0 })).addSystems(Update, send, systems(a, b, c).distributiveRunIf(hit));
+"#;
+    let (_, mut app) = load("cond-predicatecursors", &src(body));
+    updates(&mut app, 4);
+    // One message: each member's own `hit` reads it once; a shared cursor would let a alone run.
+    let mut got = said(&mut app);
+    got.sort();
+    assert_eq!(got, ["a", "b", "c"]);
+}
+
+#[test]
+fn a_function_used_as_system_and_predicate_keeps_two_cursors() {
+    let body = r#"export function send(w: MessageWriter<Ping>, s: ResMut<Score>) { if (s.value++ === 0) w.write(Ping.of({ n: 1 })); }
+export function ready(r: MessageReader<Ping>): boolean { console.log(`ready${r.len}`); return r.len > 0; }
+export function boss() { console.log("boss"); }
+app.addMessage(Ping).insertResource(Score.of({ value: 0 })).addSystems(Update, send, ready, systems(boss).runIf(ready));
+"#;
+    let (_, mut app) = load("cond-predicatesystem", &src(body));
+    updates(&mut app, 4);
+    let got = said(&mut app);
+    assert_eq!(got.iter().filter(|m| *m == "ready1").count(), 2, "the system and the predicate each read the message: {got:?}");
+    assert_eq!(got.iter().filter(|m| *m == "boss").count(), 1, "{got:?}");
+}
+
+#[test]
+fn a_function_that_is_not_a_predicate_says_what_to_pass() {
+    let errors = load_errors("cond-notapredicate", &src("export function gated() {}\napp.addSystems(Update, systems(gated).runIf(runOnce as any));\n"));
+    assert!(errors.iter().any(|e| e.message.contains("runIf(runOnce): pass a condition")), "{errors:?}");
+    let errors = load_errors("cond-inlinepredicate", &src("export function gated() {}\napp.addSystems(Update, systems(gated).runIf(() => true));\n"));
+    assert!(errors.iter().any(|e| e.message.contains("runIf(an inline function): pass a condition")), "{errors:?}");
+}
