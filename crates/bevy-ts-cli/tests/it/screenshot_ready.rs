@@ -6,6 +6,7 @@
 use crate::common;
 
 use bevy::asset::RenderAssetUsages;
+use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
 use bevy::prelude::*;
 use bevy_ts::generation::{DevSource, ReloadStatus};
@@ -30,9 +31,9 @@ fn engine(name: &str, path: &Path, at: u64) -> (PathBuf, App) {
         .add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
         .add_plugins(ReadyPlugin)
         .insert_resource(ClearColor(EMPTY))
-        .insert_resource(ShotWhenReady { at, ..ShotWhenReady::new(path) })
+        .insert_resource({ let mut shot = ShotWhenReady::new(path); shot.at = at; shot })
         .add_systems(Startup, |mut commands: Commands| {
-            commands.spawn((Camera3d::default(), Transform::from_xyz(0.0, 0.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y)));
+            commands.spawn((Camera3d::default(), Tonemapping::None, Transform::from_xyz(0.0, 0.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y)));
             commands.spawn((DirectionalLight::default(), Transform::from_xyz(1.0, 2.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y)));
         });
     app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap())));
@@ -82,7 +83,7 @@ fn shots_dir(name: &str) -> PathBuf {
     dir.canonicalize().unwrap()
 }
 
-/// A cube filling the view, in an unlit `SCENE` colour.
+/// A cube filling the view, in an unlit `SCENE` colour (the camera does no tonemapping).
 fn cube(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     let material = materials.add(StandardMaterial { base_color: SCENE, unlit: true, ..default() });
     commands.spawn((Mesh3d(meshes.add(Cuboid::new(3.0, 3.0, 0.5))), MeshMaterial3d(material)));
