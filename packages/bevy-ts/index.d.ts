@@ -175,6 +175,8 @@ type MutList<V> = V extends readonly (infer E)[] ? (number extends V["length"] ?
 /** Write access: list fields are arrays edited in place, sent at the end of the run. */
 type MutView<T> = { [K in keyof T]: MutList<T[K]> };
 /** Initial values, as Rust's `Health { hp: 3.0, ..default() }`: vectors take a tuple or a vector. */
+/** `tsxProps` without their bindings: `.of` takes values only. */
+export type Unbound<H> = { [K in keyof H]: Exclude<H[K], () => unknown> };
 export type Init<T> = {
   [K in keyof T as K extends symbol ? never : K]?: T[K] extends Vec3 ? Vec3Like : T[K] extends Quat ? readonly [number, number, number, number] | ReadonlyQuat : T[K];
 };
@@ -234,7 +236,7 @@ declare abstract class Data {
    * `Health.of({ hp: 3 })`, Rust's `Health { hp: 3.0, ..default() }`. A Rust class's writable
    * holes (its `tsxProps`, `DirectionalLight.of({ color })`) are written through reflection.
    */
-  static of<T, H = {}>(this: (new () => T) & { readonly tsxProps?: H }, init?: Init<T> & NoInfer<H>): T;
+  static of<T, H = {}>(this: (new () => T) & { readonly tsxProps?: H }, init?: Init<T> & NoInfer<Unbound<H>>): T;
 }
 /**
  * A TS component: plain fields are columns. A `string` or `T[]` field (`T` a number kind, `bool`

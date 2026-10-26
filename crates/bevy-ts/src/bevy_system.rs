@@ -66,7 +66,7 @@ fn observers_queued(queue: Option<Res<crate::observers::ObserverQueue>>) -> bool
 
 /// Runs the observers Rust triggered since the last stage. The head of every stage.
 fn stage_head(world: &mut World) {
-    crate::systems::with_systems(world, |world, rt, systems| crate::systems::drain_observers(world, rt, systems));
+    crate::systems::with_systems(world, crate::systems::drain_observers);
     if crate::schedules::has_pending(world) {
         crate::schedules::run_pending(world);
     }
@@ -373,6 +373,10 @@ pub struct LiveSystems {
     pub edits: u64,
 }
 
+/// A stage, schedule or slot's systems to place: its schedule, its set, whether it has a head,
+/// and its stage.
+type StageList<'a> = (InternedScheduleLabel, InternedSystemSet, bool, Option<Stage>, &'a mut Vec<TsSystem>);
+
 /// A TS system to place.
 struct Wanted<'a> {
     sys: &'a mut TsSystem,
@@ -395,7 +399,7 @@ pub(crate) fn commit(world: &mut World) {
     let epoch = world.get_resource::<LiveSystems>().map_or(0, |l| l.restarts);
     let clocks = world.get_resource_or_init::<crate::systems::StageClocks>().clone();
     {
-        let mut lists: Vec<(InternedScheduleLabel, InternedSystemSet, bool, Option<Stage>, &mut Vec<TsSystem>)> = Vec::new();
+        let mut lists: Vec<StageList> = Vec::new();
         for (stage, list) in systems.stages.iter_mut() {
             lists.push((crate::schedules::stage_label(*stage), crate::schedules::stage_set(*stage).intern(), true, Some(*stage), list));
         }

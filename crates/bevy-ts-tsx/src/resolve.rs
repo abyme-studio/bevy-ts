@@ -288,13 +288,18 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts, reg
     }
     match &r.target {
         Target::Native { layout, .. } => {
+            let n = native.get(&c.ty);
             for f in bound.keys() {
-                // Only a layout-tier hole refuses a binding; a reflect-tier prop binds (below).
-                if native.get(&c.ty).is_some_and(|n| n.reflect_holes.iter().any(|h| &h.name == f)) {
-                    return Err(err(format!("{}.{f} is written through reflection, so it takes a value, not a binding", c.ty), &at(c, f)));
+                // A hole binds too: each value is written through reflection as it arrives.
+                if n.is_some_and(|n| n.reflect_holes.iter().any(|h| &h.name == f)) {
+                    continue;
+                }
+                if let Some(why) = n.and_then(|n| n.holes.iter().find_map(|h| h.strip_prefix(&format!("{f}: ")))) {
+                    return Err(err(format!("{}.{f} is {why}, so TSX cannot set it", c.ty), &at(c, f)));
                 }
                 if layout.field(f).is_none() {
-                    let known: Vec<&str> = layout.fields.iter().map(|f| f.name.as_str()).collect();
+                    let holes = n.into_iter().flat_map(|n| n.reflect_holes.iter().map(|h| h.name.as_str()));
+                    let known: Vec<&str> = layout.fields.iter().map(|f| f.name.as_str()).chain(holes).collect();
                     return Err(err(format!("{} has no field {f} (fields: {})", c.ty, known.join(", ")), &c.source));
                 }
                 r.defaults.remove(f);

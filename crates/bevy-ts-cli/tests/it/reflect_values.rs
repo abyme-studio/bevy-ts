@@ -6,7 +6,7 @@ use crate::common;
 
 use bevy::camera::{OrthographicProjection, Projection, ScalingMode};
 use bevy::light::DirectionalLight;
-use bevy::pbr::ScreenSpaceTransmission;
+use bevy::pbr::{DistanceFog, ScreenSpaceTransmission};
 use bevy::prelude::*;
 use bevy_ts::generation::ReloadStatus;
 use bevy_ts_material::{ScriptMaterial, ScriptMaterial3d, ScriptMaterialPlugin};
@@ -17,7 +17,7 @@ fn reflect_app(entry: &Path) -> App {
     let mut app = app(entry);
     app.add_plugins(AssetPlugin::default()).init_asset::<Mesh>().init_asset::<StandardMaterial>().init_asset::<Shader>().init_asset::<Image>();
     app.add_plugins(ScriptMaterialPlugin);
-    app.register_type::<Projection>().register_type::<DirectionalLight>().register_type::<ScreenSpaceTransmission>();
+    app.register_type::<Projection>().register_type::<DirectionalLight>().register_type::<ScreenSpaceTransmission>().register_type::<DistanceFog>().register_type::<Camera3d>().register_type::<Camera>();
     app
 }
 
@@ -176,13 +176,58 @@ fn a_sun_takes_a_soft_shadow_size() {
     assert_eq!(the::<DirectionalLight>(&mut app).soft_shadow_size, None);
 }
 
+/// layout-bindable: a layout-tier hole bound to a signal follows it, written through reflection
+/// as each value arrives, and the component's columns keep theirs; a bad bound colour is logged
+/// naming the hole and its missing channels, and the hole keeps its last good value.
 #[test]
-fn an_opaque_hole_loads_and_a_bound_one_fails_naming_it() {
+fn a_bound_fog_colour_follows_its_signal() {
+    let src = r##"import { app, signal, Update } from "bevy-ts";
+import type { Local, u32 } from "bevy-ts";
+import { Camera3d, DistanceFog } from "bevy-ts/bevy";
+
+export const [night, setNight] = signal(false);
+export function flip(n: Local<{ n: u32 }>) {
+  n.n += 1;
+  if (n.n === 3) setNight(true);
+  if (n.n === 6) setNight(false);
+}
+app.addSystems(Update, flip);
+app.scene("s", () => (
+  <entity name="it">
+    <Camera3d />
+    <DistanceFog directional_light_exponent={30} color={() => (night() ? "#101020" : "#c0d0ff")} />
+  </entity>
+));
+"##;
+    let (_, mut app) = setup("reflect-bound-fog", src);
+    let mut seen: Vec<String> = Vec::new();
+    for _ in 0..30 {
+        let fog = the::<DistanceFog>(&mut app);
+        assert_eq!(fog.directional_light_exponent, 30.0, "a column keeps its value");
+        let hex = fog.color.to_srgba().to_hex().to_lowercase();
+        if seen.last() != Some(&hex) {
+            seen.push(hex);
+        }
+        if seen.len() == 3 {
+            break;
+        }
+        app.update();
+    }
+    assert_eq!(seen, ["#c0d0ff", "#101020", "#c0d0ff"]);
+
+    let src = scene("DistanceFog", "<DistanceFog color={() => ({ Srgba: { red: 1 } }) as any} />");
+    let (_, mut app) = setup("reflect-bound-fog-bad", &src);
+    app.update();
+    let log = messages(&app).join("\n");
+    assert!(log.contains("DistanceFog") && log.contains("color") && log.contains("green and blue"), "{log}");
+    assert_eq!(the::<DistanceFog>(&mut app).color, DistanceFog::default().color, "the hole keeps its last good value");
+}
+
+#[test]
+fn an_opaque_hole_loads_and_a_bad_colour_fails_naming_it() {
     // An opaque hole with reflected serde loads (reflect-coverage): `steps` is a `usize`.
     let (_, mut app) = setup("reflect-opaque", &scene("ScreenSpaceTransmission", "<ScreenSpaceTransmission steps={4} />"));
     assert_eq!(the::<ScreenSpaceTransmission>(&mut app).steps, 4);
-    let e = errors("reflect-bound", &scene("DirectionalLight", "<DirectionalLight color={() => \"#fff\"} />"));
-    assert!(e.contains("color") && e.contains("not a binding"), "{e}");
     let e = errors("reflect-colour", &scene("DirectionalLight", "<DirectionalLight color={{ Srgba: { red: 1 } } as any} />"));
     assert!(e.contains("green and blue"), "{e}");
 }

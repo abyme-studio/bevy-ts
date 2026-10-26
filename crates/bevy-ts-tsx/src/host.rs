@@ -515,6 +515,9 @@ fn patch(world: &mut World, binding: u32, v: Value) {
         bevy_ts_material::instance::patch(world, e, &kind, &prop, &props, source.clone())
     } else if resolve::asset_intrinsic(&key) || key == resolve::NAME {
         Err("this prop cannot be bound".to_string())
+    } else if let Some(path) = world.resource::<TsComponents>().live(&key).is_none().then(|| world.resource::<NativeLayouts>().get(&key).filter(|n| n.reflect_holes.iter().any(|h| h.name == prop)).map(|n| n.type_path.clone())).flatten() {
+        // A layout-tier hole: written through reflection, as a plain hole is.
+        crate::reflected::write(world, e, &path, &prop, &v).map(|_| ())
     } else if let Some(path) = world.resource::<TsComponents>().live(&key).is_none().then(|| resolve::reflect_path(world.resource::<NativeLayouts>(), &key)).flatten() {
         // A reflect-tier field: written through reflection, a string in a handle loaded.
         crate::reflected::write(world, e, &path, &prop, &v).map(|_| ())

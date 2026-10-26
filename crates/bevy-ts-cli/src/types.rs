@@ -526,13 +526,21 @@ fn ts_type_inner(registry: &TypeRegistry, path: &str, depth: usize, mode: Mode) 
     }
 }
 
-/// `static readonly tsxProps` for a layout-tier class's writable holes: TSX props, and keys `.of`
-/// takes for commands, that TS system rows do not carry. `None` when it has none.
+/// `static readonly tsxProps` for a layout-tier class's writable holes: TSX props, each a value or
+/// a binding, and keys `.of` takes (values only) for commands, that TS system rows do not carry. `None` when it has none.
 fn hole_props(registry: &TypeRegistry, n: &bevy_ts::layout::NativeComponent) -> Option<String> {
     if n.reflect_holes.is_empty() {
         return None;
     }
-    let props: Vec<String> = n.reflect_holes.iter().map(|h| format!("{}?: {}", prop(&h.name), ts_type(registry, &h.type_path, 1))).collect();
+    // A TSX prop binds: a value or a function giving one (`.of` drops the function).
+    let props: Vec<String> = n
+        .reflect_holes
+        .iter()
+        .map(|h| {
+            let t = ts_type(registry, &h.type_path, 1);
+            format!("{}?: {t} | (() => {t})", prop(&h.name))
+        })
+        .collect();
     Some(format!("  static readonly tsxProps: {{ {} }};", props.join("; ")))
 }
 

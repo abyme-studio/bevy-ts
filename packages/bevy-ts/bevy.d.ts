@@ -87,7 +87,7 @@ export type DefaultSpatialScale = InstanceType<typeof DefaultSpatialScale>;
 export declare class PlaybackSettings extends Component {
   static readonly path: "bevy_audio::audio::PlaybackSettings";
   static readonly native: true;
-  static readonly tsxProps: { volume?: { Linear: number } | { Decibels: number }; spatial_scale?: readonly [number, number, number] | null; start_position?: number | null; duration?: number | null };
+  static readonly tsxProps: { volume?: { Linear: number } | { Decibels: number } | (() => { Linear: number } | { Decibels: number }); spatial_scale?: readonly [number, number, number] | null | (() => readonly [number, number, number] | null); start_position?: number | null | (() => number | null); duration?: number | null | (() => number | null) };
   declare mode: "Once" | "Loop" | "Despawn" | "Remove";
   declare speed: f32;
   declare paused: bool;
@@ -111,7 +111,7 @@ export type GlobalVolume = InstanceType<typeof GlobalVolume>;
 export declare class Camera extends Component {
   static readonly path: "bevy_camera::camera::Camera";
   static readonly native: true;
-  static readonly tsxProps: { viewport?: { physical_position?: readonly [number, number]; physical_size?: readonly [number, number]; depth?: { start: number; end: number } } | null; order?: number | string; computed?: { clip_from_view?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; target_info?: { physical_size?: readonly [number, number]; scale_factor?: number } | null; old_viewport_size?: readonly [number, number] | null; old_sub_camera_view?: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null }; output_mode?: { Write: { blend_state?: never | null; clear_color?: "Default" | { Custom: ColorValue } | "None" } } | "Skip"; clear_color?: "Default" | { Custom: ColorValue } | "None"; sub_camera_view?: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null };
+  static readonly tsxProps: { viewport?: { physical_position?: readonly [number, number]; physical_size?: readonly [number, number]; depth?: { start: number; end: number } } | null | (() => { physical_position?: readonly [number, number]; physical_size?: readonly [number, number]; depth?: { start: number; end: number } } | null); order?: number | string | (() => number | string); computed?: { clip_from_view?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; target_info?: { physical_size?: readonly [number, number]; scale_factor?: number } | null; old_viewport_size?: readonly [number, number] | null; old_sub_camera_view?: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null } | (() => { clip_from_view?: readonly [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]; target_info?: { physical_size?: readonly [number, number]; scale_factor?: number } | null; old_viewport_size?: readonly [number, number] | null; old_sub_camera_view?: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null }); output_mode?: { Write: { blend_state?: never | null; clear_color?: "Default" | { Custom: ColorValue } | "None" } } | "Skip" | (() => { Write: { blend_state?: never | null; clear_color?: "Default" | { Custom: ColorValue } | "None" } } | "Skip"); clear_color?: "Default" | { Custom: ColorValue } | "None" | (() => "Default" | { Custom: ColorValue } | "None"); sub_camera_view?: { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null | (() => { full_size?: readonly [number, number]; offset?: readonly [number, number]; size?: readonly [number, number] } | null) };
   declare is_active: bool;
   declare msaa_writeback: "Off" | "Auto" | "Always";
   declare invert_culling: bool;
@@ -252,7 +252,7 @@ export type VisibleMeshEntities = InstanceType<typeof VisibleMeshEntities>;
 export declare class VisibilityRange extends Component {
   static readonly path: "bevy_camera::visibility::range::VisibilityRange";
   static readonly native: true;
-  static readonly tsxProps: { start_margin?: { start: number; end: number }; end_margin?: { start: number; end: number } };
+  static readonly tsxProps: { start_margin?: { start: number; end: number } | (() => { start: number; end: number }); end_margin?: { start: number; end: number } | (() => { start: number; end: number }) };
   declare use_aabb: bool;
 }
 export interface VisibilityRange extends Holes<{ start_margin: { start: number; end: number }; end_margin: { start: number; end: number } }> {}
@@ -305,7 +305,7 @@ export type InfiniteGrid = InstanceType<typeof InfiniteGrid>;
 export declare class InfiniteGridSettings extends Component {
   static readonly path: "bevy_dev_tools::infinite_grid::InfiniteGridSettings";
   static readonly native: true;
-  static readonly tsxProps: { x_axis_color?: ColorValue; z_axis_color?: ColorValue; minor_line_color?: ColorValue; major_line_color?: ColorValue };
+  static readonly tsxProps: { x_axis_color?: ColorValue | (() => ColorValue); z_axis_color?: ColorValue | (() => ColorValue); minor_line_color?: ColorValue | (() => ColorValue); major_line_color?: ColorValue | (() => ColorValue) };
   declare fadeout_distance: f32;
   declare dot_fadeout_strength: f32;
   declare scale: f32;
@@ -325,7 +325,7 @@ export type PointerDebugOverlayOf = InstanceType<typeof PointerDebugOverlayOf>;
 export declare class GlobalRenderDebugOverlay extends Resource {
   static readonly path: "bevy_dev_tools::render_debug::GlobalRenderDebugOverlay";
   static readonly native: true;
-  static readonly tsxProps: { mode?: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } };
+  static readonly tsxProps: { mode?: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } | (() => "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } }) };
   declare enabled: bool;
   declare opacity: f32;
 }
@@ -335,7 +335,7 @@ export interface GlobalRenderDebugOverlay extends Holes<{ get mode(): "Depth" | 
 export declare class RenderDebugOverlay extends Component {
   static readonly path: "bevy_dev_tools::render_debug::RenderDebugOverlay";
   static readonly native: true;
-  static readonly tsxProps: { mode?: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } };
+  static readonly tsxProps: { mode?: "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } } | (() => "Depth" | "Normal" | "MotionVectors" | "Deferred" | "DeferredBaseColor" | "DeferredEmissive" | "DeferredMetallicRoughness" | { DepthPyramid: { mip_level?: number } }) };
   declare enabled: bool;
   declare opacity: f32;
 }
@@ -410,7 +410,7 @@ export type TransformGizmoSettings = InstanceType<typeof TransformGizmoSettings>
 export declare class TransformGizmoState extends Resource {
   static readonly path: "bevy_gizmos::transform_gizmo::TransformGizmoState";
   static readonly native: true;
-  static readonly tsxProps: { hovered_axis?: "X" | "Y" | "Z" | "View" | null; axis?: "X" | "Y" | "Z" | "View" | null; start_transform?: { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] }; entity?: Entity | null };
+  static readonly tsxProps: { hovered_axis?: "X" | "Y" | "Z" | "View" | null | (() => "X" | "Y" | "Z" | "View" | null); axis?: "X" | "Y" | "Z" | "View" | null | (() => "X" | "Y" | "Z" | "View" | null); start_transform?: { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] } | (() => { translation?: readonly [number, number, number]; rotation?: readonly [number, number, number, number]; scale?: readonly [number, number, number] }); entity?: Entity | null | (() => Entity | null) };
   declare active: bool;
   declare readonly drag_start_world: Vec3;
   declare readonly gizmo_origin: Vec3;
@@ -533,7 +533,7 @@ export type TransmittedShadowReceiver = InstanceType<typeof TransmittedShadowRec
 export declare class AmbientLight extends Component {
   static readonly path: "bevy_light::ambient_light::AmbientLight";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare brightness: f32;
   declare affects_lightmapped_meshes: bool;
 }
@@ -543,7 +543,7 @@ export interface AmbientLight extends Holes<{ get color(): ColorRead; set color(
 export declare class GlobalAmbientLight extends Resource {
   static readonly path: "bevy_light::ambient_light::GlobalAmbientLight";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare brightness: f32;
   declare affects_lightmapped_meshes: bool;
 }
@@ -585,7 +585,7 @@ export interface ClusteredDecal extends Holes<{ get base_color_texture(): string
 export declare class DirectionalLight extends Component {
   static readonly path: "bevy_light::directional_light::DirectionalLight";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue; soft_shadow_size?: number | null };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue); soft_shadow_size?: number | null | (() => number | null) };
   declare illuminance: f32;
   declare shadow_maps_enabled: bool;
   declare contact_shadows_enabled: bool;
@@ -611,7 +611,7 @@ export type ShowLightGizmo = InstanceType<typeof ShowLightGizmo>;
 export declare class PointLight extends Component {
   static readonly path: "bevy_light::point_light::PointLight";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare intensity: f32;
   declare range: f32;
   declare radius: f32;
@@ -696,7 +696,7 @@ export interface Skybox extends Holes<{ get image(): string | AssetRef<Image> | 
 export declare class RectLight extends Component {
   static readonly path: "bevy_light::rect_light::RectLight";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare intensity: f32;
   declare range: f32;
   declare width: f32;
@@ -708,7 +708,7 @@ export interface RectLight extends Holes<{ get color(): ColorRead; set color(v: 
 export declare class SpotLight extends Component {
   static readonly path: "bevy_light::spot_light::SpotLight";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare intensity: f32;
   declare range: f32;
   declare radius: f32;
@@ -747,7 +747,7 @@ export interface FogVolume extends Holes<{ get fog_color(): ColorRead; set fog_c
 export declare class VolumetricFog extends Component {
   static readonly path: "bevy_light::volumetric::VolumetricFog";
   static readonly native: true;
-  static readonly tsxProps: { ambient_color?: ColorValue };
+  static readonly tsxProps: { ambient_color?: ColorValue | (() => ColorValue) };
   declare ambient_intensity: f32;
   declare jitter: f32;
   declare step_count: u32;
@@ -770,7 +770,7 @@ export type Mesh3d = InstanceType<typeof Mesh3d>;
 export declare class MeshTag extends Component {
   static readonly path: "bevy_mesh::components::MeshTag";
   static readonly native: true;
-  static readonly tsxProps: { type_id?: never | null };
+  static readonly tsxProps: { type_id?: never | null | (() => never | null) };
   declare value: u32;
 }
 export interface MeshTag extends Holes<{ type_id: never | null }> {}
@@ -802,7 +802,7 @@ export declare class ContactShadows extends Component {
 export declare class DistanceFog extends Component {
   static readonly path: "bevy_pbr::fog::DistanceFog";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue; directional_light_color?: ColorValue; falloff?: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } } };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue); directional_light_color?: ColorValue | (() => ColorValue); falloff?: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } } | (() => { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } }) };
   declare directional_light_exponent: f32;
 }
 export interface DistanceFog extends Holes<{ get color(): ColorRead; set color(v: ColorValue); get directional_light_color(): ColorRead; set directional_light_color(v: ColorValue); get falloff(): { Linear: { start: number; end: number } } | { Exponential: { density: number } } | { ExponentialSquared: { density: number } } | { Atmospheric: { extinction: [number, number, number]; inscattering: [number, number, number] } }; set falloff(v: { Linear: { start?: number; end?: number } } | { Exponential: { density?: number } } | { ExponentialSquared: { density?: number } } | { Atmospheric: { extinction?: readonly [number, number, number]; inscattering?: readonly [number, number, number] } }) }> {}
@@ -843,7 +843,7 @@ export type MeshMaterial3dStandardMaterial = InstanceType<typeof MeshMaterial3dS
 export declare class ScreenSpaceAmbientOcclusion extends Component {
   static readonly path: "bevy_pbr::ssao::ScreenSpaceAmbientOcclusion";
   static readonly native: true;
-  static readonly tsxProps: { quality_level?: "Low" | "Medium" | "High" | "Ultra" | { Custom: { slice_count?: number; samples_per_slice_side?: number } } };
+  static readonly tsxProps: { quality_level?: "Low" | "Medium" | "High" | "Ultra" | { Custom: { slice_count?: number; samples_per_slice_side?: number } } | (() => "Low" | "Medium" | "High" | "Ultra" | { Custom: { slice_count?: number; samples_per_slice_side?: number } }) };
   declare radius: f32;
   declare constant_object_thickness: f32;
 }
@@ -853,7 +853,7 @@ export interface ScreenSpaceAmbientOcclusion extends Holes<{ get quality_level()
 export declare class ScreenSpaceReflections extends Component {
   static readonly path: "bevy_pbr::ssr::ScreenSpaceReflections";
   static readonly native: true;
-  static readonly tsxProps: { min_perceptual_roughness?: { start: number; end: number }; max_perceptual_roughness?: { start: number; end: number }; edge_fadeout?: { start: number; end: number } };
+  static readonly tsxProps: { min_perceptual_roughness?: { start: number; end: number } | (() => { start: number; end: number }); max_perceptual_roughness?: { start: number; end: number } | (() => { start: number; end: number }); edge_fadeout?: { start: number; end: number } | (() => { start: number; end: number }) };
   declare thickness: f32;
   declare linear_steps: u32;
   declare linear_march_exponent: f32;
@@ -866,7 +866,7 @@ export interface ScreenSpaceReflections extends Holes<{ min_perceptual_roughness
 export declare class ScreenSpaceTransmission extends Component {
   static readonly path: "bevy_pbr::transmission::ScreenSpaceTransmission";
   static readonly native: true;
-  static readonly tsxProps: { steps?: number | string };
+  static readonly tsxProps: { steps?: number | string | (() => number | string) };
   declare quality: "Low" | "Medium" | "High" | "Ultra";
 }
 export interface ScreenSpaceTransmission extends Holes<{ get steps(): number; set steps(v: number | string) }> {}
@@ -891,7 +891,7 @@ export type WireframeColor = InstanceType<typeof WireframeColor>;
 export declare class WireframeConfig extends Resource {
   static readonly path: "bevy_pbr::wireframe::WireframeConfig";
   static readonly native: true;
-  static readonly tsxProps: { default_color?: ColorValue };
+  static readonly tsxProps: { default_color?: ColorValue | (() => ColorValue) };
   declare global: bool;
   declare default_line_width: f32;
   declare default_topology: "Triangles" | "Quads";
@@ -928,7 +928,7 @@ export declare class Pickable extends Component {
 export declare class PickingSettings extends Resource {
   static readonly path: "bevy_picking::PickingSettings";
   static readonly native: true;
-  static readonly tsxProps: { multi_click_interval?: number };
+  static readonly tsxProps: { multi_click_interval?: number | (() => number) };
   declare is_enabled: bool;
   declare is_input_enabled: bool;
   declare is_hover_enabled: bool;
@@ -1054,7 +1054,7 @@ export declare class Bloom extends Component {
   static readonly native: true;
   /** Its props as an element. */
   static readonly __element: { intensity: number; low_frequency_boost: number; low_frequency_boost_curvature: number; high_pass_frequency: number; prefilter: { threshold?: number; threshold_softness?: number }; composite_mode: "EnergyConserving" | "Additive"; max_mip_dimension: number; scale: readonly [number, number] };
-  static readonly tsxProps: { prefilter?: { threshold?: number; threshold_softness?: number } };
+  static readonly tsxProps: { prefilter?: { threshold?: number; threshold_softness?: number } | (() => { threshold?: number; threshold_softness?: number }) };
   declare intensity: f32;
   declare low_frequency_boost: f32;
   declare low_frequency_boost_curvature: f32;
@@ -1093,7 +1093,7 @@ export declare class Vignette extends Component {
   static readonly native: true;
   /** Its props as an element. */
   static readonly __element: { intensity: number; radius: number; smoothness: number; roundness: number; center: readonly [number, number]; edge_compensation: number; color: ColorValue };
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare intensity: f32;
   declare radius: f32;
   declare smoothness: f32;
@@ -1182,7 +1182,7 @@ export type SpritePickingCamera = InstanceType<typeof SpritePickingCamera>;
 export declare class SpritePickingSettings extends Resource {
   static readonly path: "bevy_sprite::picking_backend::SpritePickingSettings";
   static readonly native: true;
-  static readonly tsxProps: { picking_mode?: "BoundingBox" | { AlphaThreshold: number } };
+  static readonly tsxProps: { picking_mode?: "BoundingBox" | { AlphaThreshold: number } | (() => "BoundingBox" | { AlphaThreshold: number }) };
   declare require_markers: bool;
 }
 export interface SpritePickingSettings extends Holes<{ picking_mode: "BoundingBox" | { AlphaThreshold: number } }> {}
@@ -1216,7 +1216,7 @@ export declare class Text2dShadow extends Component {
   static readonly native: true;
   /** Its props as an element. */
   static readonly __element: { offset: readonly [number, number]; color: ColorValue };
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare readonly offset: Vec2;
 }
 export interface Text2dShadow extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
@@ -1253,7 +1253,7 @@ export type Wireframe2dColor = InstanceType<typeof Wireframe2dColor>;
 export declare class Wireframe2dConfig extends Resource {
   static readonly path: "bevy_sprite_render::mesh2d::wireframe2d::Wireframe2dConfig";
   static readonly native: true;
-  static readonly tsxProps: { default_color?: ColorValue };
+  static readonly tsxProps: { default_color?: ColorValue | (() => ColorValue) };
   declare global: bool;
 }
 export interface Wireframe2dConfig extends Holes<{ get default_color(): ColorRead; set default_color(v: ColorValue) }> {}
@@ -1420,7 +1420,7 @@ export declare class WorldTextStyle extends Component {
   static readonly native: true;
   /** Its props as an element. */
   static readonly __element: { size: number; letter_spacing: number; width: number | null; anchor: readonly [number, number]; outline: readonly [number, ColorValue] | null; lit: boolean };
-  static readonly tsxProps: { width?: number | null; outline?: readonly [number, ColorValue] | null };
+  static readonly tsxProps: { width?: number | null | (() => number | null); outline?: readonly [number, ColorValue] | null | (() => readonly [number, ColorValue] | null) };
   declare size: f32;
   declare letter_spacing: f32;
   declare readonly anchor: Vec2;
@@ -1432,7 +1432,7 @@ export interface WorldTextStyle extends Holes<{ width: number | null; get outlin
 export declare class TextHalo extends Component {
   static readonly path: "bevy_ts_tsx::halo::TextHalo";
   static readonly native: true;
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare width: f32;
 }
 export interface TextHalo extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
@@ -1469,7 +1469,7 @@ export declare class FocusPolicy extends Component {
 export declare class RelativeCursorPosition extends Component {
   static readonly path: "bevy_ui::focus::RelativeCursorPosition";
   static readonly native: true;
-  static readonly tsxProps: { normalized?: readonly [number, number] | null };
+  static readonly tsxProps: { normalized?: readonly [number, number] | null | (() => readonly [number, number] | null) };
   declare cursor_over: bool;
 }
 export interface RelativeCursorPosition extends Holes<{ get normalized(): [number, number] | null; set normalized(v: readonly [number, number] | null) }> {}
@@ -1543,7 +1543,7 @@ export declare class ComputedNode extends Component {
   static readonly native: true;
   /** Its props as an element. */
   static readonly __element: { size: readonly [number, number]; content_size: readonly [number, number]; scrollbar_size: readonly [number, number]; scroll_position: readonly [number, number]; outline_width: number; outline_offset: number; unrounded_size: readonly [number, number]; border: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; border_radius: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }; padding: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; inverse_scale_factor: number; em_size: number; rem_size: number };
-  static readonly tsxProps: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; border_radius?: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }; padding?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }; em_size?: number; rem_size?: number };
+  static readonly tsxProps: { border?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] } | (() => { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }); border_radius?: { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] } | (() => { top_left?: readonly [number, number]; top_right?: readonly [number, number]; bottom_right?: readonly [number, number]; bottom_left?: readonly [number, number] }); padding?: { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] } | (() => { min_inset?: readonly [number, number]; max_inset?: readonly [number, number] }); em_size?: number | (() => number); rem_size?: number | (() => number) };
   declare readonly size: Vec2;
   declare readonly content_size: Vec2;
   declare readonly scrollbar_size: Vec2;
@@ -1559,7 +1559,7 @@ export interface ComputedNode extends Holes<{ get border(): { min_inset: [number
 export declare class ComputedUiRenderTargetInfo extends Component {
   static readonly path: "bevy_ui::ui_node::ComputedUiRenderTargetInfo";
   static readonly native: true;
-  static readonly tsxProps: { physical_size?: readonly [number, number] };
+  static readonly tsxProps: { physical_size?: readonly [number, number] | (() => readonly [number, number]) };
   declare scale_factor: f32;
 }
 export interface ComputedUiRenderTargetInfo extends Holes<{ get physical_size(): [number, number]; set physical_size(v: readonly [number, number]) }> {}
@@ -1657,7 +1657,7 @@ export declare class UiTransform extends Component {
   static readonly native: true;
   /** Its props as an element. */
   static readonly __element: { translation: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; scale: readonly [number, number]; rotation: { cos?: number; sin?: number } };
-  static readonly tsxProps: { translation?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; rotation?: { cos?: number; sin?: number } };
+  static readonly tsxProps: { translation?: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } } | (() => { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }); rotation?: { cos?: number; sin?: number } | (() => { cos?: number; sin?: number }) };
   declare readonly scale: Vec2;
 }
 export interface UiTransform extends Holes<{ get translation(): { x: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }; set translation(v: { x?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number }; y?: "Auto" | { Px: number } | { Percent: number } | { Vw: number } | { Vh: number } | { VMin: number } | { VMax: number } | { Em: number } | { Rem: number } }); get rotation(): { cos: number; sin: number }; set rotation(v: { cos?: number; sin?: number }) }> {}
@@ -1705,7 +1705,7 @@ export type Text = InstanceType<typeof Text>;
 export declare class TextNodeFlags extends Component {
   static readonly path: "bevy_ui::widget::text::TextNodeFlags";
   static readonly native: true;
-  static readonly tsxProps: { no_wrap_measure?: readonly [number, number] | null };
+  static readonly tsxProps: { no_wrap_measure?: readonly [number, number] | null | (() => readonly [number, number] | null) };
   declare needs_measure_fn: bool;
   declare needs_recompute: bool;
 }
@@ -1717,7 +1717,7 @@ export declare class TextShadow extends Component {
   static readonly native: true;
   /** Its props as an element. */
   static readonly __element: { offset: readonly [number, number]; color: ColorValue };
-  static readonly tsxProps: { color?: ColorValue };
+  static readonly tsxProps: { color?: ColorValue | (() => ColorValue) };
   declare readonly offset: Vec2;
 }
 export interface TextShadow extends Holes<{ get color(): ColorRead; set color(v: ColorValue) }> {}
@@ -1742,7 +1742,7 @@ export declare class UiAntiAlias extends Component {
 export declare class GlobalUiDebugOptions extends Resource {
   static readonly path: "bevy_ui_render::debug_overlay::GlobalUiDebugOptions";
   static readonly native: true;
-  static readonly tsxProps: { line_color_override?: { red?: number; green?: number; blue?: number; alpha?: number } | null };
+  static readonly tsxProps: { line_color_override?: { red?: number; green?: number; blue?: number; alpha?: number } | null | (() => { red?: number; green?: number; blue?: number; alpha?: number } | null) };
   declare enabled: bool;
   declare outline_border_box: bool;
   declare outline_padding_box: bool;
@@ -1759,7 +1759,7 @@ export interface GlobalUiDebugOptions extends Holes<{ get line_color_override():
 export declare class UiDebugOptions extends Component {
   static readonly path: "bevy_ui_render::debug_overlay::UiDebugOptions";
   static readonly native: true;
-  static readonly tsxProps: { line_color_override?: { red?: number; green?: number; blue?: number; alpha?: number } | null };
+  static readonly tsxProps: { line_color_override?: { red?: number; green?: number; blue?: number; alpha?: number } | null | (() => { red?: number; green?: number; blue?: number; alpha?: number } | null) };
   declare enabled: bool;
   declare outline_border_box: bool;
   declare outline_padding_box: bool;

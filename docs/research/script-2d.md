@@ -31,7 +31,7 @@ animation from a system waits on reflect-coverage stage 3.
   (untested). `color` takes only Bevy's reflected shape (`{ Srgba: {...} }`), `custom_size`
   only `{ Some: [w, h] }`, and `texture_atlas` fails: its `layout` handle is nested.
 - Reflect-path props bind (corrected by reflect-bindable: the runtime always bound them; tsc
-  refused an enum's bound `value` until then). Only a layout-tier hole takes a value only.
+  refused an enum's bound `value` until then). Layout-tier holes bind too (layout-bindable).
 - No example, test or doc mentions 2D. The editor camera is a `Camera3d`
   (`bevy-ts-viewport/src/edit.rs:490`), and Bevy draws sprites and `Mesh2d` only through a
   `Camera2d`, so a 2D scene is invisible from the editor camera.

@@ -149,7 +149,7 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
 - A reflect-tier prop binds, as a column field does: `<Projection value={() => (zoomed() ? {
   Orthographic: {} } : { Perspective: {} })} />` writes each value through reflection when the
   binding's value changes, checked as it arrives (a bad one is logged naming the type). A
-  layout-tier hole prop (below) takes a value only.
+  layout-tier hole prop (below) binds the same way.
 - An `Option<T>`: `null` for `None`, a `T` for `Some`.
 - A `Color`: any colour form (below).
 - A written value is the JSON over the default: keys left out take the value in the component's
@@ -167,9 +167,14 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
   soft shadows (`experimental_pbr_pcss`), so a sun takes `soft_shadow_size={0.5}` (`null` for hard
   shadows), and `PointLight` and `SpotLight` have the plain `bool` column `soft_shadows_enabled`. An
   opaque hole (`usize`, `Duration`) is written by its reflected serde; a hole of a type on the
-  uncovered list fails the load with the list's reason; a hole prop takes a value, not a binding.
+  uncovered list fails the load with the list's reason, bound or not. A hole prop binds:
+  `<DistanceFog color={() => (night() ? "#101020" : "#c0d0ff")} />` writes the colour through
+  reflection whenever the binding's value changes, and nothing when it is unchanged; until the first
+  value arrives the hole keeps the component's default, and a bad value is logged naming
+  `DistanceFog.color`.
 - Scripts insert the same values through commands: `Projection.of({ Orthographic: {} })`, and a
-  layout-tier `.of` that sets holes (`DirectionalLight.of({ illuminance: 8000, color })`)
+  layout-tier `.of` that sets holes (`DirectionalLight.of({ illuminance: 8000, color })`, values
+  only)
   ([reflection.md](reflection.md#from-scripts)).
 
 ### Reflected rows in TS systems

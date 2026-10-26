@@ -2,7 +2,7 @@
 // writable holes. `tsc -p test` must pass, and every `@ts-expect-error` must be an error.
 import { app, hex, hsl, linear, signal, srgb, Startup, Transform } from "bevy-ts";
 import type { ColorValue, Commands, Query } from "bevy-ts";
-import { Camera3d, DirectionalLight, PointLight, Projection } from "bevy-ts/bevy";
+import { Camera3d, DirectionalLight, DistanceFog, PointLight, Projection } from "bevy-ts/bevy";
 
 const warm: ColorValue = srgb(1, 0.9, 0.8);
 export const Lights = () => (
@@ -22,13 +22,16 @@ export const Lights = () => (
   </>
 );
 
-// reflect-bindable: a reflect-tier prop binds; a layout-tier hole takes a value only.
+// reflect-bindable, layout-bindable: a reflect-tier prop and a layout-tier hole both bind.
 const [zoomed] = signal(false);
+const [night] = signal(false);
 export const Bound = () => (
   <>
     <entity><Projection value={() => (zoomed() ? { Orthographic: {} } : { Perspective: {} })} /></entity>
-    {/* @ts-expect-error a layout-tier hole is written once, so it takes a value, not a binding */}
     <entity><DirectionalLight color={() => "#fff"} /></entity>
+    <entity><DistanceFog color={() => (night() ? "#101020" : "#c0d0ff")} /></entity>
+    {/* @ts-expect-error a bound hole is still checked: a number is not a colour */}
+    <entity><DistanceFog color={() => 3} /></entity>
     {/* @ts-expect-error a bound value is still checked against the enum */}
     <entity><Projection value={() => ({ Isometric: {} })} /></entity>
   </>
@@ -65,5 +68,7 @@ export function cam(commands: Commands) {
   commands.spawn(Projection.of({ Isometric: {} }));
   // @ts-expect-error: DirectionalLight's colour is a ColorValue.
   commands.spawn(DirectionalLight.of({ color: 3 }));
+  // @ts-expect-error: .of writes once, so a hole takes a value, not a binding (layout-bindable).
+  commands.spawn(DirectionalLight.of({ color: () => "#fff" }));
 }
 app.addSystems(Startup, cam);

@@ -1,12 +1,12 @@
 ## 1. Hole props bind
 
-- [ ] 1.1 `crates/bevy-ts-tsx/src/resolve.rs` `resolve`: drop the reflect-hole refusal; a bound name is a layout field or a reflect hole, else "has no field" listing both; only a column leaves `r.defaults`
-- [ ] 1.2 `crates/bevy-ts-tsx/src/host.rs` `patch`: a native component's reflect hole writes through `crate::reflected::write` with the component's type path, before the column branch
-- [ ] 1.3 `crates/bevy-ts-cli/src/types.rs` `hole_props`: each field `name?: T | (() => T)`; update its unit test if one pins the shape
-- [ ] 1.4 Regenerate `packages/bevy-ts/bevy.d.ts` (`scripts/gen-bevy-types.sh`) and `packages/bevy-ts/test/engine/native.d.ts`
-- [ ] 1.5 tsc test in `packages/bevy-ts/test/tsx/reflect.tsx` `Bound`: `<DistanceFog color={() => (night() ? "#101020" : "#c0d0ff")} />` passes; `<DistanceFog color={() => 3} />` is a `@ts-expect-error`; the `DirectionalLight color={() => "#fff"}` line loses its `@ts-expect-error`
-- [ ] 1.6 Rust test in `crates/bevy-ts-cli/tests/it/reflect_values.rs` `a_bound_fog_colour_follows_its_signal`: a camera with `<DistanceFog color={() => ...}>`, a system flips the signal at runs 3 and 6; the colour reads `#c0d0ff`, `#101020`, `#c0d0ff` and `directional_light_exponent` is unchanged; a binding returning `{ Srgba: { red: 1 } }` logs an error naming the missing channels
-- [ ] 1.7 `reflect_values.rs` `an_opaque_hole_loads_and_a_bound_one_fails_naming_it`: rename to `an_opaque_hole_loads_and_a_bad_colour_fails_naming_it`, drop the bound-colour error case
+- [x] 1.1 `crates/bevy-ts-tsx/src/resolve.rs` `resolve`: drop the reflect-hole refusal; a bound name is a layout field or a reflect hole, else "has no field" listing both; only a column leaves `r.defaults`
+- [x] 1.2 `crates/bevy-ts-tsx/src/host.rs` `patch`: a native component's reflect hole writes through `crate::reflected::write` with the component's type path, before the column branch
+- [x] 1.3 `crates/bevy-ts-cli/src/types.rs` `hole_props`: each field `name?: T | (() => T)`; update its unit test if one pins the shape
+- [x] 1.4 Regenerate `packages/bevy-ts/bevy.d.ts` (`scripts/gen-bevy-types.sh`) and `packages/bevy-ts/test/engine/native.d.ts`
+- [x] 1.5 tsc test in `packages/bevy-ts/test/tsx/reflect.tsx` `Bound`: `<DistanceFog color={() => (night() ? "#101020" : "#c0d0ff")} />` passes; `<DistanceFog color={() => 3} />` is a `@ts-expect-error`; the `DirectionalLight color={() => "#fff"}` line loses its `@ts-expect-error`
+- [x] 1.6 Rust test in `crates/bevy-ts-cli/tests/it/reflect_values.rs` `a_bound_fog_colour_follows_its_signal`: a camera with `<DistanceFog color={() => ...}>`, a system flips the signal at runs 3 and 6; the colour reads `#c0d0ff`, `#101020`, `#c0d0ff` and `directional_light_exponent` is unchanged; a binding returning `{ Srgba: { red: 1 } }` logs an error naming the missing channels
+- [x] 1.7 `reflect_values.rs` `an_opaque_hole_loads_and_a_bound_one_fails_naming_it`: rename to `an_opaque_hole_loads_and_a_bad_colour_fails_naming_it`, drop the bound-colour error case
 
 ## 2. Per-field WARN
 
@@ -20,6 +20,6 @@
 ## 3. Docs and specs
 
 - [ ] 3.1 `docs/native.md` "Reflected values in TSX": hole props bind (drop "a hole prop takes a value, not a binding" and "A layout-tier hole prop (below) takes a value only"); a line on the dev WARN being per field
-- [ ] 3.2 `docs/research/bevy-coverage.md`: row "Layout-tier holes" gains binding and its tests; row "Reflect-tier TSX props bound to a function" drops "a layout-tier hole takes a value only"; the "Docs and specs that claim more than the code" line about script-2d keeps only reflect-tier wording
-- [ ] 3.3 Cargo jobs through `~/dev/abyme/scripts/gate-slot`
+- [x] 3.2 `docs/research/bevy-coverage.md`: row "Layout-tier holes" gains binding and its tests; row "Reflect-tier TSX props bound to a function" drops "a layout-tier hole takes a value only"; the "Docs and specs that claim more than the code" line about script-2d keeps only reflect-tier wording
+- [x] 3.3 Cargo jobs through `~/dev/abyme/scripts/gate-slot`
 - [ ] 3.4 Sync the deltas into `openspec/specs` at archive
