@@ -21,6 +21,17 @@ export type NativeSchedule = never;
 /** Conditions exposed with `app.ts_condition`, for `nativeCondition(name, args)`. */
 export type NativeCondition = "bevy:on-real-timer" | "bevy:on-timer" | "bevy:once-after-delay" | "bevy:once-after-real-delay" | "bevy:paused" | "bevy:repeating-after-delay" | "bevy:repeating-after-real-delay" | "input:just-pressed" | "input:just-released" | "input:pressed" | "input:toggle-active";
 
+/** Exports standing for a Bevy spelling (`stands_for`): `ResMut<T>` types them as the export. */
+// Claimed, but TS declares no such type yet, so not typed here: Gizmos<DefaultGizmoConfigGroup> (Gizmos), Gizmos<AabbGizmoConfigGroup> (Gizmos_AabbGizmoConfigGroup), Gizmos<FrustumGizmoConfigGroup> (Gizmos_FrustumGizmoConfigGroup), Gizmos<SkinnedMeshBoundsGizmoConfigGroup> (Gizmos_SkinnedMeshBoundsGizmoConfigGroup), Gizmos<LightGizmoConfigGroup> (Gizmos_LightGizmoConfigGroup).
+declare module "bevy-ts" {
+  interface ResClaims {
+    "Res<GizmoConfigStore>": [import("bevy-ts/gizmos").GizmoConfigStore, import("bevy-ts/gizmos").GizmoConfigStoreRead];
+  }
+  interface ResMutClaims {
+    "ResMut<GizmoConfigStore>": [import("bevy-ts/gizmos").GizmoConfigStore, import("bevy-ts/gizmos").GizmoConfigStoreMut];
+  }
+}
+
 export declare class ManageAccessibilityUpdates extends Resource {
   static readonly path: "bevy_a11y::ManageAccessibilityUpdates";
   declare value: bool;
