@@ -178,21 +178,21 @@ fn component_id(world: &World, r: &ComponentRef, ts: &TsLookup) -> Result<Compon
 type FieldRanges = Vec<(usize, usize)>;
 
 /// A resource value as native bytes, and the byte ranges of its fields (padding left out).
-fn encode_resource(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>, c: &Compile) -> Result<(Vec<u8>, FieldRanges), String> {
+fn encode_resource(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>, c: &Compile, condition: &str) -> Result<(Vec<u8>, FieldRanges), String> {
     let ranges = |l: &ComponentLayout| l.fields.iter().map(|f| (f.offset, f.offset + f.ty.size())).collect::<Vec<_>>();
     if let Some(r) = (c.encode)(name, values) {
-        let (bytes, layout) = r.map_err(|e| format!("resourceEquals({name}): {e}"))?;
+        let (bytes, layout) = r.map_err(|e| format!("{condition}({name}): {e}"))?;
         return Ok((bytes, ranges(&layout)));
     }
     let native = world.resource::<NativeLayouts>();
     let Some(n) = native.get(name) else {
         let why = native.reflect_tier(name).map(|t| format!(" ({})", t.reason)).unwrap_or_default();
-        return Err(format!("resourceEquals({name}): {name} is not a resource with a native layout{why}; its bytes cannot be compared"));
+        return Err(format!("{condition}({name}): {name} is not a resource with a native layout{why}; its bytes cannot be compared"));
     };
     let mut bytes = if n.defaults.len() == n.layout.size { n.defaults.clone() } else { vec![0; n.layout.size] };
     for (k, v) in values {
-        let f = n.layout.field(k).ok_or_else(|| format!("resourceEquals({name}): {name} has no field {k}"))?;
-        crate::value::encode_field(&format!(".{k}"), &f.ty, v, &mut bytes[f.offset..f.offset + f.ty.size()]).map_err(|e| format!("resourceEquals({name}): {e}"))?;
+        let f = n.layout.field(k).ok_or_else(|| format!("{condition}({name}): {name} has no field {k}"))?;
+        crate::value::encode_field(&format!(".{k}"), &f.ty, v, &mut bytes[f.offset..f.offset + f.ty.size()]).map_err(|e| format!("{condition}({name}): {e}"))?;
     }
     Ok((bytes, ranges(&n.layout)))
 }
@@ -247,8 +247,9 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
             Condition::Resource { kind, id: resource_id(world, resource, c.ts, condition)?, slot: slot() }
         }
         ConditionDecl::ResourceEquals { resource, value } | ConditionDecl::ResourceExistsAndEquals { resource, value } => {
-            let id = resource_id(world, resource, c.ts, "resourceEquals")?;
-            let (bytes, fields) = encode_resource(world, resource, value, c)?;
+            let condition = if matches!(d, ConditionDecl::ResourceEquals { .. }) { "resourceEquals" } else { "resourceExistsAndEquals" };
+            let id = resource_id(world, resource, c.ts, condition)?;
+            let (bytes, fields) = encode_resource(world, resource, value, c, condition)?;
             Condition::ResourceEquals { id, bytes, fields }
         }
         ConditionDecl::AnyWithComponent { component } => {

@@ -269,3 +269,16 @@ app.addSystems(Update, systems(s).runIf(resourceChanged(Gust)));
     let named = |m: &str| m.contains("resourceChanged(Gust): Gust names more than one Rust type") && m.contains("a::Gust") && m.contains("b::Gust");
     assert!(r.errors.iter().any(|e| named(&e.message)), "{:?}", r.errors);
 }
+
+#[test]
+fn resource_exists_and_equals_reports_its_own_name() {
+    let body = r#"
+import { resourceExistsAndEquals, systems } from "bevy-ts";
+export function s() {}
+app.addSystems(Update, systems(s).runIf(resourceExistsAndEquals(Gust.of({ v: 1 }))));
+"#;
+    let dir = project("rust-res-exists-equals-ambiguous", &[("game.ts", &format!("{HEAD}{body}"))]);
+    let mut app = with_types(&dir);
+    let r = reload(&mut app, false);
+    assert!(r.errors.iter().any(|e| e.message.contains("resourceExistsAndEquals(Gust): Gust names more than one Rust type")), "{:?}", r.errors);
+}
