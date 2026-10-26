@@ -464,7 +464,13 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
         world.resource_mut::<crate::states::TsStates>().restore_slots(old_slots.clone());
     };
 
-    let pending = components::prepare(world, &decls);
+    let mut pending = components::prepare(world, &decls);
+    let required_errors = pending.resolve_required(world.resource::<NativeLayouts>());
+    if !required_errors.is_empty() {
+        components::abandon(world, pending);
+        restore(world, old_payloads);
+        return fail(rt, required_errors);
+    }
     let built = {
         let lookup = |name: &str| pending.lookup(name).map(|(id, l)| (id, l.size));
         let encode = |name: &str, values: &serde_json::Map<String, serde_json::Value>| {

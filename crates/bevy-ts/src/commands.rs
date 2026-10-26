@@ -475,12 +475,13 @@ fn tree(world: &World, e: Entity) -> Vec<Entity> {
 fn with_requires(world: &World, ids: &[ComponentId]) -> Vec<ComponentId> {
     let mut out = ids.to_vec();
     let mut i = 0;
+    let ts = world.get_resource::<crate::components::Required>();
     while i < out.len() {
-        if let Some(info) = world.components().get_info(out[i]) {
-            for r in info.required_components().iter_ids() {
-                if !out.contains(&r) {
-                    out.push(r);
-                }
+        let rust = world.components().get_info(out[i]).into_iter().flat_map(|info| info.required_components().iter_ids());
+        let from_ts: Vec<ComponentId> = ts.into_iter().flat_map(|t| t.of(out[i])).collect();
+        for r in rust.chain(from_ts) {
+            if !out.contains(&r) {
+                out.push(r);
             }
         }
         i += 1;

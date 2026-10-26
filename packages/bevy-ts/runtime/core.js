@@ -1999,7 +1999,7 @@ function end() {
     groupIds.set(gr, `${first}@${n}`);
   }
   const manifest = {
-    components: byKind("component").filter((C) => C.source === "ts").map((C) => C.decl),
+    components: byKind("component").filter((C) => C.source === "ts").map((C) => withRequire(C)),
     resources: byKind("resource").filter((C) => C.source === "ts").map((C) => ({ ...C.decl, insert: g.resourceInserts.has(C.componentName) ? jsonValues(C, g.resourceInserts.get(C.componentName)) : undefined })),
     messages: byKind("message").map((C) => ({ ...C.decl, added: g.addedMessages.has(C.componentName) })),
     events: byKind("event").map((C) => C.decl),
@@ -2016,6 +2016,20 @@ function end() {
 }
 
 /** Field values as JSON for Rust (vectors as arrays). */
+/** A TS component's decl with its `static require = [B, C.of({ ... })]`, by name and values. */
+function withRequire(C) {
+  if (!Object.prototype.hasOwnProperty.call(C, "require")) return C.decl;
+  const at = C.decl.location;
+  if (!Array.isArray(C.require)) throw declError(`${C.name}: static require is a list, as [B, C.of({ ... })]`, at);
+  const require = C.require.map((r, i) => {
+    if (typeof r === "function" && r.componentName) return { name: r.componentName };
+    const R = r && typeof r === "object" ? r.constructor : undefined;
+    if (R && R.componentName) return { name: R.componentName, values: jsonValues(R, r) };
+    throw declError(`${C.name}: static require[${i}] is not a component class or value; declare it before ${C.name}`, at);
+  });
+  return { ...C.decl, require };
+}
+
 function jsonValues(C, values) {
   const out = {};
   for (const [k, v] of Object.entries(values)) out[k] = v && typeof v.toArray === "function" ? v.toArray() : v instanceof StructValue ? v.toJSON() : v;

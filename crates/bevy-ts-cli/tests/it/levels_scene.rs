@@ -148,3 +148,19 @@ fn a_level_holding_a_newtype_still_loads() {
     let badge = named(&mut app, "Badge");
     assert_eq!(app.world().get::<ZIndex>(badge).unwrap().0, 2);
 }
+
+/// A level placing a component with `static require` gets the required ones (ecs-queries 7.4).
+#[test]
+fn a_level_places_required_components() {
+    let enemies = ENEMIES.replace("app.level(", "export class Brute extends Component { static require = [Health.of({ hp: 10 })] }\napp.level(");
+    let level = "#Brute\nenemies::Brute\n--\n#Tough\nenemies::Brute\nenemies::Health { hp: 3.0 }\n";
+    let dir = project("levels-required", &[("package.json", "{}"), ("src/enemies.tsx", &enemies), ("assets/levels/arena.bsn", level)]);
+    let mut app = level_app(&dir);
+    let r = reload(&mut app, false);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    settle_levels(&mut app);
+    assert!(errors(&app).is_empty(), "{:?}", errors(&app));
+    let (brute, tough) = (named(&mut app, "Brute"), named(&mut app, "Tough"));
+    assert_eq!(health(&app, brute), (10.0, 100.0));
+    assert_eq!(health(&app, tough).0, 3.0, "the level's own Health wins");
+}

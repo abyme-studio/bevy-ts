@@ -43,6 +43,18 @@ pub struct ComponentDecl {
     /// A scene component's scene: its props, read from `static scene(props)`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scene: Option<SceneDecl>,
+    /// `static require = [B, C.of({ ... })]`: what inserting it adds when missing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub require: Vec<RequiredDecl>,
+}
+
+/// One required component: a TS component or a Rust one with a native layout, and the fields
+/// `.of({ ... })` gave (the rest from its defaults).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RequiredDecl {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub values: serde_json::Map<String, serde_json::Value>,
 }
 
 /// A scene component's `static scene(props)`.

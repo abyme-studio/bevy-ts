@@ -226,7 +226,16 @@ declare abstract class Data {
  * through the host (`tag.label = "door"`, `tag.scores = [1, 2]` on a `Mut<Tag>` row), a list a
  * frozen `readonly T[]`, and never a raw `q.tables` array.
  */
-export declare abstract class Component extends Data { readonly [tierBrand]?: "layout" }
+export declare abstract class Component extends Data {
+  readonly [tierBrand]?: "layout";
+  /**
+   * Rust's `#[require(B, C = ...)]`: `static require = [Health, Shield.of({ v: 2 })]`. Inserting
+   * this component, from any path, inserts each one the entity lacks, before the next system;
+   * ones it has keep their values. Transitive; a cycle fails the load. A TS component or a Rust
+   * component with a native layout, declared before this class.
+   */
+  static readonly require?: readonly (AnyComponentClass | object)[];
+}
 /**
  * A placeable prefab, Bevy's `#[derive(SceneComponent)]`: a component whose scene is spawned with
  * it. Its fields are component fields (patched by `field: v` in `.bsn`); `static scene(props)`

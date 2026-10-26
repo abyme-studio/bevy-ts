@@ -122,6 +122,20 @@ matches main: column read 8.5 on main against 8 here, despawn 22 against 21.
 
 Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
 fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).
+## Required components
+
+```ts
+export class Enemy extends Component { static require = [Health.of({ hp: 10 }), Shield] }
+```
+
+As Rust's `#[require(Health = ..., Shield)]`. Inserting `Enemy` from any path (commands, TSX, a
+level, a Rust insert) inserts each listed component the entity lacks, with the given fields and
+the rest defaults; one it has keeps its value. Requirements apply transitively. A listed class is
+a TS component or a Rust component with a native layout, declared before the class that lists
+it. A cycle fails the load naming the classes. `removeWithRequires` removes them too.
+
+They land one flush after Bevy's would: bevy-ts inserts them from the component's `on_add` hook,
+through the world's commands, not in the same bundle. They are there before the next system.
 
 ## Commands
 
@@ -173,5 +187,6 @@ component without a layout gives `on.entity` only.
 An `EntityEvent` with `static propagate = true` runs for its target, then each ancestor up
 `ChildOf`, until an observer calls `on.propagate(false)`.
 
-There are no component hooks: a hook runs inside the structural change, where JS cannot run.
-Observers with the copied value cover what a hook would do.
+There are no TS component hooks: a hook runs inside the structural change, where JS cannot run.
+Observers with the copied value cover what a hook would do. bevy-ts's own `on_add` hook on every
+TS component inserts its required components.

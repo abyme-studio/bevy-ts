@@ -8,6 +8,8 @@ use crate::layout::{ComponentLayout, FieldType, NativeLayouts};
 use crate::manifest::ComponentDecl;
 use crate::value::{self, ValueError};
 use bevy::ecs::component::{ComponentCloneBehavior, ComponentDescriptor, ComponentId, StorageType};
+use bevy::ecs::lifecycle::HookContext;
+use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -119,9 +121,82 @@ impl TsComponents {
     }
 }
 
+/// What each live TS component requires (`static require`): the parts its [`on_add`] inserts
+/// when the entity lacks them, each a value with the given fields and the rest defaults, copied
+/// deep per insert.
+#[derive(Resource, Default, Debug)]
+pub struct Required(HashMap<ComponentId, RequiredParts>);
+
+/// A component's required parts: each id with its value.
+type RequiredParts = Arc<[(ComponentId, HeapBytes)]>;
+
+impl Required {
+    /// The ids `id` requires directly.
+    pub fn of(&self, id: ComponentId) -> impl Iterator<Item = ComponentId> + '_ {
+        self.0.get(&id).into_iter().flat_map(|parts| parts.iter().map(|(r, _)| *r))
+    }
+}
+
+/// The one `on_add` hook of every TS component, registered by id in [`register`]. It inserts,
+/// through the world's commands, each part the component requires that the entity lacks, so
+/// they land at the next flush, before the next system. Each insert runs its own `on_add`, so
+/// requirements apply transitively; a part the entity has keeps its value.
+pub fn on_add(mut world: DeferredWorld, ctx: HookContext) {
+    let Some(parts) = world.get_resource::<Required>().and_then(|r| r.0.get(&ctx.component_id)).cloned() else { return };
+    let e = ctx.entity;
+    world.commands().queue(move |world: &mut World| {
+        let Ok(mut em) = world.get_entity_mut(e) else { return };
+        for (id, value) in parts.iter() {
+            if !em.contains_id(*id) {
+                // SAFETY: `value` was encoded for `id`: a TS component or an insertable native
+                // layout. Each insert takes its own copy of the heap values.
+                unsafe { insert_owned(&mut em, *id, value.duplicate()) };
+            }
+        }
+    });
+}
+
+/// A cycle among the declarations' `require`s, as the names around it.
+fn require_cycle(decls: &[ComponentDecl]) -> Option<Vec<String>> {
+    let by_name: HashMap<&str, &ComponentDecl> = decls.iter().map(|d| (d.name.as_str(), d)).collect();
+    // 0: unseen, 1: on the path, 2: done.
+    let mut mark: HashMap<&str, u8> = HashMap::new();
+    fn visit<'a>(n: &'a str, by_name: &HashMap<&str, &'a ComponentDecl>, mark: &mut HashMap<&'a str, u8>, path: &mut Vec<&'a str>) -> Option<Vec<String>> {
+        match mark.get(n) {
+            Some(2) => return None,
+            Some(1) => {
+                let from = path.iter().position(|p| *p == n).unwrap_or(0);
+                return Some(path[from..].iter().chain(std::iter::once(&n)).map(|s| s.to_string()).collect());
+            }
+            _ => {}
+        }
+        let d = by_name.get(n)?;
+        mark.insert(n, 1);
+        path.push(n);
+        for r in &d.require {
+            if let Some(c) = visit(r.name.as_str(), by_name, mark, path) {
+                return Some(c);
+            }
+        }
+        path.pop();
+        mark.insert(n, 2);
+        None
+    }
+    for d in decls {
+        if let Some(c) = visit(d.name.as_str(), &by_name, &mut mark, &mut Vec::new()) {
+            return Some(c);
+        }
+    }
+    None
+}
+
 /// Validates a generation's component declarations without touching the world.
 pub fn validate(decls: &[ComponentDecl], native: &NativeLayouts) -> Vec<ScriptError> {
     let mut errors = Vec::new();
+    if let Some(cycle) = require_cycle(decls) {
+        let first = decls.iter().find(|d| d.name == cycle[0]).and_then(|d| d.location.clone());
+        errors.push(ScriptError::at(format!("static require makes a cycle: {}", cycle.join(" requires ")), first));
+    }
     let mut seen = HashMap::new();
     for d in decls {
         let at = d.location.clone();
@@ -175,7 +250,9 @@ fn register(world: &mut World, decl: &ComponentDecl, layout: &ComponentLayout) -
             None,
         )
     };
-    world.register_component_with_descriptor(descriptor)
+    let id = world.register_component_with_descriptor(descriptor);
+    world.register_component_hooks_by_id(id).expect("a TS component was just registered").on_add(on_add);
+    id
 }
 
 /// Clones a TS component by copying its bytes (`cloneAndSpawn`): it is plain data.
@@ -225,6 +302,8 @@ enum Planned {
 #[derive(Clone, Debug, Default)]
 pub struct PendingComponents {
     items: Vec<(ComponentDecl, ComponentLayout, Planned, ComponentId)>,
+    /// Their `require`s, resolved by [`PendingComponents::resolve_required`].
+    required: HashMap<ComponentId, RequiredParts>,
 }
 
 impl PendingComponents {
@@ -246,6 +325,36 @@ impl PendingComponents {
             message: format!("no component named {name}"),
         })?;
         value::encode_component(d, l, values)
+    }
+
+    /// Resolves each declaration's `require` to ids and bytes: a component of this generation,
+    /// or a Rust component with an insertable native layout, with the given fields.
+    pub fn resolve_required(&mut self, native: &NativeLayouts) -> Vec<ScriptError> {
+        let mut errors = Vec::new();
+        let mut out = HashMap::new();
+        for (d, _, _, id) in &self.items {
+            let mut parts = Vec::new();
+            for r in &d.require {
+                let part = if let Some((rid, _)) = self.lookup(&r.name) {
+                    self.encode(&r.name, &r.values).map(|b| (rid, b)).map_err(|e| e.to_string())
+                } else if let Some(n) = native.get(&r.name).filter(|n| n.insertable && !n.resource) {
+                    native_bytes(n, &r.values).map(|b| (n.id, HeapBytes::plain(b)))
+                } else if native.get(&r.name).is_some() || native.reflect_tier(&r.name).is_some() {
+                    Err(format!("{} cannot be inserted from bytes", r.name))
+                } else {
+                    Err(format!("no component named {}", r.name))
+                };
+                match part {
+                    Ok(p) => parts.push(p),
+                    Err(why) => errors.push(ScriptError::at(format!("{} static require: {why}", d.name), d.location.clone())),
+                }
+            }
+            if !parts.is_empty() {
+                out.insert(*id, Arc::from(parts));
+            }
+        }
+        self.required = out;
+        errors
     }
 
     /// Every pending component: name, id, layout.
@@ -280,7 +389,17 @@ pub fn prepare(world: &mut World, decls: &[ComponentDecl]) -> PendingComponents 
         items.push((decl.clone(), layout, planned, id));
     }
     world.insert_resource(registry);
-    PendingComponents { items }
+    PendingComponents { items, required: HashMap::new() }
+}
+
+/// A native layout's default bytes with the given fields written over them.
+fn native_bytes(n: &crate::layout::NativeComponent, values: &serde_json::Map<String, serde_json::Value>) -> Result<Vec<u8>, String> {
+    let mut out = n.defaults.clone();
+    for (k, v) in values {
+        let f = n.layout.field(k).ok_or_else(|| format!("{} has no field {k}", n.ts_name))?;
+        value::encode_field(&format!(".{k}"), &f.ty, v, &mut out[f.offset..f.offset + f.ty.size()]).map_err(|e| e.to_string())?;
+    }
+    Ok(out)
 }
 
 /// Gives back ids a failed generation registered, so the next attempt reuses them.
@@ -299,6 +418,7 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
     let mut registry = world.remove_resource::<TsComponents>().unwrap_or_default();
     let mut migrations = Vec::new();
     let declared: HashMap<String, ()> = pending.items.iter().map(|(d, ..)| (d.name.clone(), ())).collect();
+    world.insert_resource(Required(pending.required));
 
     for (decl, layout, planned, _) in pending.items {
         match planned {

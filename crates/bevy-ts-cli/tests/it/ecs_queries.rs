@@ -852,3 +852,61 @@ app.addSystems(Update, kids);
     assert!(app.world().get_entity(es[5]).is_err(), "despawned with despawnChildren");
     assert!(app.world().get_entity(es[4]).is_ok());
 }
+
+// ---------------------------------------------------------------------------------------------
+// 7. Required components
+
+#[test]
+fn required_components_from_every_path() {
+    // Commands (alone, and beside a given value), TSX, transitive through another TS component,
+    // a native layout with a value, and a Rust insert. Levels: levels_scene.rs.
+    let body = r#"export class Grunt extends Component { static path = "game::Grunt"; static require = [Health.of({ hp: 10 }), Shield] }
+export class Boss extends Component { static path = "game::Boss"; static require = [Grunt, Transform.of({ translation: [1, 2, 3] })] }
+let frame = 0;
+let boss: Entity;
+export function make(c: Commands) {
+  frame++;
+  if (frame === 1) {
+    c.spawn(Grunt.of());
+    c.spawn(Grunt.of(), Health.of({ hp: 3 }));
+    boss = c.spawn(Boss.of());
+    c.spawn(<entity name="tsx"><Grunt /></entity>);
+  }
+  if (frame === 3) c.entity(boss).removeWithRequires(Boss);
+}
+export function seen(all: Query<[Entity], With<Grunt>>, bare: Query<[Entity], [With<Grunt>, Without<Health>]>) {
+  console.log(`grunts ${all.len} bare ${bare.len}`);
+}
+app.addSystems(Update, make);
+app.addSystems(PostUpdate, seen);
+"#;
+    let (_, mut app, _) = staged("ecsq-required", |_| vec![], body);
+    updates(&mut app, 2);
+    // Each required part is there by the next system: none bare, the first frame included.
+    assert!(lines(&mut app, "grunts").iter().all(|l| l.ends_with("bare 0")), "{:?}", lines(&mut app, "grunts"));
+    let rust = spawn_ts(&mut app, "game::Grunt", json!({}), ());
+    assert_eq!(read_ts(&app, rust, "game::Health").map(|h| h["hp"].clone()), Some(json!(10.0)), "a Rust insert meets the hook");
+    let grunts = with(&mut app, "game::Grunt");
+    assert_eq!(grunts.len(), 5);
+    let mut hp: Vec<f64> = grunts.iter().map(|e| read_ts(&app, *e, "game::Health").expect("Health required")["hp"].as_f64().unwrap()).collect();
+    hp.sort_by(f64::total_cmp);
+    assert_eq!(hp, vec![3.0, 10.0, 10.0, 10.0, 10.0], "a given Health keeps its value");
+    assert!(grunts.iter().all(|e| read_ts(&app, *e, "game::Shield") == Some(json!({ "v": 1.0 }))));
+    let boss = with(&mut app, "game::Boss")[0];
+    assert_eq!(app.world().get::<Transform>(boss).unwrap().translation, Vec3::new(1.0, 2.0, 3.0));
+    // removeWithRequires takes what Boss requires, transitively.
+    updates(&mut app, 1);
+    for c in ["game::Boss", "game::Grunt", "game::Health", "game::Shield"] {
+        assert!(!has(&app, boss, c), "{c} removed with Boss");
+    }
+    assert!(app.world().get::<Transform>(boss).is_none());
+
+    let cycle = r#"export class A extends Component { static path = "game::A" }
+export class B extends Component { static path = "game::B"; static require = [A] }
+(A as { require?: unknown[] }).require = [B];
+"#;
+    let e = errors("ecsq-require-cycle", cycle);
+    assert!(e.iter().any(|e| e.message.contains("static require makes a cycle: game::A requires game::B requires game::A")), "{e:?}");
+    let e = errors("ecsq-require-tag", "export class C extends Component { static path = \"game::C\"; static require = [QTag] }\n");
+    assert!(e.iter().any(|e| e.message.contains("game::C static require:") && e.message.contains("QTag")), "{e:?}");
+}
