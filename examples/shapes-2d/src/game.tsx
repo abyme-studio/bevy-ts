@@ -68,7 +68,8 @@ export const Shapes = () => (
       <Sprite image="sheet.png" custom_size={[96, 96]} texture_atlas={{ layout: sheet, index: 2 }} />
     </entity>
     <entity key="clicks" name="clicks">
-      <Transform translation={[0, -2.2 * STEP, 0]} />
+      {/* Above the shapes: inside a 540-pixel-high view. */}
+      <Transform translation={[0, 1.4 * STEP, 0]} />
       <text2d size={28} color="#fff" textShadow={{ y: -2 }}>
         Clicks: {() => `${clicks()}`}<span color="#f44">{() => (clicked() ? ` (${clicked()} is red)` : "")}</span>
       </text2d>

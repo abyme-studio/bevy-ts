@@ -70,6 +70,10 @@ pub fn tiles(slot: &Value) -> Option<Result<usize, String>> {
 /// would draw nothing for a tile past the end.
 pub fn check_index(atlas: &Value, what: &str) -> Result<(), String> {
     let Some(o) = atlas.as_object() else { return Ok(()) };
+    // A bare grid (UI's old `{ tile, columns, rows }`): say which form replaced it.
+    if let Some(g) = o.get("layout").and_then(Value::as_object).filter(|g| ["tile", "tileSize", "columns", "rows"].iter().any(|k| g.contains_key(*k))) {
+        return Err(format!("{what}.layout takes TextureAtlasLayout.fromGrid({{ tileSize, columns, rows }}) from bevy-ts/bevy, not a bare grid {}", Value::Object(g.clone())));
+    }
     let Some(n) = o.get("layout").and_then(tiles) else { return Ok(()) };
     let n = n.map_err(|e| format!("{what}.layout: {e}"))?;
     let Some(index) = o.get("index").and_then(Value::as_u64) else { return Ok(()) };
@@ -137,6 +141,8 @@ mod tests {
         check_index(&json!({ "layout": v, "index": 31 }), "texture_atlas").unwrap();
         let e = check_index(&json!({ "layout": v, "index": 32 }), "texture_atlas").unwrap_err();
         assert!(e.contains("texture_atlas.index 32") && e.contains("32 tiles"), "{e}");
+        let old = check_index(&json!({ "layout": { "tile": [32, 32], "columns": 8, "rows": 4 }, "index": 0 }), "atlas").unwrap_err();
+        assert!(old.contains("atlas.layout takes TextureAtlasLayout.fromGrid"), "{old}");
     }
 
     #[test]
