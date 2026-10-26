@@ -742,10 +742,10 @@ pub fn emit_bevy(world: &World) -> (String, String) {
                 }
                 // Inserted from bytes: its writable holes are TSX props beside the columns, and
                 // `.of()`'s, `__element` or not.
-                if element.is_none() || n.insertable {
-                    if let Some(h) = hole_props(&registry, n) {
-                        let _ = writeln!(dts, "{h}");
-                    }
+                if (element.is_none() || n.insertable)
+                    && let Some(h) = hole_props(&registry, n)
+                {
+                    let _ = writeln!(dts, "{h}");
                 }
                 for f in &n.layout.fields {
                     let ro = if f.ty.lanes().is_some() || !n.writable { "readonly " } else { "" };
