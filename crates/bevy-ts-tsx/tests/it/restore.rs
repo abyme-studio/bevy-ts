@@ -262,7 +262,7 @@ fn a_moved_enemy_is_written_back_in_place() {
     app.update();
     let c = restore::changes(app.world(), ROOT).unwrap();
     assert!(c.respawn.is_empty(), "{c:?}");
-    assert!(c.write.contains(&p("arena/b")), "{c:?}");
+    assert_eq!(c.write, vec![p("arena/b")], "only the moved node, not its parent or children");
     assert_eq!(restore::write_back(app.world_mut(), ROOT, &c.write), Vec::<Vec<String>>::new(), "every change is one tsx writes");
     assert_eq!(entity(&app, "arena/b"), Some(b), "the same entity");
     assert_eq!(*app.world().get::<Transform>(b).unwrap(), at);

@@ -34,7 +34,8 @@ unsafe extern "C" {
 /// Whether `rt`'s isolate is the thread's current one.
 fn is_current(rt: &mut JsRuntime) -> bool {
     let isolate: &v8::Isolate = rt.v8_isolate();
-    // SAFETY: `v8::Isolate` is a `repr(transparent)` pointer to the C++ isolate.
+    // SAFETY: `v8::Isolate` is a `repr(transparent)` pointer to the C++ isolate (v8 150.4.0, a
+    // private layout: a v8 bump must check it again).
     let ptr = unsafe { *(isolate as *const v8::Isolate as *const *mut c_void) };
     // SAFETY: reads the thread's current isolate, changing nothing.
     ptr == unsafe { v8__Isolate__GetCurrent() }

@@ -299,11 +299,13 @@ impl Applying {
             let mut host = crate::host::LoadHost { world: &*world };
             self.rt.backend.load_with(&generation, &mut host)
         };
-        // Assets a scene's first render made go in before its tree applies.
-        #[cfg(feature = "reflect")]
-        crate::reflect_asset::flush(world);
         match loaded {
-            Ok(l) => self.loaded = Some(l),
+            Ok(l) => {
+                // Assets a scene's first render made go in before its tree applies; a failed load's stay out.
+                #[cfg(feature = "reflect")]
+                crate::reflect_asset::flush(world);
+                self.loaded = Some(l);
+            }
             Err(e) => self.outcome = Some(Err(e)),
         }
         self.generation = Some(generation);

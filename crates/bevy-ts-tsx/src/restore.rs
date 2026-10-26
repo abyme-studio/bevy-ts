@@ -112,7 +112,7 @@ pub struct Changes {
 /// entity is gone or has another archetype, or one of whose parts (the entities below it that
 /// are not nodes) is gone, has another archetype or has a component added or changed, respawns
 /// with its subtree; a node with a component added or changed is written back. None without a
-/// baseline. The [`derived`] components do not count, nor the [`recomputed`] ones on parts.
+/// baseline. The [`derived`] and [`recomputed`] components do not count.
 pub fn changes(world: &World, root: &str) -> Option<Changes> {
     let tree = world.resource::<TsxTree>();
     let state = tree.roots.get(root)?;
@@ -128,7 +128,8 @@ pub fn changes(world: &World, root: &str) -> Option<Changes> {
         if er.get::<TsxNode>().is_none_or(|t| t.id != id) || er.archetype().id() != n.archetype || n.below.iter().any(|(e, a)| part_changed(*e, *a)) {
             return Change::Respawn;
         }
-        if touched(&er, &derived) { Change::Write } else { Change::Same }
+        // The recomputed ones change on an untouched node too: a moved node's ancestors and descendants.
+        if touched(&er, &skip) { Change::Write } else { Change::Same }
     };
     fn walk(nodes: &[RNode], state: &dyn Fn(u64) -> Change, out: &mut Changes) {
         for n in nodes.iter().filter(|n| n.slot.is_none()) {
@@ -184,6 +185,9 @@ pub fn recomputed(world: &World) -> Vec<ComponentId> {
 /// respawn: no kept node or entity, or a component the play changed that tsx does not write
 /// (one a plugin inserted), or another archetype after the write.
 pub fn write_back(world: &mut World, root: &str, paths: &[Vec<String>]) -> Vec<Vec<String>> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
     let (kept, tick) = {
         let s = world.resource::<TsxTree>().roots.get(root);
         match s.and_then(|s| Some((s.resolved.clone()?, s.baseline.as_ref()?.tick))) {

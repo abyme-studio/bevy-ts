@@ -466,8 +466,12 @@ pub fn plan_stop(world: &World) -> bevy_ts_tsx::StopPlan {
         let Some(mut changes) = restore::changes(world, &root) else { continue };
         changes.respawn.extend(restore::tombstoned_paths(world, &root));
         let respawn = restore::highest(changes.respawn);
-        // What a respawn takes whole needs no write.
-        changes.write.retain(|w| !respawn.iter().any(|r| w.starts_with(r)));
+        // What a respawn takes whole needs no write. `respawn` is sorted with no path under
+        // another, so the one that could hold `w` is the last at or before it.
+        changes.write.retain(|w| {
+            let at = respawn.partition_point(|r| r <= w);
+            !(at > 0 && w.starts_with(&respawn[at - 1]))
+        });
         plan.write.insert(root.clone(), changes.write);
         plan.roots.insert(root, respawn);
     }
