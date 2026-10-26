@@ -940,7 +940,6 @@ export function reflectClass(name) {
   C.componentName = name;
   C.source = "rust";
   C.reflect = true;
-  C.reflectTier = true;
   C[KIND] = "component";
   C.id = -1;
   C.layout = null;
@@ -1711,8 +1710,8 @@ function resolveParams(g, params, at) {
       case "res":
       case "resMut": {
         const R = refClass(g, p.resource, at);
-        if (R[KIND] !== "resource" && !R.reflectTier) throw declError(`${p.kind === "res" ? "Res" : "ResMut"}<${R.name}>: ${R.name} is not a Resource class`, at);
-        out.push({ kind: p.kind, resource: R.componentName, ...(p.optional ? { optional: true } : {}), ...(R.reflectTier ? { reflect: true } : {}), cls: R });
+        if (R[KIND] !== "resource" && !R.reflect) throw declError(`${p.kind === "res" ? "Res" : "ResMut"}<${R.name}>: ${R.name} is not a Resource class`, at);
+        out.push({ kind: p.kind, resource: R.componentName, ...(p.optional ? { optional: true } : {}), ...(R.reflect ? { reflect: true } : {}), cls: R });
         break;
       }
       case "local":
