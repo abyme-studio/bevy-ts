@@ -37,7 +37,7 @@ The `bevy-ts` module SHALL export these param types, each mapping to Bevy's own:
 - `Local<{ field: type, ... }>`: per-system state with a layout (field types `f32`, `u32`, ... as in ts-components), kept in Rust under the system's identity, so it survives reloads (hot-reload).
 - `Commands`: the system's command buffer.
 - `MessageReader<M>` and `MessageWriter<M>`: a message type's queue (see "Messages").
-- `NextState<S>` and `State<S>`: a TS state machine (see "States").
+- `NextState<S>`, `State<S>` and `PreviousState<S>`: a state machine (ts-states).
 - `In<E>`: a one-shot system's input, first param only, `E` an `Event` class (ts-schedules).
 - Param kinds that native ports register (for example `ReadRapierContext`), declared in their types package and known to the compile step.
 
@@ -276,13 +276,6 @@ When the resource is absent at run time, `Res<R>` and `ResMut<R>` SHALL fail the
 #### Scenario: Reload keeps entity observers
 - **WHEN** `clicked`'s body changes and the module reloads while `button` lives
 - **THEN** the next click on `button` runs the new body, once
-
-### Requirement: States
-`class S extends States("Value", ...) {}` SHALL declare a state machine whose values are `S.Value`, named like a component (a Rust-style path from its module, such as `game::Game`, or `static path`). `app.initState(S.Initial)` SHALL create it. `NextState<S>.set(S.Value)` SHALL queue a transition applied in Bevy's `StateTransition` schedule by one bevy-ts exclusive system, which SHALL run `OnExit(old)` systems, then `OnEnter(new)` systems. `inState(S.Value)` SHALL be a Rust-evaluated run condition.
-
-#### Scenario: Entering Playing
-- **WHEN** a system calls `next.set(Game.Playing)` from `Menu`
-- **THEN** in the next `StateTransition`, `OnExit(Game.Menu)` systems run, then `OnEnter(Game.Playing)` systems, and systems with `runIf(inState(Game.Playing))` run from that frame on
 
 ### Requirement: Plugins
 A plugin SHALL be a function taking the app, `(app: App) => void`, registered with `app.addPlugins(fn)`, as Bevy's `Plugin::build`. The loader SHALL re-run every plugin on every generation; nothing a plugin registers outlives a reload except the ECS state it set up.
