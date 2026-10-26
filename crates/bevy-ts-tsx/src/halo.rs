@@ -17,7 +17,7 @@ use bevy::ui_render::{ExtractedGlyph, ExtractedUiItem, ExtractedUiNode, Extracte
 
 /// A halo around a `<text>`'s glyphs: `width` logical pixels, in `color`.
 #[derive(Component, Reflect, Clone, Copy, Debug, PartialEq)]
-#[reflect(Component)]
+#[reflect(Component, Default)]
 pub struct TextHalo {
     pub width: f32,
     pub color: Color,
