@@ -171,18 +171,73 @@ pub fn apply(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
 
 /// [`apply`], without recording the report.
 fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
-    let started = Instant::now();
-    crate::layout_reflect::fill_once(world);
-    // Script-made assets' refs go stale once the next generation applies; a restart ends the
-    // live one now and removes the assets too.
-    #[cfg(feature = "reflect")]
-    let assets = crate::reflect_asset::reloading(world, restart);
-    // Flush the previous generation's console output so the log reads in order.
-    crate::runtime::pump(world);
-    let number = world.resource::<Generations>().live + 1;
-    let mut rt = world.remove_non_send::<ScriptRuntime>().expect("bevy-ts runtime present");
-
+    let mut a = Applying::begin(world, set, restart);
     if restart {
+        a.reset(world);
+        a.restart_engine();
+    } else if a.rt.backend.heap_used().is_some_and(|h| h > HEAP_RESTART_BYTES) {
+        crate::net::close_all(world);
+        a.rt.backend.restart();
+        world.insert_resource(TsSystems::default());
+        a.rt.entries.clear();
+    }
+    a.load(world);
+    a.sections(world);
+    let report = a.apply(world);
+    if report.status == ReloadStatus::Applied {
+        run_startups(world);
+    }
+    report
+}
+
+/// A generation being applied, in the steps [`apply`] and [`rebuild`] take: [`Applying::begin`],
+/// for a restart [`Applying::reset`] and [`Applying::restart_engine`], then [`Applying::load`],
+/// [`Applying::sections`], [`Applying::apply`] and [`run_startups`]. Public so a bench can time
+/// each; a caller takes them all, in that order.
+pub struct Applying {
+    rt: ScriptRuntime,
+    started: Instant,
+    number: u64,
+    set: Option<ModuleSet>,
+    #[cfg(feature = "reflect")]
+    assets: crate::reflect_asset::Reloading,
+    generation: Option<Generation>,
+    loaded: Option<LoadedGeneration>,
+    /// The old generation's attachments not built yet, put back if this one fails.
+    unbuilt: Option<crate::observers::NewTargeted>,
+    outcome: Option<Result<Applied, Vec<ScriptError>>>,
+}
+
+impl Applying {
+    /// Takes the runtime out of the world for the generation after the live one.
+    pub fn begin(world: &mut World, set: ModuleSet, restart: bool) -> Self {
+        let started = Instant::now();
+        crate::layout_reflect::fill_once(world);
+        // Script-made assets' refs go stale once the next generation applies; a restart ends the
+        // live one now and removes the assets too.
+        #[cfg(feature = "reflect")]
+        let assets = crate::reflect_asset::reloading(world, restart);
+        // Flush the previous generation's console output so the log reads in order.
+        crate::runtime::pump(world);
+        let number = world.resource::<Generations>().live + 1;
+        let rt = world.remove_non_send::<ScriptRuntime>().expect("bevy-ts runtime present");
+        Applying {
+            rt,
+            started,
+            number,
+            set: Some(set),
+            #[cfg(feature = "reflect")]
+            assets,
+            generation: None,
+            loaded: None,
+            unbuilt: None,
+            outcome: None,
+        }
+    }
+
+    /// A restart's first step: despawns TS-spawned entities and TS resources, forgets startups
+    /// and per-generation memory, and runs the restart handlers.
+    pub fn reset(&mut self, world: &mut World) {
         let spawned: Vec<Entity> = world.query_filtered::<Entity, With<TsSpawned>>().iter(world).collect();
         for e in spawned {
             // Children may already be gone with their parent.
@@ -220,94 +275,120 @@ fn apply_set(world: &mut World, set: ModuleSet, restart: bool) -> ReloadReport {
             h(world);
         }
         world.insert_resource(TsSystems::default());
-        rt.entries.clear();
-        rt.backend.restart();
-    } else if rt.backend.heap_used().is_some_and(|h| h > HEAP_RESTART_BYTES) {
-        crate::net::close_all(world);
-        rt.backend.restart();
-        world.insert_resource(TsSystems::default());
-        rt.entries.clear();
+        self.rt.entries.clear();
     }
 
-    // Attachments made under the old generation are rebuilt from their names; a failed load keeps
-    // those the old generation has not built yet, for its next drain.
-    let unbuilt = world.remove_resource::<crate::observers::NewTargeted>();
-    let observed = crate::observers::observed(world);
-    let env = world.get_resource::<crate::net::NetPolicy>().map(|p| p.env.clone()).unwrap_or_default();
-    let argv = world.get_resource::<crate::backend::ScriptArgs>().map(|a| a.0.clone()).unwrap_or_default();
-    let generation = Generation { number, set, env, argv, now_ms: crate::net::now_ms(world), observed };
-    let result = load_and_apply(world, &mut rt, &generation);
-    if let (Err(_), Some(unbuilt)) = (&result, unbuilt) {
-        world.insert_resource(unbuilt);
+    /// A restart's second step: a fresh engine instance.
+    pub fn restart_engine(&mut self) {
+        self.rt.backend.restart();
     }
-    let report = match result {
-        Ok((migrations, sections, requests)) => {
-            #[cfg(feature = "reflect")]
-            crate::reflect_asset::applied(world, assets);
-            world.insert_resource(LiveSet(generation.set));
-            world.resource_mut::<Generations>().live = number;
-            world.resource_mut::<RuntimeInfo>().generation = number;
-            // The previous generation's connections go; the new one's opens come after.
-            crate::net::close_other_generations(world, number);
-            crate::net::apply_requests(world, requests);
-            let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
-            let mut names: Vec<&String> = appliers.0.keys().collect();
-            names.sort();
-            for name in names {
-                let s = sections.iter().find(|s| &s.name == name);
-                let input = crate::plugin_api::AppliedSection {
+
+    /// Evaluates the module set and takes its manifest.
+    pub fn load(&mut self, world: &mut World) {
+        // Attachments made under the old generation are rebuilt from their names; a failed load keeps
+        // those the old generation has not built yet, for its next drain.
+        self.unbuilt = world.remove_resource::<crate::observers::NewTargeted>();
+        let observed = crate::observers::observed(world);
+        let env = world.get_resource::<crate::net::NetPolicy>().map(|p| p.env.clone()).unwrap_or_default();
+        let argv = world.get_resource::<crate::backend::ScriptArgs>().map(|a| a.0.clone()).unwrap_or_default();
+        let set = self.set.take().expect("load runs once");
+        let generation = Generation { number: self.number, set, env, argv, now_ms: crate::net::now_ms(world), observed };
+        let loaded = {
+            let mut host = crate::host::LoadHost { world: &*world };
+            self.rt.backend.load_with(&generation, &mut host)
+        };
+        // Assets a scene's first render made go in before its tree applies.
+        #[cfg(feature = "reflect")]
+        crate::reflect_asset::flush(world);
+        match loaded {
+            Ok(l) => self.loaded = Some(l),
+            Err(e) => self.outcome = Some(Err(e)),
+        }
+        self.generation = Some(generation);
+    }
+
+    /// Checks the manifest whole, builds the systems, runs each plugin's section check and
+    /// commits the components. Nothing after it can fail.
+    pub fn sections(&mut self, world: &mut World) {
+        let Some(loaded) = self.loaded.take() else { return };
+        let generation = self.generation.as_ref().expect("load ran");
+        self.outcome = Some(commit(world, &mut self.rt, generation, loaded));
+    }
+
+    /// Applies the sections, records the live generation, and puts the runtime back.
+    pub fn apply(self, world: &mut World) -> ReloadReport {
+        let Applying { rt, started, number, generation, unbuilt, outcome, .. } = self;
+        #[cfg(feature = "reflect")]
+        let assets = self.assets;
+        if let (Some(Err(_)), Some(unbuilt)) = (&outcome, unbuilt) {
+            world.insert_resource(unbuilt);
+        }
+        let report = match outcome.expect("sections ran") {
+            Ok((migrations, sections, requests)) => {
+                #[cfg(feature = "reflect")]
+                crate::reflect_asset::applied(world, assets);
+                world.insert_resource(LiveSet(generation.expect("load ran").set));
+                world.resource_mut::<Generations>().live = number;
+                world.resource_mut::<RuntimeInfo>().generation = number;
+                // The previous generation's connections go; the new one's opens come after.
+                crate::net::close_other_generations(world, number);
+                crate::net::apply_requests(world, requests);
+                let appliers = world.get_resource::<crate::plugin_api::SectionAppliers>().cloned().unwrap_or_default();
+                let mut names: Vec<&String> = appliers.0.keys().collect();
+                names.sort();
+                for name in names {
+                    let s = sections.iter().find(|s| &s.name == name);
+                    let input = crate::plugin_api::AppliedSection {
+                        generation: number,
+                        present: s.is_some(),
+                        bytes: s.map_or(&[][..], |s| &s.bytes),
+                        location: s.and_then(|s| s.location.clone()),
+                    };
+                    for apply in &appliers.0[name] {
+                        apply(world, &input);
+                    }
+                }
+                for m in &migrations {
+                    world.resource_mut::<ScriptLog>().push(LogLevel::Info, m.to_string(), None, number);
+                }
+                let systems = world.resource::<TsSystems>().iter().count();
+                world.resource_mut::<ScriptLog>().push(
+                    LogLevel::Info,
+                    format!("generation {number} applied: {systems} systems in {:.1} ms", started.elapsed().as_secs_f64() * 1000.0),
+                    None,
+                    number,
+                );
+                ReloadReport {
+                    seq: 0,
                     generation: number,
-                    present: s.is_some(),
-                    bytes: s.map_or(&[][..], |s| &s.bytes),
-                    location: s.and_then(|s| s.location.clone()),
-                };
-                for apply in &appliers.0[name] {
-                    apply(world, &input);
+                    status: ReloadStatus::Applied,
+                    errors: vec![],
+                    migrations,
+                    duration_ms: started.elapsed().as_secs_f64() * 1000.0,
                 }
             }
-            for m in &migrations {
-                world.resource_mut::<ScriptLog>().push(LogLevel::Info, m.to_string(), None, number);
+            Err(errors) => {
+                // What the failed generation made never stays; the live one's refs still work.
+                #[cfg(feature = "reflect")]
+                crate::reflect_asset::failed(world, assets);
+                let live = world.resource::<Generations>().live;
+                let mut log = world.resource_mut::<ScriptLog>();
+                for e in &errors {
+                    log.push(LogLevel::Error, format!("generation {number} failed: {}", e.message), e.location.clone(), live);
+                }
+                ReloadReport {
+                    seq: 0,
+                    generation: number,
+                    status: ReloadStatus::Failed,
+                    errors,
+                    migrations: vec![],
+                    duration_ms: started.elapsed().as_secs_f64() * 1000.0,
+                }
             }
-            let systems = world.resource::<TsSystems>().iter().count();
-            world.resource_mut::<ScriptLog>().push(
-                LogLevel::Info,
-                format!("generation {number} applied: {systems} systems in {:.1} ms", started.elapsed().as_secs_f64() * 1000.0),
-                None,
-                number,
-            );
-            ReloadReport {
-                seq: 0,
-                generation: number,
-                status: ReloadStatus::Applied,
-                errors: vec![],
-                migrations,
-                duration_ms: started.elapsed().as_secs_f64() * 1000.0,
-            }
-        }
-        Err(errors) => {
-            // What the failed generation made never stays; the live one's refs still work.
-            #[cfg(feature = "reflect")]
-            crate::reflect_asset::failed(world, assets);
-            let live = world.resource::<Generations>().live;
-            let mut log = world.resource_mut::<ScriptLog>();
-            for e in &errors {
-                log.push(LogLevel::Error, format!("generation {number} failed: {}", e.message), e.location.clone(), live);
-            }
-            ReloadReport {
-                seq: 0,
-                generation: number,
-                status: ReloadStatus::Failed,
-                errors,
-                migrations: vec![],
-                duration_ms: started.elapsed().as_secs_f64() * 1000.0,
-            }
-        }
-    };
-    world.insert_non_send(rt);
-    if report.status == ReloadStatus::Applied {
-        run_startups(world);
+        };
+        world.insert_non_send(rt);
+        report
     }
-    report
 }
 
 /// Records a compile failure (nothing was loaded).
@@ -344,15 +425,9 @@ fn component_decls(manifest: &crate::manifest::Manifest) -> Vec<crate::manifest:
     all
 }
 
-fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Generation) -> Result<Applied, Vec<ScriptError>> {
+fn commit(world: &mut World, rt: &mut ScriptRuntime, generation: &Generation, loaded: LoadedGeneration) -> Result<Applied, Vec<ScriptError>> {
     let number = generation.number;
-    let LoadedGeneration { manifest, sections, requests } = {
-        let mut host = crate::host::LoadHost { world: &*world };
-        rt.backend.load_with(generation, &mut host)?
-    };
-    // Assets a scene's first render made go in before its tree applies.
-    #[cfg(feature = "reflect")]
-    crate::reflect_asset::flush(world);
+    let LoadedGeneration { manifest, sections, requests } = loaded;
 
     let fail = |rt: &mut ScriptRuntime, errors: Vec<ScriptError>| {
         rt.backend.discard(number);
@@ -609,7 +684,7 @@ fn insert_resources(world: &mut World, manifest: &crate::manifest::Manifest) {
 
 /// Runs `PreStartup`, `Startup` and `PostStartup` systems whose identity has not run in this
 /// world, in that order, once the game has started. Each system's commands apply before the next.
-fn run_startups(world: &mut World) {
+pub fn run_startups(world: &mut World) {
     if !started(world) {
         return;
     }
