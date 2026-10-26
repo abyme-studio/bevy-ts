@@ -234,8 +234,9 @@ fn the_tree_watch_follows_a_stop_to_the_new_entities() {
         .collect();
     let (old_a, _) = named(&mut app, "EnemyA")[0];
     assert!(client.values().any(|e| *e == old_a.to_bits()));
-    // The play moves A, so the Stop respawns it, whether it keeps the arena or remounts it.
-    app.world_mut().get_mut::<Transform>(old_a).unwrap().translation.y = 1.0;
+    // The play adds a component to A, so the Stop respawns it, whether it keeps the arena or
+    // remounts it.
+    app.world_mut().entity_mut(old_a).insert(Stunned);
 
     mode(&mut app, "edit");
     let mut seen = 0;
@@ -688,7 +689,20 @@ fn a_stop_after_a_play_that_changed_nothing_keeps_every_enemy() {
 }
 
 #[test]
-fn a_stop_respawns_the_enemies_the_play_changed() {
+fn a_stop_does_not_check_the_level_it_keeps() {
+    let (_dir, mut app) = arena3("stop-kept-unchecked", GAME, |_| {});
+    let checked = app.world().resource::<Levels>().checked;
+    assert!(checked > 0, "the first generation checked the arena");
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    mode(&mut app, "edit");
+    assert_eq!(app.world().resource::<Levels>().checked, checked, "the kept arena is not prepared again");
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    assert_eq!(app.world().resource::<Levels>().checked, checked + 1, "a reload still checks it");
+}
+
+#[test]
+fn a_stop_writes_back_a_moved_enemy_and_respawns_one_changed_otherwise() {
     let (_dir, mut app) = arena3("stop-kept-some", GAME, |_| {});
     let [a, b, c] = enemies(&mut app)[..] else { unreachable!() };
     let d = enemy(&mut app, "EnemyD");
@@ -700,12 +714,75 @@ fn a_stop_respawns_the_enemies_the_play_changed() {
     updates(&mut app, 3);
     mode(&mut app, "edit");
     let [a2, b2, c2] = enemies(&mut app)[..] else { unreachable!() };
-    assert!(a2 != a && b2 != b && c2 != c, "each changed enemy is respawned");
-    assert_eq!(enemy(&mut app, "EnemyD"), d, "the one the play did not change keeps its entity");
+    assert_eq!(b2, b, "the moved enemy is written back and keeps its entity");
+    updates(&mut app, 1);
     assert_eq!(named(&mut app, "EnemyB")[0].1, Vec3::new(0.0, 0.0, -4.0), "at its level transform");
+    assert_eq!(app.world().get::<GlobalTransform>(b).unwrap().translation(), Vec3::new(0.0, 0.0, -4.0), "and Bevy recomputed where it is");
+    assert!(a2 != a && c2 != c, "the despawned enemy and the one with an added component respawn");
+    assert_eq!(enemy(&mut app, "EnemyD"), d, "the one the play did not change keeps its entity");
     assert!(app.world().get::<Stunned>(c2).is_none(), "without what the play added");
     assert!(app.world().resource::<bevy_ts_tsx::TsxTree>().tombstones.is_empty(), "no tombstone");
     assert!(app.world().get::<bevy_ts_levels::engine::LevelInstance>(a2).is_some(), "the respawned enemy is stamped");
+    assert!(app.world().get::<bevy_ts_levels::engine::LevelInstance>(b).is_some(), "the written-back one keeps its stamp");
+}
+
+#[test]
+fn a_stop_after_every_enemy_moved_spawns_nothing() {
+    let (_dir, mut app) = arena3("stop-all-moved", GAME, |_| {});
+    let before = [enemies(&mut app), vec![enemy(&mut app, "EnemyD")]].concat();
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    for e in &before {
+        app.world_mut().get_mut::<Transform>(*e).unwrap().translation.y += 2.0;
+    }
+    updates(&mut app, 2);
+    let seq = app.world().resource::<bevy_ts_tsx::TsxTree>().journal.seq;
+    mode(&mut app, "edit");
+    updates(&mut app, 2);
+    assert_eq!([enemies(&mut app), vec![enemy(&mut app, "EnemyD")]].concat(), before, "every enemy keeps its entity");
+    assert_eq!(level_rows_changed(&app, seq), 0, "nothing spawned or despawned");
+    for n in ["EnemyA", "EnemyB", "EnemyC", "EnemyD"] {
+        assert_eq!(named(&mut app, n)[0].1.y, 0.0, "{n} is back on the ground");
+    }
+}
+
+/// A component a native crate put on an enemy, which tsx does not write.
+#[derive(Component)]
+struct Speed(f32);
+
+#[test]
+fn a_stop_respawns_an_enemy_whose_native_component_changed() {
+    let (_dir, mut app) = arena3("stop-native-changed", GAME, |_| {});
+    let d = enemy(&mut app, "EnemyD");
+    app.world_mut().entity_mut(d).insert(Speed(1.0));
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    app.world_mut().get_mut::<Speed>(d).unwrap().0 = 4.0;
+    app.world_mut().get_mut::<Transform>(d).unwrap().translation.y = 1.0;
+    mode(&mut app, "edit");
+    let d2 = enemy(&mut app, "EnemyD");
+    assert_ne!(d2, d, "a write-back cannot restore Speed, so the enemy respawns");
+    assert!(app.world().get::<Speed>(d2).is_none(), "as the level describes it");
+}
+
+#[test]
+fn a_written_back_enemy_keeps_its_respawned_child() {
+    let game = GAME.replace("{/*CHILD*/}", r#"<entity key="eye" name="eye"><Transform translation={[0, 1, 0]} /></entity>"#);
+    let (_dir, mut app) = arena3("stop-parent-child", &game, |_| {});
+    let b = enemy(&mut app, "EnemyB");
+    let eye = |app: &mut App, parent: Entity| app.world().get::<Children>(parent).unwrap().iter().find(|c| app.world().get::<Name>(*c).is_some_and(|n| n.as_str() == "eye")).unwrap();
+    let eye1 = eye(&mut app, b);
+    mode(&mut app, "play");
+    updates(&mut app, 3);
+    app.world_mut().get_mut::<Transform>(b).unwrap().translation.x = 7.0;
+    app.world_mut().entity_mut(eye1).insert(Stunned);
+    mode(&mut app, "edit");
+    updates(&mut app, 1);
+    assert_eq!(enemy(&mut app, "EnemyB"), b, "the parent is written back");
+    let eye2 = eye(&mut app, b);
+    assert_ne!(eye2, eye1, "its changed child respawns under it");
+    assert!(app.world().get::<Stunned>(eye2).is_none());
+    assert_eq!(app.world().get::<GlobalTransform>(eye2).unwrap().translation(), Vec3::new(0.0, 1.0, -4.0), "where the level puts it");
 }
 
 #[test]
@@ -752,7 +829,9 @@ fn a_level_saved_during_play_remounts_on_stop() {
         updates(&mut app, 1);
     }
     assert_eq!(named(&mut app, "EnemyE").len(), 1, "the save reloaded");
+    let checked = app.world().resource::<Levels>().checked;
     mode(&mut app, "edit");
+    assert_eq!(app.world().resource::<Levels>().checked, checked + 1, "the Stop's rebuild checks the saved level");
     assert_eq!(named(&mut app, "EnemyE").len(), 1, "e exists");
     assert_ne!(enemy(&mut app, "EnemyA"), a, "the arena remounted as if first");
 }

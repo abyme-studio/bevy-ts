@@ -136,3 +136,30 @@ fn a_failing_reapply_leaves_the_empty_generation() {
     assert_eq!(generation::rebuild(app.world_mut()).unwrap().status, ReloadStatus::Applied);
     assert_eq!(score(app.world_mut()), Some(0.0));
 }
+
+/// stop-rebuild-split, decision 3: under `dev` a `Last` system boots a spare once, a restart
+/// takes it, and the next frame drops the retired instance and boots the next spare. A game that
+/// is not `dev` holds none.
+#[test]
+fn a_restart_takes_the_spare_and_the_next_frame_replaces_it() {
+    let handle = FakeHandle::default();
+    let h = handle.clone();
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins).add_plugins(BevyTsPlugin::new(move || Box::new(h.backend())).dev(true));
+    handle.push(program());
+    assert_eq!(generation::apply(app.world_mut(), set(), false).status, ReloadStatus::Applied);
+    app.update();
+    app.update();
+    assert_eq!(handle.spares(), (1, 0, 0), "one spare booted, and held");
+    handle.push(program());
+    assert_eq!(generation::apply(app.world_mut(), set(), true).status, ReloadStatus::Applied);
+    assert_eq!(handle.spares(), (1, 1, 0), "the restart took it");
+    app.update();
+    assert_eq!(handle.spares(), (2, 1, 1), "the retired one dropped, a new spare booted");
+
+    let (mut app, handle) = self::app();
+    handle.push(program());
+    generation::apply(app.world_mut(), set(), false);
+    app.update();
+    assert_eq!(handle.spares(), (0, 0, 0), "not dev: no spare");
+}

@@ -242,3 +242,89 @@ fn an_entity_below_a_node_that_is_not_one_counts_with_it() {
     got.sort();
     assert_eq!(got, [p("arena/b"), p("arena/c")]);
 }
+
+/// Mounted, with Bevy's transform propagation as a game runs it, one frame in.
+fn propagating() -> App {
+    let mut app = app();
+    app.add_plugins(bevy::transform::TransformPlugin);
+    bevy_ts_tsx::reconcile_external(app.world_mut(), ROOT, None, &level(0.0)).unwrap();
+    app.update();
+    app
+}
+
+#[test]
+fn a_moved_enemy_is_written_back_in_place() {
+    let mut app = propagating();
+    let b = entity(&app, "arena/b").unwrap();
+    let (at, placed) = (*app.world().get::<Transform>(b).unwrap(), *app.world().get::<GlobalTransform>(b).unwrap());
+    restore::take_baselines(app.world_mut());
+    app.world_mut().get_mut::<Transform>(b).unwrap().translation.y = 3.0;
+    app.update();
+    let c = restore::changes(app.world(), ROOT).unwrap();
+    assert!(c.respawn.is_empty(), "{c:?}");
+    assert!(c.write.contains(&p("arena/b")), "{c:?}");
+    assert_eq!(restore::write_back(app.world_mut(), ROOT, &c.write), Vec::<Vec<String>>::new(), "every change is one tsx writes");
+    assert_eq!(entity(&app, "arena/b"), Some(b), "the same entity");
+    assert_eq!(*app.world().get::<Transform>(b).unwrap(), at);
+    app.update();
+    // Recomputed: `GlobalTransform`.
+    assert_eq!(*app.world().get::<GlobalTransform>(b).unwrap(), placed, "Bevy recomputes GlobalTransform");
+}
+
+#[test]
+fn bevy_marks_a_written_back_transform_tree_again() {
+    use bevy::transform::components::TransformTreeChanged;
+    let mut app = propagating();
+    let b = entity(&app, "arena/b").unwrap();
+    restore::take_baselines(app.world_mut());
+    app.world_mut().get_mut::<Transform>(b).unwrap().translation.y = 3.0;
+    app.update();
+    let c = restore::changes(app.world(), ROOT).unwrap();
+    assert!(restore::write_back(app.world_mut(), ROOT, &c.write).is_empty());
+    let written = app.world().read_change_tick();
+    app.update();
+    // Recomputed: `TransformTreeChanged`, which `mark_dirty_trees` sets where `Transform` changed.
+    let t = app.world().entity(b).get_change_ticks::<TransformTreeChanged>().unwrap();
+    assert!(t.is_changed(written, app.world().read_change_tick()), "Bevy set it again after the write");
+}
+
+#[test]
+fn a_component_tsx_does_not_write_is_not_written_back() {
+    let mut app = propagating();
+    let b = entity(&app, "arena/b").unwrap();
+    // As a plugin's component on a level entity.
+    app.world_mut().entity_mut(b).insert(Visibility::Visible);
+    restore::take_baselines(app.world_mut());
+    *app.world_mut().get_mut::<Visibility>(b).unwrap() = Visibility::Hidden;
+    let c = restore::changes(app.world(), ROOT).unwrap();
+    assert_eq!(c.write, [p("arena/b")], "same archetype: a candidate");
+    assert_eq!(restore::write_back(app.world_mut(), ROOT, &c.write), [p("arena/b")], "Visibility is not tsx's: respawn it");
+}
+
+#[test]
+fn an_added_component_or_a_moved_part_respawns() {
+    let mut app = propagating();
+    let b = entity(&app, "arena/b").unwrap();
+    let part = app.world_mut().spawn((Transform::default(), ChildOf(b))).id();
+    let c = entity(&app, "arena/c").unwrap();
+    app.update();
+    restore::take_baselines(app.world_mut());
+    app.world_mut().get_mut::<Transform>(part).unwrap().translation.x = 2.0;
+    app.world_mut().entity_mut(c).insert(Visibility::Hidden);
+    app.update();
+    let mut got = restore::changes(app.world(), ROOT).unwrap();
+    got.respawn.sort();
+    assert_eq!(got.respawn, [p("arena/b"), p("arena/c")]);
+}
+
+#[test]
+fn an_inherited_visibility_change_is_not_written_back() {
+    let mut app = propagating();
+    let b = entity(&app, "arena/b").unwrap();
+    app.world_mut().entity_mut(b).insert(InheritedVisibility::VISIBLE);
+    restore::take_baselines(app.world_mut());
+    // Not recomputed from what a write-back writes: only from a `Visibility` or the hierarchy.
+    app.world_mut().get_mut::<InheritedVisibility>(b).unwrap().set_changed();
+    let c = restore::changes(app.world(), ROOT).unwrap();
+    assert_eq!(restore::write_back(app.world_mut(), ROOT, &c.write), [p("arena/b")]);
+}

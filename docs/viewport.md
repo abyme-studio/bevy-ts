@@ -194,15 +194,21 @@ A game that booted in play rather than `--edit` has no Play to go back to: its f
 levels that are open.
 
 A level open when the game started and still open at the Stop is restored rather than mounted
-again. Its entities the play did not change stay, with their entity ids and values. Stop respawns,
-from what the level last applied and without composing it:
+again. Its entities the play did not change stay, with their entity ids and values. From what the
+level last applied, and without composing it, Stop:
 
-- each subtree whose entity, or any entity in it, the play changed: a component changed or added
-  after the game started, or one removed (a game's spawn or despawn of a child changes its parent's
-  `Children`, so the parent's subtree goes whole). What Bevy derives every frame does not count
-  (`ViewVisibility`, a camera's `VisibleEntities`, `Clusters` and `PreviousViewData`: tsx's
-  `restore::derived`); `Camera` does, so a level camera respawns;
-- each entity the play despawned.
+- writes back each entity whose own components the play changed, when every one of them is a
+  component the level or its prefab put there: a moved enemy keeps its entity id and is back at
+  its level transform. Bevy recomputes `GlobalTransform` and `TransformTreeChanged` on the next
+  frame, as after a spawn (tsx's `restore::recomputed`);
+- respawns each subtree whose entity the play gave another component or took one from, or changed
+  a component of that the level did not put there (one a plugin inserted, the parent's
+  `Children` after a game spawned or despawned a child, `InheritedVisibility`), or one of whose
+  entities that are not level entities (a glTF model's hierarchy) it changed. What Bevy derives
+  every frame does not count (`ViewVisibility`, a camera's `VisibleEntities`, `Clusters` and
+  `PreviousViewData`: tsx's `restore::derived`); `Camera` does, so a level camera respawns. A
+  written-back parent can have a respawned child;
+- respawns each entity the play despawned.
 
 The game starts at the first Play, or at a step before it; what a step did is undone too, and so
 is what `OnEnter(EngineMode::Play)` and `OnExit(EngineMode::Play)` did to a level entity. The
@@ -218,14 +224,15 @@ takes the full path instead, mounting as if first, when:
   the isolate the Stop throws away;
 - the game booted in play.
 
-A kept entity fires no hook or observer and is no `Added` to a Rust system (`docs/native.md`).
+A kept entity fires no hook or observer and is no `Added` to a Rust system; a written-back one
+fires the replace and insert hooks of the components written (`docs/native.md`).
 
 The selection follows by node id: a selected level or TSX entity is selected again, with its new
 entity if it was respawned, streamed with `origin: "engine"`; one the game spawned is dropped.
 
 `tsx_tree+watch` follows a Stop as it follows any reconcile. A kept level's rows stay as they are;
 the ones the restore respawned are under `removed` and again under `added`, with their new
-entities. Every other root remounts as after a restart: the message after the Stop sends each of
+entities; a written-back row is neither. Every other root remounts as after a restart: the message after the Stop sends each of
 its rows again under `added`, and rows the remount did not bring back are under `removed`.
 
 A Stop that restores costs what the play changed. One that mounts again costs a restart: at 1,000

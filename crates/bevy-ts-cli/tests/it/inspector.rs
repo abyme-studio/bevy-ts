@@ -107,3 +107,32 @@ fn a_breakpoint_hits_in_ts_and_again_after_a_soft_reload() {
     }
     assert_eq!(client.join().unwrap(), 2, "the session stayed connected across the reload");
 }
+
+/// stop-rebuild-split, decision 3: a restart takes the spare instance, and the debugger the
+/// backend serves then is the spare's, holding the new generation's globals.
+#[test]
+fn the_debugger_follows_a_restart_to_the_spare_instance() {
+    let src = "globalThis.mark = (globalThis.mark ?? 0) + 1;\n";
+    let dir = project("inspector-restart", &[("game.ts", src)]);
+    let entry = dir.join("game.ts").canonicalize().unwrap();
+    let mut app = app_with_inspector(&entry);
+    assert_eq!(reload(&mut app, false).status, bevy_ts::generation::ReloadStatus::Applied);
+    // The spare boots in a frame of its own.
+    app.update();
+    assert_eq!(reload(&mut app, true).status, bevy_ts::generation::ReloadStatus::Applied);
+    let ws = app.world().non_send_resource::<bevy_ts::runtime::ScriptRuntime>().backend.inspector_address().expect("the debugger is served after the restart");
+    let client = std::thread::spawn(move || {
+        let (mut sock, _) = tungstenite::connect(ws.as_str()).unwrap();
+        sock.send(tungstenite::Message::text(json!({ "id": 1, "method": "Runtime.evaluate", "params": { "expression": "globalThis.mark", "returnByValue": true } }).to_string())).unwrap();
+        loop {
+            if let Ok(tungstenite::Message::Text(t)) = sock.read() {
+                let msg: Value = serde_json::from_str(&t).unwrap();
+                if msg["id"] == 1 {
+                    return msg["result"]["result"]["value"].clone();
+                }
+            }
+        }
+    });
+    until(&mut app, "the debugger never answered", |_| client.is_finished());
+    assert_eq!(client.join().unwrap(), json!(1), "the instance the restart took, which ran the module once");
+}

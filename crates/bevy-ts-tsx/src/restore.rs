@@ -5,6 +5,8 @@ use crate::reconcile::RNode;
 use crate::tree::{TsxNode, TsxTree};
 use bevy::ecs::archetype::ArchetypeId;
 use bevy::ecs::change_detection::Tick;
+use bevy::ecs::component::ComponentId;
+use bevy::ecs::world::EntityRef;
 use bevy::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 
@@ -42,12 +44,14 @@ fn below(world: &World, e: Entity) -> Vec<(Entity, ArchetypeId)> {
     out
 }
 
-/// The roots a Stop keeps, each with the key paths it respawns: the subtrees the play changed and
-/// the nodes it despawned. Inserted for the Stop's rebuild, which keeps these roots, and removed
-/// once they are restored.
+/// The roots a Stop keeps, each with the key paths it respawns (the subtrees the play changed and
+/// the nodes it despawned) and those it writes back. Inserted for the Stop's rebuild, which keeps
+/// these roots, and removed once they are restored.
 #[derive(Resource, Default, Debug, Clone)]
 pub struct StopPlan {
     pub roots: BTreeMap<String, Vec<Vec<String>>>,
+    /// Per kept root, the nodes to write back in place rather than respawn ([`write_back`]).
+    pub write: BTreeMap<String, Vec<Vec<String>>>,
 }
 
 impl StopPlan {
@@ -93,40 +97,128 @@ pub fn has_baseline(world: &World, root: &str) -> bool {
     world.resource::<TsxTree>().roots.get(root).is_some_and(|s| s.baseline.is_some() && s.resolved.is_some())
 }
 
-/// The key paths of the root's highest changed nodes since its baseline: a node whose entity, or
-/// an entity below it that is not a node, is gone, has another archetype (a component added or
-/// removed), or has a component added or changed after the baseline's tick. Below a changed node nothing is listed: its subtree goes
-/// whole. None without a baseline.
-/// The [`derived`] components do not count.
-pub fn changed_paths(world: &World, root: &str) -> Option<Vec<Vec<String>>> {
+/// What the play changed under a root since its baseline, by key path.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Changes {
+    /// Nodes to respawn, each with its subtree: the entity is gone or has another archetype (a
+    /// component added or removed), or an entity below it that is not a node changed.
+    pub respawn: Vec<Vec<String>>,
+    /// Nodes whose own components changed, archetype and parts as they were: candidates for
+    /// [`write_back`]. Their children are listed on their own.
+    pub write: Vec<Vec<String>>,
+}
+
+/// What the play changed under the root since its baseline, a node at a time: a node whose
+/// entity is gone or has another archetype, or one of whose parts (the entities below it that
+/// are not nodes) is gone, has another archetype or has a component added or changed, respawns
+/// with its subtree; a node with a component added or changed is written back. None without a
+/// baseline. The [`derived`] components do not count, nor the [`recomputed`] ones on parts.
+pub fn changes(world: &World, root: &str) -> Option<Changes> {
     let tree = world.resource::<TsxTree>();
     let state = tree.roots.get(root)?;
     let (b, kept) = (state.baseline.as_ref()?, state.resolved.as_ref()?);
     let now = world.read_change_tick();
     let derived = derived(world);
-    let entity_changed = |e: Entity, arch: ArchetypeId| {
-        let Ok(er) = world.get_entity(e) else { return true };
-        er.archetype().id() != arch || er.archetype().iter_components().filter(|c| !derived.contains(c)).any(|c| er.get_change_ticks_by_id(c).is_some_and(|t| t.is_changed(b.tick, now)))
-    };
-    let changed = |id: u64| {
-        let Some(n) = b.nodes.get(&id) else { return true };
-        if world.get::<TsxNode>(n.entity).is_none_or(|t| t.id != id) {
-            return true;
+    let skip: Vec<_> = derived.iter().copied().chain(recomputed(world)).collect();
+    let touched = |er: &EntityRef, skip: &[ComponentId]| er.archetype().iter_components().filter(|c| !skip.contains(c)).any(|c| er.get_change_ticks_by_id(c).is_some_and(|t| t.is_changed(b.tick, now)));
+    let part_changed = |e: Entity, arch: ArchetypeId| world.get_entity(e).map_or(true, |er| er.archetype().id() != arch || touched(&er, &skip));
+    let state = |id: u64| {
+        let Some(n) = b.nodes.get(&id) else { return Change::Respawn };
+        let Ok(er) = world.get_entity(n.entity) else { return Change::Respawn };
+        if er.get::<TsxNode>().is_none_or(|t| t.id != id) || er.archetype().id() != n.archetype || n.below.iter().any(|(e, a)| part_changed(*e, *a)) {
+            return Change::Respawn;
         }
-        entity_changed(n.entity, n.archetype) || n.below.iter().any(|(e, a)| entity_changed(*e, *a))
+        if touched(&er, &derived) { Change::Write } else { Change::Same }
     };
-    fn walk(nodes: &[RNode], changed: &dyn Fn(u64) -> bool, out: &mut Vec<Vec<String>>) {
+    fn walk(nodes: &[RNode], state: &dyn Fn(u64) -> Change, out: &mut Changes) {
         for n in nodes.iter().filter(|n| n.slot.is_none()) {
-            if changed(n.id) {
-                out.push(n.path.clone());
-            } else {
-                walk(&n.children, changed, out);
+            match state(n.id) {
+                Change::Respawn => out.respawn.push(n.path.clone()),
+                Change::Write => {
+                    out.write.push(n.path.clone());
+                    walk(&n.children, state, out);
+                }
+                Change::Same => walk(&n.children, state, out),
             }
         }
     }
-    let mut out = Vec::new();
-    walk(kept, &changed, &mut out);
+    let mut out = Changes::default();
+    walk(kept, &state, &mut out);
     Some(out)
+}
+
+enum Change {
+    Same,
+    Write,
+    Respawn,
+}
+
+/// The key paths of the root's highest changed nodes since its baseline (see [`changes`]): below
+/// a changed node nothing is listed, its subtree goes whole. None without a baseline.
+pub fn changed_paths(world: &World, root: &str) -> Option<Vec<Vec<String>>> {
+    let c = changes(world, root)?;
+    Some(highest(c.respawn.into_iter().chain(c.write).collect()))
+}
+
+/// Components Bevy computes again in the next frame from a node's own components once they are
+/// written, as after a spawn: a written-back node leaves them to it. Each has a test that Bevy
+/// recomputes it (`tests/it/restore.rs`). Not `InheritedVisibility`: Bevy recomputes it only when
+/// a `Visibility` or the hierarchy changes, not from what a write-back writes, so a node whose
+/// `InheritedVisibility` changed respawns.
+pub fn recomputed(world: &World) -> Vec<ComponentId> {
+    let c = world.components();
+    [
+        // `propagate_parent_transforms`, from `Transform` down the hierarchy.
+        c.component_id::<GlobalTransform>(),
+        // `mark_dirty_trees`, set where `Transform` changed and on each ancestor.
+        c.component_id::<bevy::transform::components::TransformTreeChanged>(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// Writes each node at `paths` back from the kept tree: inserts every component tsx resolved
+/// for it, the same values a spawn inserts, and leaves the [`recomputed`] ones to Bevy. Bevy's
+/// replace and insert hooks fire for each. Returns the paths it could not restore so, to
+/// respawn: no kept node or entity, or a component the play changed that tsx does not write
+/// (one a plugin inserted), or another archetype after the write.
+pub fn write_back(world: &mut World, root: &str, paths: &[Vec<String>]) -> Vec<Vec<String>> {
+    let (kept, tick) = {
+        let s = world.resource::<TsxTree>().roots.get(root);
+        match s.and_then(|s| Some((s.resolved.clone()?, s.baseline.as_ref()?.tick))) {
+            Some(k) => k,
+            None => return paths.to_vec(),
+        }
+    };
+    let by_id = crate::reconcile::index(&kept);
+    let skip: Vec<_> = derived(world).into_iter().chain(recomputed(world)).collect();
+    let mut failed = Vec::new();
+    for p in paths {
+        let id = crate::desc::node_id(root, p);
+        let tree = world.resource::<TsxTree>();
+        let (Some(n), Some(e)) = (by_id.get(&id), tree.entity(id)) else {
+            failed.push(p.clone());
+            continue;
+        };
+        let arch = tree.roots[root].baseline.as_ref().and_then(|b| b.nodes.get(&id)).map(|b| b.archetype);
+        let before = world.increment_change_tick();
+        for r in n.comps.iter() {
+            crate::reconcile::insert(world, e, r);
+        }
+        let now = world.change_tick();
+        let Ok(er) = world.get_entity(e) else {
+            failed.push(p.clone());
+            continue;
+        };
+        // Changed since the baseline means rewritten just now.
+        let restored = Some(er.archetype().id()) == arch
+            && er.archetype().iter_components().filter(|c| !skip.contains(c)).all(|c| er.get_change_ticks_by_id(c).is_none_or(|t| !t.is_changed(tick, now) || t.is_changed(before, now)));
+        if !restored {
+            failed.push(p.clone());
+        }
+    }
+    failed
 }
 
 /// Components Bevy derives every frame from other state: they change with nothing of the game

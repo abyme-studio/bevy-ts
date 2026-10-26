@@ -20,7 +20,7 @@
 ## 4. Write back (`crates/bevy-ts-tsx`, `crates/bevy-ts-levels`)
 
 - [ ] 4.1 `restore::changed`: per changed node, the changed component ids and whether the archetype differs
-- [ ] 4.2 The recomputed list beside `restore::derived` (`GlobalTransform`, `InheritedVisibility`), each with a test that Bevy recomputes it
+- [ ] 4.2 The recomputed list beside `restore::derived` (`GlobalTransform`, `TransformTreeChanged`; not `InheritedVisibility`, design decision 4), each with a test that Bevy recomputes it
 - [ ] 4.3 `write_back(world, root, nodes)`: inserts each changed tsx component from the kept resolved node
 - [ ] 4.4 `levels::restore`: write back the nodes that qualify, respawn the rest, stamp only respawned ones
 - [ ] 4.5 Tests, one per scenario: a moved enemy is written back and keeps its id; every enemy moved, nothing spawned; an added component respawns; a Rust-inserted component changed respawns; a written-back parent with a respawned child

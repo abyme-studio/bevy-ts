@@ -450,8 +450,11 @@ A Stop keeps the level entities the play did not change (`docs/viewport.md`): th
 and values, with no hook, observer or `Added` for them, which is Bevy's meaning of nothing having
 changed. A system that counted `Added<T>` at the first Play does not see those entities again at
 the next one. Reset what such a system builds in `OnExit(EngineMode::Play)`, and do not rely on
-level entities being added again. An entity the play changed, a port's body that moved for one, is
-respawned and is added again.
+level entities being added again. An entity the play moved, or whose level components it changed,
+is written back: the level's components are inserted again over the ones it has, which fires
+their replace and insert hooks and observers, as Bevy's insert does, and nothing else. An entity
+with a changed component the level did not put there, a port's body or one your plugin inserted,
+or with a component added or removed, is respawned and is added again.
 
 ## Calling Rust from TS: exported params
 

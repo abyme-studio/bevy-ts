@@ -359,8 +359,15 @@ pub trait ScriptBackend: 'static {
     /// `console.*` output gathered since the last pump.
     fn pump(&mut self) -> Vec<ConsoleMessage>;
 
-    /// Replaces the engine instance with a fresh one; every loaded generation is gone.
+    /// Replaces the engine instance with a fresh one; every loaded generation is gone. Takes the
+    /// spare [`ScriptBackend::prepare_restart`] booted when one is held, else boots one; the old
+    /// instance is retired for the next `prepare_restart` to drop.
     fn restart(&mut self);
+
+    /// Drops the instance the last restart retired, then boots a spare for the next restart unless
+    /// one is held: a booted instance that ran no module, the same as one booted inside the
+    /// restart. Called in a frame of its own under `dev` (a shipped game never restarts).
+    fn prepare_restart(&mut self) {}
 
     /// Calls made into JS so far (system runs, startups, entries, loads), for tests and stats.
     fn calls_into_js(&self) -> u64;

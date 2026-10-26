@@ -206,11 +206,14 @@ pub struct Levels {
     /// Where each TS component this process saw live was declared, by name: a placeholder's
     /// `expected`. Never on disk, so empty after a restart.
     pub declared_at: BTreeMap<String, bevy_ts::backend::SourceLocation>,
+    /// How many levels the generation's section check has prepared, counted for tests: a Stop
+    /// skips the levels it keeps.
+    pub checked: u64,
 }
 
 impl Default for Levels {
     fn default() -> Self {
-        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), declared: BTreeSet::new(), closed: BTreeSet::new(), state_file: None, declared_at: BTreeMap::new() }
+        Levels { roots: BTreeMap::new(), asset_root: bevy::asset::io::file::FileAssetReader::get_base_path().join("assets"), prefab_edits: Default::default(), events: Default::default(), seq: 0, history: Default::default(), declared: BTreeSet::new(), closed: BTreeSet::new(), state_file: None, declared_at: BTreeMap::new(), checked: 0 }
     }
 }
 
@@ -356,15 +359,21 @@ fn check_section(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -
     let schema = WorldSchema::pending(world, input.components, &registry);
     // Under `bevy-ts dev` only a broken file fails it: missing code becomes placeholders.
     let tolerant = tolerant(world);
+    // A Stop's rebuild re-applies the live set, which these files passed when they composed,
+    // and the plan hashed them unchanged since: a kept level needs no check.
+    let kept = bevy_ts_tsx::StopPlan::kept(world);
+    let mut checked = 0;
     let mut files = LoadedFiles { server: world.resource::<AssetServer>(), assets: world.resource::<Assets<BsnLevel>>(), hashes: BTreeMap::new() };
-    for p in &s.levels {
+    for p in s.levels.iter().filter(|p| !kept.contains(&root_name(p))) {
         if files.parsed(p).is_err() {
             continue;
         }
+        checked += 1;
         if let Err(e) = compose::prepare(p, &mut files, &schema, tolerant) {
             errors.extend(e.into_iter().filter(|e| !e.message.ends_with(": not loaded")));
         }
     }
+    world.resource_mut::<Levels>().checked += checked;
     if errors.is_empty() { Ok(()) } else { Err(errors) }
 }
 
@@ -454,25 +463,32 @@ pub fn plan_stop(world: &World) -> bevy_ts_tsx::StopPlan {
         if !same {
             continue;
         }
-        let Some(mut paths) = restore::changed_paths(world, &root) else { continue };
-        paths.extend(restore::tombstoned_paths(world, &root));
-        plan.roots.insert(root, restore::highest(paths));
+        let Some(mut changes) = restore::changes(world, &root) else { continue };
+        changes.respawn.extend(restore::tombstoned_paths(world, &root));
+        let respawn = restore::highest(changes.respawn);
+        // What a respawn takes whole needs no write.
+        changes.write.retain(|w| !respawn.iter().any(|r| w.starts_with(r)));
+        plan.write.insert(root.clone(), changes.write);
+        plan.roots.insert(root, respawn);
     }
     plan
 }
 
-/// A Stop's restore of the levels its plan keeps: each respawns what the play changed from its
-/// kept tree, without composing, and stamps only what it respawned. `level+watch` hears each
+/// A Stop's restore of the levels its plan keeps: each writes back the nodes whose own
+/// components the play changed and respawns the rest of what it changed, from its kept tree,
+/// without composing, and stamps only what it respawned. `level+watch` hears each
 /// as `loaded`, as a remount says.
 pub fn restore(world: &mut World) {
-    let Some(plan) = world.remove_resource::<bevy_ts_tsx::StopPlan>() else { return };
-    for (root, paths) in plan.roots {
+    let Some(mut plan) = world.remove_resource::<bevy_ts_tsx::StopPlan>() else { return };
+    for (root, mut paths) in plan.roots {
         let Some(path) = root.strip_prefix("level:") else { continue };
         // Still the level the plan kept: open, mounted as its own root, not waiting to compose.
         let kept = world.resource::<Levels>().roots.get(path).is_some_and(|r| !r.dirty && r.overlay.is_none()) && world.resource::<TsxTree>().external.contains(&root);
         if !kept {
             continue;
         }
+        let write = plan.write.remove(&root).unwrap_or_default();
+        paths.extend(bevy_ts_tsx::restore::write_back(world, &root, &write));
         let paths = bevy_ts_tsx::restore::highest(paths);
         bevy_ts_tsx::restore::restore_root(world, &root, &paths);
         // Taken out while stamping, and put back: nothing else reads them meanwhile.
