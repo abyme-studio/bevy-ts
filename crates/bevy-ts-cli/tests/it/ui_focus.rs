@@ -79,7 +79,6 @@ app.scene("ui", () => (
 
 #[test]
 fn a_tab_index_with_tab_navigation_off_is_named_once() {
-    let _hang = common::watchdog("a_tab_index_with_tab_navigation_off_is_named_once", common::BOUND);
     let (_dir, mut app) = headless("ui-focus-warn", TWO_TABS, bevy_ts_cli::Prebuilt, Switches::default());
     let w = tab_warnings(&app);
     assert_eq!(w.len(), 1, "{w:#?}");
@@ -93,7 +92,6 @@ fn a_tab_index_with_tab_navigation_off_is_named_once() {
 
 #[test]
 fn no_tab_warning_with_the_switch() {
-    let _hang = common::watchdog("no_tab_warning_with_the_switch", common::BOUND);
     let (_dir, app) = headless("ui-focus-warn-on", TWO_TABS, bevy_ts_cli::Prebuilt, BOTH);
     assert_eq!(tab_warnings(&app), Vec::<String>::new());
 }
@@ -109,7 +107,6 @@ impl Plugin for Native {
 
 #[test]
 fn no_tab_warning_when_a_native_plugin_added_it() {
-    let _hang = common::watchdog("no_tab_warning_when_a_native_plugin_added_it", common::BOUND);
     let (_dir, app) = headless("ui-focus-warn-native", TWO_TABS, Native, Switches::default());
     assert_eq!(tab_warnings(&app), Vec::<String>::new());
     // With the switch as well, it is added once: a second add would panic.
@@ -127,7 +124,6 @@ app.scene("ui", () => <input key="field"{tab_index} />);
 
 #[test]
 fn an_inputs_own_tab_index_is_not_a_prop() {
-    let _hang = common::watchdog("an_inputs_own_tab_index_is_not_a_prop", common::BOUND);
     let (dir, mut app) = headless("ui-focus-input", &field(""), bevy_ts_cli::Prebuilt, Switches::default());
     let f = node(&mut app, &["field"]);
     assert_eq!(app.world().get::<TabIndex>(f), Some(&TabIndex(0)), "an <input> is in the tab order by default");
@@ -145,7 +141,6 @@ fn an_inputs_own_tab_index_is_not_a_prop() {
 
 #[test]
 fn removing_tab_index_from_a_button_removes_it() {
-    let _hang = common::watchdog("removing_tab_index_from_a_button_removes_it", common::BOUND);
     let game = |props: &str| format!("import {{ app }} from \"bevy-ts\";\napp.scene(\"ui\", () => <button key=\"b\"{props} />);\n");
     let (dir, mut app) = headless("ui-focus-remove", &game(" tabIndex={1} tabGroup={{ order: 2, modal: true }} autoFocus"), bevy_ts_cli::Prebuilt, BOTH);
     let b = node(&mut app, &["b"]);
@@ -162,7 +157,6 @@ fn removing_tab_index_from_a_button_removes_it() {
 
 #[test]
 fn a_bad_tab_index_or_group_is_a_load_error() {
-    let _hang = common::watchdog("a_bad_tab_index_or_group_is_a_load_error", common::BOUND);
     for (name, props, needle) in [("ui-focus-bad-index", "tabIndex={1.5}", "tabIndex"), ("ui-focus-bad-group", "tabGroup={{ modal: 1 }}", "tabGroup")] {
         let dir = project(name, &[("game.tsx", &format!("import {{ app }} from \"bevy-ts\";\napp.scene(\"ui\", () => <button key=\"b\" {props} />);\n"))]);
         let mut app = unfinished(bevy_ts_cli::Prebuilt, Display::Headless, BOTH, &dir.join("game.tsx"));
@@ -177,7 +171,6 @@ fn a_bad_tab_index_or_group_is_a_load_error() {
 
 #[test]
 fn headless_both_switches_load_and_tab_does_nothing() {
-    let _hang = common::watchdog("headless_both_switches_load_and_tab_does_nothing", common::BOUND);
     let (_dir, mut app) = headless("ui-focus-headless", TWO_TABS, bevy_ts_cli::Prebuilt, BOTH);
     assert!(app.is_plugin_added::<TabNavigationPlugin>() && app.is_plugin_added::<DirectionalNavigationPlugin>());
     assert!(app.world().contains_resource::<DirectionalNavigationMap>());
@@ -213,7 +206,6 @@ app.addSystems(Update, go);
 
 #[test]
 fn navigate_throws_with_directional_navigation_off() {
-    let _hang = common::watchdog("navigate_throws_with_directional_navigation_off", common::BOUND);
     let (_dir, app) = headless("ui-focus-navigate-off", NAVIGATE, bevy_ts_cli::Prebuilt, Switches::default());
     let threw = logged(&app, "threw");
     assert_eq!(threw.len(), 1, "{:?}", messages(&app));
@@ -225,7 +217,6 @@ fn navigate_throws_with_directional_navigation_off() {
 
 #[test]
 fn a_wrong_navigation_switch_type_fails_dev() {
-    let _hang = common::watchdog("a_wrong_navigation_switch_type_fails_dev", common::BOUND);
     for field in ["tabNavigation", "directionalNavigation"] {
         let config = format!(r#"{{ "{field}": "yes" }}"#);
         let dir = project(&format!("ui-focus-wrong-{field}"), &[("bevy-ts.json", &config), ("tsconfig.json", "{}"), ("src/game.tsx", TWO_TABS)]);
@@ -310,7 +301,6 @@ app.addSystems(Update, visible);
 
     #[test]
     fn tab_moves_through_three_buttons_with_focus_events() {
-        let _hang = common::watchdog("tab_moves_through_three_buttons_with_focus_events", common::BOUND);
         let (_dir, mut app) = start("ui-focus-tab", THREE, BOTH, false);
         assert_eq!(focused(&mut app), None);
         press(&mut app, "Tab");
@@ -328,7 +318,6 @@ app.addSystems(Update, visible);
 
     #[test]
     fn a_modal_tab_group_traps_focus() {
-        let _hang = common::watchdog("a_modal_tab_group_traps_focus", common::BOUND);
         let game = r#"import { app } from "bevy-ts";
 app.scene("ui", () => (
   <node key="g" tabGroup={{}}>
@@ -352,7 +341,6 @@ app.scene("ui", () => (
 
     #[test]
     fn arrow_keys_move_focus_through_directional_navigation() {
-        let _hang = common::watchdog("arrow_keys_move_focus_through_directional_navigation", common::BOUND);
         let game = r#"import { app, px, Update } from "bevy-ts";
 import { AutoDirectionalNavigation, Camera2d } from "bevy-ts/bevy";
 import { CompassOctant, KeyCode, type DirectionalNavigation, type Keys } from "bevy-ts/input";
@@ -385,7 +373,6 @@ app.scene("ui", () => (
 
     #[test]
     fn off_by_default_tab_moves_nothing() {
-        let _hang = common::watchdog("off_by_default_tab_moves_nothing", common::BOUND);
         let (_dir, mut app) = start("ui-focus-off", THREE, Switches::default(), false);
         press(&mut app, "Tab");
         assert_eq!(focused(&mut app), None);
@@ -394,7 +381,6 @@ app.scene("ui", () => (
 
     #[test]
     fn tab_while_editing_does_not_move_game_focus() {
-        let _hang = common::watchdog("tab_while_editing_does_not_move_game_focus", common::BOUND);
         let (_dir, mut app) = start("ui-focus-edit", THREE, BOTH, true);
         press(&mut app, "Tab");
         assert_eq!(focused(&mut app), None);
@@ -402,7 +388,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_field_types_nothing_while_editing() {
-        let _hang = common::watchdog("a_field_types_nothing_while_editing", common::BOUND);
         let game = r#"import { app } from "bevy-ts";
 app.scene("ui", () => <input key="field" autoFocus onKeyboardInput={(e) => console.log(`key ${e.state} ${e.code}`)} />);
 "#;
@@ -420,7 +405,6 @@ app.scene("ui", () => <input key="field" autoFocus onKeyboardInput={(e) => conso
 
     #[test]
     fn play_stop_play_then_one_tab_moves_one_step() {
-        let _hang = common::watchdog("play_stop_play_then_one_tab_moves_one_step", common::BOUND);
         let (_dir, mut app) = start("ui-focus-replay", THREE, BOTH, true);
         for mode in ["play", "edit", "play"] {
             call(&mut app, "bevy-ts/viewport_mode", json!({ "mode": mode }));

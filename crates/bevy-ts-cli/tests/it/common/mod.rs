@@ -29,37 +29,24 @@ pub fn sync_pipelines() -> bevy::render::RenderPlugin {
 /// loaded machine, so they run one at a time while the rest run in parallel (docs/testing.md).
 pub struct OneRenderer(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
 
-/// A new app holding the render lock. Every test app that renders starts here.
+/// A new app holding the render lock. Every test app that renders starts here. It carries the
+/// engine's stall watchdog: a frame that stops (a render the GPU never finishes, a script that never
+/// returns) exits the binary naming the test, as `base_app`'s does (docs/testing.md).
 pub fn render_app() -> App {
-    static RENDERER: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let mut app = App::new();
-    app.insert_non_send(OneRenderer(RENDERER.lock().unwrap_or_else(|e| e.into_inner())));
+    app.insert_non_send(renderer());
+    app.add_plugins(bevy_ts_remote::stall::StallPlugin::default());
     app
+}
+
+/// The render lock alone, for a test that renders an app `base_app` built.
+pub fn renderer() -> OneRenderer {
+    static RENDERER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    OneRenderer(RENDERER.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 pub fn free_port() -> u16 {
     std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
-}
-
-/// Fails the whole test binary if `test` is still running after `within`: a hang inside one frame
-/// (an endless loop in Rust or JS) otherwise holds the run, and its slot, forever. Drop disarms it.
-pub fn watchdog(test: &'static str, within: Duration) -> Watchdog {
-    let (tx, rx) = channel::<()>();
-    std::thread::spawn(move || {
-        if rx.recv_timeout(within) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
-            eprintln!("{test} hung: still running after {within:?}");
-            std::process::exit(101);
-        }
-    });
-    Watchdog(tx)
-}
-
-pub struct Watchdog(std::sync::mpsc::Sender<()>);
-
-impl Drop for Watchdog {
-    fn drop(&mut self) {
-        let _ = self.0.send(());
-    }
 }
 
 /// A fresh directory of TS files under the temp dir.
@@ -85,6 +72,8 @@ pub fn app(entry: &Path) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins).add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())).dev(true));
     app.add_plugins(bevy_ts_tsx::TsxPlugin);
+    // A script that never returns exits the binary naming the test.
+    app.add_plugins(bevy_ts_remote::stall::StallPlugin::default());
     app.insert_resource(DevSource(Arc::new(Compiler::new(entry, true).unwrap())));
     app
 }

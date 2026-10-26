@@ -64,19 +64,17 @@ struct Slow {
 }
 
 /// A headless engine with a camera and a script, taking its env shot at the `at`th ready frame
-/// into `path`, and its watchdog. Pipelines compile in the background, as in a shipped engine.
-/// Bind the watchdog before the app (`let (_hang, mut app)`) so it drops after: dropping a Bevy
-/// app waits for its render thread, and a stalled one hangs the drop.
-fn engine(name: &str, path: &Path, at: u64) -> (Watchdog, App) {
+/// into `path`. Pipelines compile in the background, as in a shipped engine. A render that stalls,
+/// in a frame or in the app's drop (which waits for the render thread), is the engine's stall
+/// watchdog's to report.
+fn engine(name: &str, path: &Path, at: u64) -> App {
     engine_with(name, path, at, None)
 }
 
 /// As [`engine`], with a `slow://` asset source.
-fn engine_with(name: &str, path: &Path, at: u64, slow: Option<Slow>) -> (Watchdog, App) {
+fn engine_with(name: &str, path: &Path, at: u64, slow: Option<Slow>) -> App {
     let dir = project(name, &[("package.json", "{}"), ("game.ts", "import { app } from \"bevy-ts\";\n")]);
     let mut app = render_app();
-    // Armed once the render lock is held, so time queued behind other render tests does not count.
-    let hang = hang(name);
     if let Some(Slow { root, open, delay }) = slow {
         app.register_asset_source(
             "slow",
@@ -94,7 +92,7 @@ fn engine_with(name: &str, path: &Path, at: u64, slow: Option<Slow>) -> (Watchdo
             commands.spawn((DirectionalLight::default(), Transform::from_xyz(1.0, 2.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y)));
         });
     app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap())));
-    (hang, app)
+    app
 }
 
 fn start(app: &mut App) {
@@ -105,18 +103,6 @@ fn start(app: &mut App) {
 fn apply_script(app: &mut App) {
     let r = reload(app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
-}
-
-/// Longer than a ready test takes at load 40: a shot may wait out the method's own timeouts,
-/// `READY_TIMEOUT` and then `READBACK_TIMEOUT`, at 400 ms a frame. 120 s fired on runs that answered.
-const HANG: Duration = Duration::from_secs(300);
-
-/// Fails the run if the test is still going after [`HANG`]. Every frame submits to the GPU, and a
-/// stalled Metal driver blocks inside wgpu's submit, before any ready wait can time out, or in the
-/// app's drop, which waits for the render thread.
-fn hang(test: &str) -> Watchdog {
-    let name: &'static str = Box::leak(format!("{test} (a GPU or driver stall inside wgpu submit is the suspect)").into_boxed_str());
-    watchdog(name, HANG)
 }
 
 /// Updates until the shot is written.
@@ -158,7 +144,7 @@ fn cube(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials:
 fn a_script_that_starts_late_is_in_the_shot() {
     let dir = shots_dir("ready-late-script");
     let path = dir.join("late.png");
-    let (_hang, mut app) = engine("ready-late-script", &path, 3);
+    let mut app = engine("ready-late-script", &path, 3);
     // The script's scene: the cube, spawned once its first generation has applied.
     app.add_systems(Update, |info: Res<RuntimeInfo>, mut done: Local<bool>, commands: Commands, meshes: ResMut<Assets<Mesh>>, materials: ResMut<Assets<StandardMaterial>>| {
         if info.generation > 0 && !*done {
@@ -181,7 +167,7 @@ fn a_script_that_starts_late_is_in_the_shot() {
 fn a_material_compiled_in_the_background_is_in_the_shot() {
     let dir = shots_dir("ready-late-material");
     let path = dir.join("material.png");
-    let (_hang, mut app) = engine("ready-late-material", &path, 3);
+    let mut app = engine("ready-late-material", &path, 3);
     app.add_systems(Startup, cube);
     start(&mut app);
     apply_script(&mut app);
@@ -195,7 +181,7 @@ fn a_material_compiled_in_the_background_is_in_the_shot() {
 fn turning_shot(name: &str, work: std::time::Duration) -> Vec<u8> {
     let dir = shots_dir(name);
     let path = dir.join("turn.png");
-    let (_hang, mut app) = engine(name, &path, 30);
+    let mut app = engine(name, &path, 30);
     app.insert_resource(FixedStep)
         .add_systems(Startup, cube)
         .add_systems(Update, move |time: Res<Time>, mut cubes: Query<&mut Transform, With<Mesh3d>>| {
@@ -237,7 +223,7 @@ fn a_texture_on_a_slow_disk_is_in_the_shot() {
     std::fs::write(root.join("scene.png"), png_of([r, g, b, 255])).unwrap();
     let open = Arc::new(AtomicBool::new(false));
     let slow = Slow { root, open: open.clone(), delay: Duration::ZERO };
-    let (_hang, mut app) = engine_with("ready-slow-texture", &path, 3, Some(slow));
+    let mut app = engine_with("ready-slow-texture", &path, 3, Some(slow));
     // A white cube whose colour is its texture, added without the server, as a script's is.
     app.add_systems(Startup, |mut commands: Commands, server: Res<AssetServer>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {
         let texture = server.load("slow://scene.png");
@@ -263,7 +249,7 @@ fn fox_shot(name: &str, delay: Duration, work: Duration) -> Vec<u8> {
     let path = dir.join("fox.png");
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/foxes/assets/models").canonicalize().unwrap();
     let slow = Slow { root, open: Arc::new(AtomicBool::new(true)), delay };
-    let (_hang, mut app) = engine_with(name, &path, 30, Some(slow));
+    let mut app = engine_with(name, &path, 30, Some(slow));
     app.add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .insert_resource(FixedStep)
         .add_systems(Startup, |mut commands: Commands, server: Res<AssetServer>| {
@@ -301,7 +287,7 @@ fn the_method_waits_for_a_texture_on_a_slow_disk() {
     std::fs::write(root.join("scene.png"), png_of([r, g, b, 255])).unwrap();
     let open = Arc::new(AtomicBool::new(false));
     let slow = Slow { root, open: open.clone(), delay: Duration::ZERO };
-    let (_hang, mut app) = engine_with("ready-method-texture", &dir.join("unused.png"), 3, Some(slow));
+    let mut app = engine_with("ready-method-texture", &dir.join("unused.png"), 3, Some(slow));
     app.world_mut().remove_resource::<ShotWhenReady>();
     app.add_plugins(RemotePlugin::default())
         .add_systems(Startup, |mut commands: Commands, server: Res<AssetServer>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {

@@ -78,6 +78,9 @@ not inputs, so a TS edit never rebuilds anything.
   them.
 - `BEVY_TS_PIPELINE_TRACE=1` makes any engine print, to stderr, each time its render pipelines
   have all compiled: seconds since start, how many, and the longest render frame so far.
+- `BEVY_TS_STALL_SECS=<seconds>` sets how long a frame may stay open before the engine's stall
+  watchdog reports `Update stopped:` (30 s); `0` turns it off. A headless engine then exits with
+  code 75 ([build.md](build.md)).
 
 ### Sharing engines in a team
 

@@ -98,7 +98,6 @@ fn rgb(hex: &str) -> Color {
 
 #[test]
 fn grid_tracks_and_placements() {
-    let _hang = common::watchdog("grid_tracks_and_placements", common::BOUND);
     let (_dir, mut app) = setup("ui-grid", GAME);
     let n: Node = ui(&mut app, &["grid"]);
     assert_eq!(n.display, Display::Grid);
@@ -115,7 +114,6 @@ fn grid_tracks_and_placements() {
 
 #[test]
 fn the_remaining_node_fields() {
-    let _hang = common::watchdog("the_remaining_node_fields", common::BOUND);
     let (_dir, mut app) = setup("ui-keys", GAME);
     let n: Node = ui(&mut app, &["keys"]);
     assert_eq!(n.box_sizing, BoxSizing::ContentBox);
@@ -130,7 +128,6 @@ fn the_remaining_node_fields() {
 
 #[test]
 fn corners_and_sides() {
-    let _hang = common::watchdog("corners_and_sides", common::BOUND);
     let (_dir, mut app) = setup("ui-corners", GAME);
     let r = ui::<Node>(&mut app, &["corners"]).border_radius;
     assert_eq!(r, BorderRadius::new(Val::Px(4.0), Val::Px(0.0), Val::Px(4.0), Val::Px(0.0)));
@@ -143,7 +140,6 @@ fn corners_and_sides() {
 
 #[test]
 fn shadow_outline_and_transform() {
-    let _hang = common::watchdog("shadow_outline_and_transform", common::BOUND);
     let (_dir, mut app) = setup("ui-looks", GAME);
     let s: BoxShadow = ui(&mut app, &["looks"]);
     assert_eq!(s.0.len(), 1);
@@ -164,7 +160,6 @@ fn shadow_outline_and_transform() {
 
 #[test]
 fn background_and_border_own_colour_and_gradient() {
-    let _hang = common::watchdog("background_and_border_own_colour_and_gradient", common::BOUND);
     let (_dir, mut app) = setup("ui-gradients", GAME);
     let e = node(&mut app, &["looks"]);
     assert_eq!(app.world().get::<BackgroundColor>(e).unwrap().0, rgb("#222222"));
@@ -199,7 +194,6 @@ fn background_and_border_own_colour_and_gradient() {
 
 #[test]
 fn a_newtypes_field_is_value() {
-    let _hang = common::watchdog("a_newtypes_field_is_value", common::BOUND);
     let (_dir, mut app) = setup("ui-value", GAME);
     let e = node(&mut app, &["looks"]);
     assert_eq!(app.world().get::<ZIndex>(e).unwrap().0, 2);
@@ -215,7 +209,6 @@ fn a_newtypes_field_is_value() {
 
 #[test]
 fn a_misspelt_key_names_itself() {
-    let _hang = common::watchdog("a_misspelt_key_names_itself", common::BOUND);
     let dir = project("ui-typo", &[("game.tsx", r#"import { app, fr } from "bevy-ts";
 app.scene("ui", () => <node style={{ gridTemplateColums: [fr(1)] } as never} />);
 "#)]);

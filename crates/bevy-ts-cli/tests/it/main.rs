@@ -67,6 +67,7 @@ mod schedules;
 mod screenshot;
 mod screenshot_ready;
 mod session;
+mod stall;
 mod standard_material_limits;
 mod states;
 mod stop_bench;

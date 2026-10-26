@@ -66,7 +66,6 @@ pub(crate) fn said(app: &App, prefix: &str) -> Vec<String> {
 
 #[test]
 fn a_slider_and_its_thumb_have_bevys_components() {
-    let _hang = common::watchdog("a_slider_and_its_thumb_have_bevys_components", common::BOUND);
     let game = r#"import { app } from "bevy-ts";
 app.scene("ui", () => (
   <slider key="s" initialValue={0.5} min={0} max={1} step={0.1}><sliderThumb key="t" /></slider>
@@ -85,7 +84,6 @@ app.scene("ui", () => (
 
 #[test]
 fn a_scrollbar_targets_its_ref_and_its_thumb_has_no_node() {
-    let _hang = common::watchdog("a_scrollbar_targets_its_ref_and_its_thumb_has_no_node", common::BOUND);
     let game = r##"import { app, ref } from "bevy-ts";
 const list = ref();
 app.scene("ui", () => (
@@ -109,7 +107,6 @@ app.scene("ui", () => (
 
 #[test]
 fn a_tab_list_selects_by_key() {
-    let _hang = common::watchdog("a_tab_list_selects_by_key", common::BOUND);
     let game = |sel: &str| {
         format!(
             r#"import {{ app }} from "bevy-ts";
@@ -131,7 +128,6 @@ app.scene("ui", () => (
 
 #[test]
 fn a_tab_key_no_tab_has_warns_once() {
-    let _hang = common::watchdog("a_tab_key_no_tab_has_warns_once", common::BOUND);
     let game = r#"import { app } from "bevy-ts";
 app.scene("ui", () => <tabList key="tabs" selected="thre"><tab key="one" /></tabList>);
 "#;
@@ -145,7 +141,6 @@ app.scene("ui", () => <tabList key="tabs" selected="thre"><tab key="one" /></tab
 
 #[test]
 fn both_forms_of_a_state_prop_fail_naming_it() {
-    let _hang = common::watchdog("both_forms_of_a_state_prop_fail_naming_it", common::BOUND);
     let both = r#"import { app, signal } from "bevy-ts";
 const [v] = signal(0);
 // @ts-expect-error both forms
@@ -157,7 +152,6 @@ app.scene("ui", () => <slider key="s" value={() => v()} initialValue={0} />);
 
 #[test]
 fn a_radio_group_mixing_forms_fails_naming_the_group() {
-    let _hang = common::watchdog("a_radio_group_mixing_forms_fails_naming_the_group", common::BOUND);
     let mixed = r#"import { app } from "bevy-ts";
 app.scene("ui", () => (
   <radioGroup key="g"><radio key="a" checked={true} /><radio key="b" initialChecked={false} /></radioGroup>
@@ -170,7 +164,6 @@ app.scene("ui", () => (
 /// A `<For>` hides its radios from the description: the mix is found among the mounted radios.
 #[test]
 fn a_radio_group_mixing_forms_through_a_for_fails_naming_the_group() {
-    let _hang = common::watchdog("a_radio_group_mixing_forms_through_a_for_fails_naming_the_group", common::BOUND);
     let mixed = r#"import { app, For } from "bevy-ts";
 app.scene("ui", () => (
   <radioGroup key="g">
@@ -186,7 +179,6 @@ app.scene("ui", () => (
 
 #[test]
 fn a_thumb_takes_only_its_border_from_style() {
-    let _hang = common::watchdog("a_thumb_takes_only_its_border_from_style", common::BOUND);
     let wide = r#"import { app, ref } from "bevy-ts";
 const l = ref();
 app.scene("ui", () => (
@@ -313,7 +305,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_controlled_checkbox_follows_its_handler_and_one_without_never_changes() {
-        let _hang = common::watchdog("a_controlled_checkbox_follows_its_handler_and_one_without_never_changes", common::BOUND);
         let (_dir, mut app) = scene("ui-widgets-check");
         click(&mut app, 20.0, 10.0);
         assert_eq!(said(&app, "controlled"), ["controlled true"]);
@@ -324,7 +315,6 @@ app.scene("ui", () => (
 
     #[test]
     fn an_initial_checkbox_keeps_its_own_state_across_a_reload() {
-        let _hang = common::watchdog("an_initial_checkbox_keeps_its_own_state_across_a_reload", common::BOUND);
         let (dir, mut app) = scene("ui-widgets-initial");
         click(&mut app, 140.0, 10.0);
         assert_eq!(said(&app, "initial"), ["initial true"]);
@@ -337,7 +327,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_radio_group_gives_the_key_and_not_a_child_checkboxs_change() {
-        let _hang = common::watchdog("a_radio_group_gives_the_key_and_not_a_child_checkboxs_change", common::BOUND);
         let (_dir, mut app) = scene("ui-widgets-radio");
         click(&mut app, 60.0, 50.0);
         assert_eq!(said(&app, "level"), ["level hard true"]);
@@ -350,7 +339,6 @@ app.scene("ui", () => (
     /// Radios from a `<For>`, controlled with no handler: the group keeps no self-update.
     #[test]
     fn controlled_radios_from_a_for_never_change_without_a_handler() {
-        let _hang = common::watchdog("controlled_radios_from_a_for_never_change_without_a_handler", common::BOUND);
         let (_dir, mut app) = scene("ui-widgets-radio-for");
         let radio = |app: &mut App, k: &str| {
             let w = app.world_mut();
@@ -365,7 +353,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_dragged_slider_is_not_final_until_released() {
-        let _hang = common::watchdog("a_dragged_slider_is_not_final_until_released", common::BOUND);
         let (_dir, mut app) = scene("ui-widgets-drag");
         drag(&mut app, (5.0, 90.0), (105.0, 90.0));
         let log = said(&app, "vol");
@@ -379,7 +366,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_scrollbar_drag_writes_its_targets_scroll_position() {
-        let _hang = common::watchdog("a_scrollbar_drag_writes_its_targets_scroll_position", common::BOUND);
         let (_dir, mut app) = scene("ui-widgets-bar");
         let list = node(&mut app, &["list"]);
         assert_eq!(app.world().get::<ScrollPosition>(list).unwrap().y, 0.0);
@@ -390,7 +376,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_scroll_area_scrolls_by_the_wheel() {
-        let _hang = common::watchdog("a_scroll_area_scrolls_by_the_wheel", common::BOUND);
         let (_dir, mut app) = scene("ui-widgets-wheel");
         let list = node(&mut app, &["list"]);
         let camera = app.world_mut().query_filtered::<Entity, With<Camera2d>>().single(app.world()).unwrap();
@@ -409,7 +394,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_tab_list_and_a_list_box_give_keys_and_follow_the_game() {
-        let _hang = common::watchdog("a_tab_list_and_a_list_box_give_keys_and_follow_the_game", common::BOUND);
         let (_dir, mut app) = scene("ui-widgets-tab-list");
         let tabs = node(&mut app, &["tabs"]);
         let one = node(&mut app, &["tabs", "one"]);
@@ -477,7 +461,6 @@ pub(crate) mod keys {
     /// Each widget focused at mount, its keys pressed, and what its `onValueChange` said.
     #[test]
     fn each_widget_answers_its_keys() {
-        let _hang = common::watchdog("each_widget_answers_its_keys", common::BOUND);
         let cases: [(&str, &str, &str); 5] = [
             ("check", r#"<checkbox key="w" tabIndex={0} autoFocus onValueChange={({ value }) => console.log(`said ${value}`)} />"#, "Space"),
             ("slider", r#"<slider key="w" tabIndex={0} autoFocus initialValue={2} min={0} max={10} onValueChange={({ value }) => console.log(`said ${value}`)} />"#, "ArrowRight"),

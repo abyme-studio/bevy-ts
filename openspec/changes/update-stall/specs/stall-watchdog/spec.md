@@ -47,7 +47,7 @@ On a stall, a headless engine (`--headless`, so every `BEVY_TS_SCREENSHOT` run) 
 - **THEN** no watchdog thread starts
 
 ### Requirement: Tests are bounded by the engine's watchdog
-Every test app that renders (`common::render_app()`) and every app built from `base_app` SHALL carry the watchdog with the 30 s limit, so a render test needs no watchdog of its own. A test of the watchdog itself SHALL set a shorter limit and its own action on the plugin, never an environment variable, and SHALL make the stall without a GPU fault: a system that blocks until the test releases it.
+Every test app that renders (`common::render_app()`), every script test app (`common::app()`) and every app built from `base_app` SHALL carry the watchdog with the 30 s limit, so a render test needs no watchdog of its own. A test of the watchdog itself SHALL set a shorter limit and its own action on the plugin, never an environment variable, and SHALL make the stall without a GPU fault: a system that blocks until the test releases it.
 
 #### Scenario: A stalled render test
 - **WHEN** a render test's frame stops in the render

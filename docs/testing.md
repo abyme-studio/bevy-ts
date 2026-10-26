@@ -17,6 +17,12 @@ How a new test is written here. Where tests live and what they cost to build is
   - a viewport test that renders starts its app from `common::render_app()`, which runs render apps
     one at a time;
   - no test sets an environment variable or the working folder.
+- A test adds no watchdog of its own. An app from `common::render_app()`, `common::app()` or
+  `base_app` carries the engine's stall watchdog (`bevy_ts_remote::stall`): a frame open for 30 s
+  (a render the GPU never finishes, a script that never returns) exits the binary with code 75 and
+  an `Update stopped:` line naming the test's thread. Time between updates does not count. A test
+  of the watchdog itself replaces `StallSettings` with a short limit and `StallAction::Call`, never
+  an environment variable, and blocks a system until its `Call` releases it.
 - A type the test declares has the path `it::<module>::<Type>`: the crate is the binary, `it`.
 
 ## The rules
