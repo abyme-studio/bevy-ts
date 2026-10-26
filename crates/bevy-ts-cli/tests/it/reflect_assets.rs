@@ -4,6 +4,8 @@
 
 use crate::common;
 
+use bevy::asset::AssetEvent;
+use bevy::ecs::message::Messages;
 use bevy::prelude::*;
 use bevy_ts::generation::ReloadStatus;
 use common::*;
@@ -344,4 +346,20 @@ app.scene("s", () => (
     let server = app.world().resource::<AssetServer>();
     let path = |h: &Option<Handle<Image>>| h.as_ref().and_then(|h| server.get_path(h.id())).map(|p| p.to_string());
     assert!(textured.iter().any(|m| path(&m.normal_map_texture).as_deref() == Some("textures/n.png")));
+}
+
+#[test]
+fn a_failed_reload_adds_no_asset() {
+    let (dir, mut app) = setup("assets-failed-reload", "assets.add(StandardMaterial, { unlit: true });\n");
+    assert_eq!(materials(&app).len(), 1);
+    let mut cursor = app.world().resource::<Messages<AssetEvent<StandardMaterial>>>().get_cursor_current();
+    // The new generation adds while it loads, then throws.
+    write(&dir, "game.tsx", &format!("{HEAD}assets.add(StandardMaterial, {{ unlit: false }});\nthrow new Error(\"boom\");\n"));
+    let r = reload(&mut app, false);
+    assert!(!r.errors.is_empty(), "the reload fails");
+    app.update();
+    let events = cursor.read(app.world().resource::<Messages<AssetEvent<StandardMaterial>>>()).count();
+    assert_eq!(events, 0, "the failed load's asset never went into Assets");
+    let live = materials(&app);
+    assert!(live.len() == 1 && live[0].unlit, "the live generation's material is unchanged");
 }
