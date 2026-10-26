@@ -65,22 +65,26 @@ seconds at this N).
 bench/material-params/run.sh 3 3    # the material-params-bench-instance process
 ```
 
-Apple M5 Max, release, 2026-10-26. Other agents' builds ran meanwhile: load average 60 at the
-start, 21 at the end. 3 runs per arm; the arms' ranges are more than 20x apart, so no 8-run round.
+Apple M5 Max, release, 2026-10-26, on bevy-ts's own packing (rows written with the component,
+uploaded once a frame). Other agents' builds ran meanwhile: load average 100 at the start, 35 at
+the end, so the spread within an arm is wide. 3 runs per arm; the arms' ranges are more than 14x
+apart, so no 8-run round.
 
 | arm | frame mean ms (median) | range | p95 ms (median) | assets at most | prepares per frame | instance buffer bytes |
 |-----|---:|---|---:|---:|---:|---:|
-| instance | 48.5 | 41.0–54.9 | 81.2 | 1 | 0 | 2,872,832 |
-| instance-rekey | 1812.8 | 1163.7–2534.2 | 3134.0 | 20,000 | 10,000 | 256 |
+| instance | 61.1 | 25.5–83.6 | 111.5 | 1 | 0 | 2,560,000 |
+| instance-rekey | 2009.6 | 1208.8–2628.2 | 4786.1 | 20,000 | 10,000 | 256 |
 
 What it says:
 
-- Instance params are about 37x cheaper per frame at 10k. No asset is prepared: the change is one
-  buffer write.
-- The buffer is 256 bytes a cube: 2.87 MB holds 11,222 rows (Bevy rounds its growth up), uploaded
-  whole when any value changes. The re-key arm's kind declares no instance params; its 256 bytes
-  are the empty buffer's one row.
+- Instance params are about 33x cheaper per frame at 10k. No asset is prepared: the change is one
+  buffer upload.
+- The buffer is 256 bytes a cube, 2.56 MB for 10,000, uploaded whole once a frame when any value
+  changed. The re-key arm's kind declares no instance params; its 256 bytes are the empty
+  buffer's one row.
 - Re-keying prepares every cube's asset every frame and holds twice the assets.
 - Render pipelines stayed at 44 in every run of both arms.
 
-`runs-instance.jsonl` holds every run.
+`runs-instance.jsonl` holds every run. `runs-instance-bevy-packing.jsonl` is the round before,
+on Bevy's `GpuComponentArrayBuffer` (load 60 to 21): instance 48.5 ms median, re-key 1812.8 ms,
+buffer 2.87 MB. Bevy's packing was replaced because it could not be ordered against the writes.
