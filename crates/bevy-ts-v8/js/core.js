@@ -2933,6 +2933,11 @@ const HOST = {
     for (const s of slices) call.push(Array.from(new Uint32Array(s.buffer, s.byteOffset, s.byteLength / 4)));
     calls.push(call);
   },
+  /** A recorder's non-builder call: any builder it holds is stale now. */
+  moved(r) {
+    const p = r.$param ?? r;
+    p.$serial = (p.$serial ?? 0) + 1;
+  },
   /** Throws when `b`, a builder, is not the param's latest. */
   live(b, setting) {
     if (b.$param !== undefined && b.$serial !== b.$param.$serial) {

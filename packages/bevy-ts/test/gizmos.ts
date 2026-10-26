@@ -1,7 +1,7 @@
 // Type tests for `bevy-ts/gizmos`: engine/native-modules.d.ts holds the engine's declaration
 // (tests/it/gizmos.rs `the_engine_declares_gizmos` checks it), and `tsc -p test` checks these cases against it.
-import type { ResMut } from "bevy-ts";
-import { type Gizmos, type GizmoConfigStore, type LightGizmoConfigGroup, DefaultGizmoConfigGroup } from "bevy-ts/gizmos";
+import { assets, type AssetRef, type ResMut } from "bevy-ts";
+import { GizmoAsset, type GizmoAssetValue, type Gizmos, type GizmoConfigStore, type LightGizmoConfigGroup, DefaultGizmoConfigGroup } from "bevy-ts/gizmos";
 
 export function draw(g: Gizmos) {
   g.line([0, 0, 0], { x: 1, y: 0, z: 0 }, "#f00");
@@ -43,4 +43,21 @@ export function toggle(store: ResMut<GizmoConfigStore>) {
   store.insert(DefaultGizmoConfigGroup, { line: { width: "4" } }, {});
   const [, light] = store.config("LightGizmoConfigGroup");
   return light.draw_all;
+}
+
+// A retained GizmoAsset: draw into it, add it, replace it; test/tsx/gizmo.tsx shows it.
+export function retained() {
+  const g = new GizmoAsset();
+  g.line([0, 0, 0], [1, 0, 0], "#f00");
+  g.circle([0, 0, 0], 1, "#fff").resolution(64);
+  const ref: AssetRef<GizmoAssetValue> = assets.add(GizmoAsset, g);
+  assets.set(ref, g);
+  const calls: readonly unknown[] | undefined = assets.get(ref)?.calls;
+  // @ts-expect-error: an arrow has no resolution
+  g.arrow([0, 0, 0], [1, 0, 0], "#fff").resolution(8);
+  // @ts-expect-error: a GizmoAsset draws, it has no config
+  g.config();
+  // @ts-expect-error: calls is a list
+  assets.add(GizmoAsset, { calls: 1 });
+  return calls;
 }

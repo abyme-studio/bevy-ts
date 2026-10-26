@@ -1472,8 +1472,8 @@ fn recorded(spec: &ParamSpec) -> impl Iterator<Item = &MethodSpec> {
 /// as the param's glue does, then `H.record` keeps its name, its slots as `u32` words and its
 /// point lists' floats as words, in `calls`; Rust replays them through the param's own entries.
 /// Builder settings record as calls after the builder's; a setting on a builder another call
-/// replaced throws, as on the param. `toJSON` gives `{ calls }`. Methods with a byte slice or a
-/// result are left out.
+/// replaced, or a later drawing call passed, throws, as on the param. `toJSON` gives `{ calls }`.
+/// Methods with a byte slice or a result are left out.
 pub fn recorder_glue(spec: &ParamSpec, name: &str) -> String {
     let mut s = format!("const NAME = {name:?};\nreturn class {name} {{\n  constructor() {{ this.calls = []; }}\n  toJSON() {{ return {{ calls: this.calls }}; }}\n");
     for method in recorded(spec) {
@@ -1498,7 +1498,7 @@ pub fn recorder_glue(spec: &ParamSpec, name: &str) -> String {
                 let _ = writeln!(s, "    return H.open(this, {builder:?});\n  }}");
             }
             None if method.of.is_some() => s.push_str("    return this;\n  }\n"),
-            None => s.push_str("  }\n"),
+            None => s.push_str("    H.moved(this);\n  }\n"),
         }
     }
     s.push_str("};\n");
@@ -1506,9 +1506,10 @@ pub fn recorder_glue(spec: &ParamSpec, name: &str) -> String {
 }
 
 /// The TS interface of [`recorder_glue`]'s class under `head`: its drawing methods, typed as the
-/// param's; the builders are the param's own declarations.
+/// param's, and its recorded `calls`, which an asset's value shares (so `assets.add` takes it); the
+/// builders are the param's own declarations.
 pub fn recorder_declaration(spec: &ParamSpec, head: &str) -> String {
-    let mut s = format!("export interface {head} {{\n");
+    let mut s = format!("export interface {head} {{\n  readonly calls: readonly unknown[];\n");
     for m in recorded(spec).filter(|m| m.of.is_none()) {
         let ret = m.chain.unwrap_or("void");
         let _ = writeln!(s, "  {}({}): {ret};", m.name, ts_args(m));
@@ -1853,6 +1854,7 @@ mod tests {
         let method = |name: &str, ret, of| MethodSpec { name: name.into(), args: vec![ArgSpec::Value("n", Kind::Num("u32"))], ret, call: |_, _, _, _, _, _| Ok(()), chain: None, of };
         spec.methods.push(method("resolution", Kind::Unit, Some("CircleBuilder")));
         spec.methods.push(method("config", Kind::Json("GizmoConfig"), None));
+        spec.methods.push(method("dot", Kind::Unit, None));
         let js = recorder_glue(&spec, "Rec");
         // Arguments are written as the param's glue writes them, then recorded with the one
         // point list, not the padding slices.
@@ -1860,6 +1862,7 @@ mod tests {
         assert!(js.contains("H.record(this.calls, \"m\", i, H.points($positions, 3, NAME, \"m\", \"positions\"));"), "{js}");
         assert!(js.contains("return H.open(this, \"CircleBuilder\");"), "{js}");
         assert!(js.contains("H.live(this, \"resolution\");") && js.contains("H.record(this.calls, \"resolution\", i);"), "{js}");
+        assert!(js.contains("H.record(this.calls, \"dot\", i);\n    H.moved(this);") && !js.contains("\"m\", i, H.points($positions, 3, NAME, \"m\", \"positions\"));\n    H.moved"), "a drawing call moves a kept builder past: {js}");
         assert!(!js.contains("config(") && !js.contains("H.call("), "a reader is left out, and nothing calls the host: {js}");
         let d = recorder_declaration(&spec, "Rec");
         assert!(d.contains("  m(radius: number, positions: ") && d.contains("): CircleBuilder;") && !d.contains("resolution") && !d.contains("config"), "{d}");

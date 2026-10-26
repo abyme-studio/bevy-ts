@@ -84,11 +84,15 @@ The engine SHALL expose Bevy's `DefaultGizmoConfigGroup`, `AabbGizmoConfigGroup`
 - **THEN** the buffer holds the same 20-point strip as the Rust call
 
 ### Requirement: Retained gizmos
-`bevy-ts/gizmos` SHALL export `GizmoAsset`, a class with every `Gizmos` drawing method and builder setting. `assets.add(GizmoAsset, g)` SHALL add a `GizmoAsset` holding exactly what those calls draw and return its `AssetRef<GizmoAsset>`; `assets.set(ref, g2)` SHALL replace its calls. `<Gizmo handle={ref} line_config={...} depth_bias={...} />` SHALL draw it, with `line_config` written through reflection.
+`bevy-ts/gizmos` SHALL export `GizmoAsset`, a class with every `Gizmos` drawing method and builder setting. `assets.add(GizmoAsset, g)` SHALL add a `GizmoAsset` holding exactly what those calls draw and return its `AssetRef<GizmoAsset>`; `assets.set(ref, g2)` SHALL replace its calls. A builder setting on a `GizmoAsset` SHALL throw at the setting, naming the builder and setting, once another drawing call has passed, as on `Gizmos`. `<Gizmo handle={ref} line_config={...} depth_bias={...} />` SHALL draw it, with `line_config` written through reflection.
 
 #### Scenario: A retained sphere
 - **WHEN** a script builds `g = new GizmoAsset()`, calls `g.sphere([0, 0, 0], 1, "#f00").resolution(64)`, adds it and mounts `<Gizmo handle={ref} />`
 - **THEN** `Assets<GizmoAsset>` holds an asset whose buffer equals what the Rust calls leave, and the entity's `Gizmo.handle` points at it
+
+#### Scenario: A late setting on a retained gizmo
+- **WHEN** a script keeps the builder from `g.circle(...)` on a `GizmoAsset`, calls `g.line(...)`, then `.resolution(64)` on the builder
+- **THEN** the setting throws naming `EllipseBuilder.resolution`, nothing is recorded for it, and `assets.add` draws the circle at its default and the line
 
 ### Requirement: Gizmo coverage is documented and measured
 `docs/gizmos.md` SHALL list every public gizmo item of Bevy 0.20 (from `bevy_gizmos`, `bevy_gizmos_render` and `bevy_light`'s gizmos) with its TS form, status and test, and SHALL give the TS cost of drawing 1,000 lines a frame against the same drawing in Rust, measured by `bench/gizmos`. No row marked working SHALL name a test that does not exist.

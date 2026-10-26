@@ -321,6 +321,7 @@ declare module "bevy-ts/gizmos" {
   export type GizmoAssetValue = AssetFields<"bevy_gizmos::GizmoAsset", { readonly calls: readonly unknown[] }>;
   /** Bevy's `GizmoAsset`: `Gizmos`' drawing methods, recorded; `assets.add(GizmoAsset, g)` draws them once into an asset a `<Gizmo handle={ref} />` shows. */
   export interface GizmoAsset {
+    readonly calls: readonly unknown[];
     line(start: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number], end: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number], color: ColorValue): void;
     lineGradient(start: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number], end: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number], startColor: ColorValue, endColor: ColorValue): void;
     ray(start: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number], vector: { readonly x: number; readonly y: number; readonly z: number } | readonly [number, number, number], color: ColorValue): void;

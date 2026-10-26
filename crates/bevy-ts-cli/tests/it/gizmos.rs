@@ -520,6 +520,38 @@ fn a_gizmo_asset_holds_what_gizmos_would_draw() {
     assert_eq!(drawn::<DefaultGizmoConfigGroup>(&app), Drawn::default(), "nothing drawn immediately");
 }
 
+/// A builder kept on a `GizmoAsset` past any other drawing call throws at its setting, naming it,
+/// as on `Gizmos`; the asset holds the shapes as drawn.
+#[test]
+fn a_gizmo_asset_builder_kept_past_a_call_throws() {
+    let body = format!(
+        "{RETAINED}export function draw(l: Local<{{ n: u32 }}>) {{\n  if (l.n++ > 0) return;\n  const g = new GizmoAsset();\n  const c = g.circle([0, 0, 0], 1, \"#fff\");\n  g.line([0, 0, 0], [1, 0, 0], \"#f00\");\n  try {{ c.resolution(64); }} catch (e) {{ console.log(`threw ${{(e as Error).message}}`); }}\n  const a = g.arrow([0, 0, 0], [1, 0, 0], \"#0f0\");\n  g.sphere([0, 0, 0], 1, \"#00f\");\n  try {{ a.withTipLength(0.5); }} catch (e) {{ console.log(`threw ${{(e as Error).message}}`); }}\n  const r = assets.add(GizmoAsset, g);\n  console.log(`ref ${{r.$asset}} ${{g.calls.length}}`);\n}}\napp.addSystems(Update, draw);\n"
+    );
+    let mut app = gizmo_app("gizmos-asset-kept", &body, |_| {});
+    app.update();
+    let threw = logged(&mut app, "threw ");
+    assert_eq!(
+        threw,
+        [
+            "EllipseBuilder.resolution: call it right after the call that returned the builder",
+            "ArrowBuilder.withTipLength: call it right after the call that returned the builder"
+        ],
+        "{:?}",
+        messages(&app)
+    );
+    let got = logged(&mut app, "ref ");
+    let (n, calls) = got.first().and_then(|l| l.split_once(' ')).unwrap_or_else(|| panic!("{:?}", messages(&app)));
+    assert_eq!(calls, "4", "the refused settings recorded nothing");
+    let mut want = bevy::gizmos::gizmos::GizmoBuffer::<DefaultGizmoConfigGroup, ()>::default();
+    want.circle(Vec3::ZERO, 1.0, Color::WHITE);
+    want.line(Vec3::ZERO, Vec3::X, RED);
+    want.arrow(Vec3::ZERO, Vec3::X, Color::srgb(0.0, 1.0, 0.0));
+    want.sphere(Vec3::ZERO, 1.0, Color::srgb(0.0, 0.0, 1.0));
+    let d = asset_drawn(&app, n.parse().unwrap());
+    assert_eq!(d.lines, want.list_positions, "the lines");
+    assert_close(&d.strips, &want.strip_positions);
+}
+
 /// `assets.set(ref, g2)` replaces the asset's calls whole; `assets.get` reads the record back.
 #[test]
 fn set_replaces_a_gizmo_assets_calls() {
