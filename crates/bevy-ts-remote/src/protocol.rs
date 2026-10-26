@@ -4125,7 +4125,7 @@ pub struct SourceLocation {
     pub file: ::std::string::String,
     pub line: u32,
 }
-///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition. (1.32) predicate (a TS predicate condition, run when a condition naming it is evaluated).
+///The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition. (1.33) predicate (a TS predicate condition, run when a condition naming it is evaluated).
 #[derive(
     ::serde::Deserialize,
     ::serde::Serialize,
