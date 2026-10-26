@@ -10,6 +10,7 @@ pub mod protocol;
 pub mod editor;
 mod entities;
 pub mod screenshot;
+pub mod stall;
 mod values;
 
 use bevy::prelude::*;

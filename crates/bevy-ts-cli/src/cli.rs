@@ -231,6 +231,7 @@ pub enum Display {
 #[allow(clippy::too_many_arguments)]
 pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, switches: Switches, diagnostics: &[String], audio: bool) -> App {
     let mut app = App::new();
+    let inspect = options.inspect.is_some();
     let plugins = headless::default_plugins(display != Display::Window);
     // The compute pool runs the frame's systems: its threads are raised with the main thread's
     // while a viewport renders.
@@ -284,6 +285,7 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(extra);
     headless::pipeline_trace(&mut app);
     shot_from_env(&mut app);
+    stall_watchdog(&mut app, display, inspect);
     // After `extra`: a native crate that adds one itself keeps its own settings.
     if switches.mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
         app.add_plugins(MeshPickingPlugin);
@@ -321,6 +323,32 @@ fn shot_from_env(app: &mut App) {
     if let Some(path) = shot {
         app.insert_resource(ShotWhenReady::new(path));
     }
+}
+
+/// The stall watchdog (`bevy_ts_remote::stall`): a headless run exits when a frame stops, a window
+/// or viewport warns (macOS stops frames to a hidden window), and `--inspect` has none (a breakpoint
+/// stops Update). `BEVY_TS_STALL_SECS=<seconds>` sets its limit, `0` turns it off.
+fn stall_watchdog(app: &mut App, display: Display, inspect: bool) {
+    use bevy_ts_remote::stall::{EXIT_CODE, LIMIT, StallAction, StallPlugin};
+    let limit = match stall_secs(std::env::var_os("BEVY_TS_STALL_SECS").as_deref()) {
+        Ok(limit) => limit.unwrap_or(LIMIT),
+        Err(e) => {
+            eprintln!("bevy-ts: {e}");
+            std::process::exit(2);
+        }
+    };
+    if inspect || limit.is_zero() {
+        return;
+    }
+    let action = if display == Display::Headless { StallAction::Exit(EXIT_CODE) } else { StallAction::Warn };
+    app.add_plugins(StallPlugin { limit, action });
+}
+
+/// `BEVY_TS_STALL_SECS`: a whole number of seconds, or none set.
+fn stall_secs(value: Option<&std::ffi::OsStr>) -> Result<Option<Duration>, String> {
+    let Some(value) = value else { return Ok(None) };
+    let text = value.to_string_lossy();
+    text.trim().parse::<u64>().map(|s| Some(Duration::from_secs(s))).map_err(|_| format!("BEVY_TS_STALL_SECS={text}: expected a whole number of seconds (0 turns the stall watchdog off)"))
 }
 
 /// A mesh that has a pointer handler, one of the two just added.
@@ -541,5 +569,16 @@ mod tests {
         assert_eq!(parse_play(&strings(&["game", "--", "other"])), Ok(("game".into(), false, strings(&["other"]))));
         assert!(parse_play(&strings(&["game", "--seed"])).unwrap_err().contains("unknown option --seed"));
         assert!(parse_play(&strings(&["--", "game"])).unwrap_err().contains("one game folder"));
+    }
+
+    #[test]
+    fn the_stall_limit_is_whole_seconds_and_names_its_variable() {
+        use std::ffi::OsStr;
+        assert_eq!(stall_secs(None), Ok(None));
+        assert_eq!(stall_secs(Some(OsStr::new("45"))), Ok(Some(Duration::from_secs(45))));
+        assert_eq!(stall_secs(Some(OsStr::new("0"))), Ok(Some(Duration::ZERO)), "0 turns it off");
+        for bad in ["", "1.5", "-3", "ten"] {
+            assert!(stall_secs(Some(OsStr::new(bad))).unwrap_err().starts_with("BEVY_TS_STALL_SECS="), "{bad:?}");
+        }
     }
 }

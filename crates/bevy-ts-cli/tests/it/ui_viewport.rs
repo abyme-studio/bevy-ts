@@ -34,10 +34,9 @@ fn node(app: &mut App, key: &str) -> Entity {
 
 #[test]
 fn the_game_camera_stays_on_the_screenshot_after_a_viewport_mounts() {
-    let _hang = common::watchdog("the_game_camera_stays_on_the_screenshot_after_a_viewport_mounts", common::BOUND);
     let dir = project("ui-viewport-headless", &[("game.tsx", GAME), ("package.json", "{}")]);
     std::fs::create_dir_all(dir.join("assets")).unwrap();
-    let mut app = App::new();
+    let mut app = render_app();
     app.add_plugins(headless::default_plugins(true).set(headless::asset_plugin_unwatched(&dir.join("assets"))))
         .add_plugins(headless::HeadlessPlugin)
         .add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))

@@ -3,7 +3,6 @@
 //! `bevy-ts/viewport_input`, as `ui_widgets.rs`'s keys do: a dialog's drag reads the primary window,
 //! and a modal's Escape needs focus, which Bevy gives the dialog 0.1 s after it mounts.
 
-use crate::common;
 use crate::ui_widgets::{headless, node};
 use bevy::input_focus::tab_navigation::{TabGroup, TabIndex};
 use bevy::ui_widgets::popover::Popover;
@@ -11,7 +10,6 @@ use bevy::ui_widgets::{Dialog, DialogDragHandle, MenuButton, MenuFocusState, Men
 
 #[test]
 fn overlays_have_bevys_components() {
-    let _hang = common::watchdog("overlays_have_bevys_components", common::BOUND);
     let game = r#"import { app } from "bevy-ts";
 app.scene("ui", () => (
   <>
@@ -106,7 +104,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_menu_opens_by_its_button_and_closes_after_an_item() {
-        let _hang = common::watchdog("a_menu_opens_by_its_button_and_closes_after_an_item", common::BOUND);
         let mut app = start("ui-overlays-menu-pointer", MENU);
         click(&mut app, 50.0, 10.0);
         assert_eq!(said(&app, "menu"), ["menu toggle"]);
@@ -119,7 +116,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_menu_opens_navigates_and_activates_by_keys() {
-        let _hang = common::watchdog("a_menu_opens_navigates_and_activates_by_keys", common::BOUND);
         let mut app = start("ui-overlays-menu-keys", MENU);
         press(&mut app, "ArrowDown");
         assert_eq!(said(&app, "menu"), ["menu open-first"]);
@@ -134,7 +130,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_popover_sits_against_its_parent() {
-        let _hang = common::watchdog("a_popover_sits_against_its_parent", common::BOUND);
         let game = r#"import { app, px } from "bevy-ts";
 app.scene("ui", () => (
   <node key="anchor" style={{ position: "absolute", left: px(100), top: px(100), width: px(40), height: px(20) }}>
@@ -171,7 +166,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_modal_barrier_asks_to_close_on_a_click_and_on_escape() {
-        let _hang = common::watchdog("a_modal_barrier_asks_to_close_on_a_click_and_on_escape", common::BOUND);
         let mut app = start("ui-overlays-modal", MODAL);
         // Escape reaches the barrier from the focused OK. Bevy would focus the dialog's last
         // focusable 0.1 s after it mounts, but a slow first frame here passes that before layout,
@@ -189,7 +183,6 @@ app.scene("ui", () => (
 
     #[test]
     fn a_dialog_moves_by_its_handle() {
-        let _hang = common::watchdog("a_dialog_moves_by_its_handle", common::BOUND);
         let mut app = start("ui-overlays-drag", MODAL);
         send(&mut app, &[pointer("move", 200.0, 110.0), pointer("down", 200.0, 110.0), pointer("move", 220.0, 120.0), pointer("move", 240.0, 130.0), pointer("up", 240.0, 130.0)]);
         let d = node(&mut app, &["barrier", "d"]);

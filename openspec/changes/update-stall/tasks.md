@@ -13,8 +13,8 @@
 
 ## 3. Tests
 
-- [ ] 3.1 `crates/bevy-ts-cli/tests/it/common/mod.rs`: `render_app()` adds `StallPlugin` with the default limit and `Exit(75)`; delete `watchdog` and `Watchdog`
-- [ ] 3.2 Remove the `common::watchdog` calls in `crates/bevy-ts-cli/tests/it/{ui_widgets,ui_placement}.rs` and `screenshot_ready.rs`'s `Hang` and `hang`
+- [ ] 3.1 `crates/bevy-ts-cli/tests/it/common/mod.rs`: `render_app()` and `app()` add `StallPlugin` with the default limit and `Exit(75)`; delete `watchdog` and `Watchdog`
+- [ ] 3.2 Remove the `common::watchdog` calls in `crates/bevy-ts-cli/tests/it/ui_*.rs` (`ui_viewport` starts from `render_app()`) and `screenshot_ready.rs`'s `Hang` and `hang`
 - [ ] 3.3 New module `crates/bevy-ts-cli/tests/it/stall.rs` (+ `mod stall;` in `main.rs`): a render blocked by a gate is reported as "in the render" with its frame, after the 1 s limit; a system blocked in `Update` is reported as "the frame's systems"; both with `Call`, never `Exit`
 - [ ] 3.4 Same module: `bevy-ts/screenshot` posted over HTTP before the render blocks, and `bevy-ts/pause` posted while blocked, both answer an error starting `Update stopped:`
 - [ ] 3.5 Run the `it` binary's `stall`, `screenshot_ready`, `ui_widgets` and `ui_placement` modules, and `bevy-ts-remote`'s unit tests

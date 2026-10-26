@@ -73,7 +73,15 @@ and warns). Under it, time runs on a fixed step, through Bevy's
 `TimeUpdateStrategy::ManualDuration`: 1/60 s a ready frame and none on a frame that is not ready. So the shot is the
 same picture at any machine load. `BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the
 same clock. `BEVY_TS_PIPELINE_TRACE=1` prints when the pipelines are ready
-([native.md](native.md#project-engines)). Game UI draws into
+([native.md](native.md#project-engines)). Every bound above runs inside Update, so a frame that never
+finishes (a GPU driver that stops taking the engine's work, a script that never returns) would hang
+the run. The stall watchdog bounds it: a frame open for 30 s of wall time prints one line to
+stderr, starting `Update stopped:`, with the frame, how long ago it started and where it is stuck
+(the frame's systems, waiting for the render world, or the render). Every protocol request still
+open, a waiting `bevy-ts/screenshot` included, is answered with that line as a `-32603` error.
+Then a headless run (so every `BEVY_TS_SCREENSHOT` run) exits with code 75 (`EX_TEMPFAIL`: it may
+pass if run again); a window or `--viewport` only warns, and says when Update resumed; `--inspect`
+has no watchdog. `BEVY_TS_STALL_SECS=<seconds>` sets the limit, `0` turns it off. Game UI draws into
 that image at its size: headless gives `IsDefaultUiCamera` to the highest-order camera, as Bevy
 does for a window. A game's own `IsDefaultUiCamera` on another camera, or a root's
 `UiTargetCamera`, wins.

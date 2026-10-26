@@ -77,7 +77,6 @@ fn sample(app: &App, nodes: &[Entity]) -> Vec<(u32, Vec2, Vec2)> {
 
 #[test]
 fn a_thousand_nodes_moved_by_transform_never_change_node() {
-    let _hang = common::watchdog("a_thousand_nodes_moved_by_transform_never_change_node", common::BOUND);
     let mut app = scene("ui-placement-many");
     let nodes: Vec<Entity> = (0..N).map(|i| node(&mut app, &format!("n{i}"))).collect();
     let before = sample(&app, &nodes);
@@ -116,7 +115,6 @@ fn click(app: &mut App, x: f64, y: f64, said: &str) -> usize {
 
 #[test]
 fn a_button_moved_by_transform_is_clicked_where_it_is_drawn() {
-    let _hang = common::watchdog("a_button_moved_by_transform_is_clicked_where_it_is_drawn", common::BOUND);
     let mut app = scene("ui-placement-click");
     let moved = node(&mut app, "moved");
     assert_eq!(app.world().get::<UiGlobalTransform>(moved).unwrap().translation, Vec2::new(420.0, 220.0));
@@ -126,7 +124,6 @@ fn a_button_moved_by_transform_is_clicked_where_it_is_drawn() {
 
 #[test]
 fn a_button_moved_past_its_clip_is_clipped_where_it_is_drawn() {
-    let _hang = common::watchdog("a_button_moved_past_its_clip_is_clipped_where_it_is_drawn", common::BOUND);
     let mut app = scene("ui-placement-clip");
     let outside = app.world_mut().query::<(Entity, &TsxNode)>().iter(app.world()).find(|(_, n)| n.key_path == ["field", "outside"]).map(|(e, _)| e).unwrap();
     assert_eq!(app.world().get::<UiGlobalTransform>(outside).unwrap().translation, Vec2::new(160.0, 520.0), "drawn past the edge");

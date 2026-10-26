@@ -72,7 +72,6 @@ fn failed(name: &str, src: &str) -> Vec<bevy_ts::backend::ScriptError> {
 
 #[test]
 fn text_halo_is_written_changed_and_removed() {
-    let _hang = common::watchdog("text_halo_is_written_changed_and_removed", common::BOUND);
     let dir: PathBuf = project("ui-halo-component", &[("game.tsx", GAME)]);
     let mut app = app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
@@ -92,7 +91,6 @@ fn text_halo_is_written_changed_and_removed() {
 
 #[test]
 fn a_halo_on_a_span_fails_naming_its_location() {
-    let _hang = common::watchdog("a_halo_on_a_span_fails_naming_its_location", common::BOUND);
     let src = "import { app } from \"bevy-ts\";\napp.scene(\"ui\", () => (\n  <text>\n    a <span textHalo={{ width: 1 } as never}>b</span>\n  </text>\n));\n";
     let errors = failed("ui-halo-span", src);
     let e = errors.iter().find(|e| e.message.contains("textHalo")).unwrap_or_else(|| panic!("{errors:?}"));
@@ -102,7 +100,6 @@ fn a_halo_on_a_span_fails_naming_its_location() {
 
 #[test]
 fn a_halo_width_out_of_range_names_text_halo() {
-    let _hang = common::watchdog("a_halo_width_out_of_range_names_text_halo", common::BOUND);
     for (n, w) in [("zero", "0"), ("wide", "5")] {
         let src = format!("import {{ app }} from \"bevy-ts\";\napp.scene(\"ui\", () => <text textHalo={{{{ width: {w} }}}}>x</text>);\n");
         let errors = failed(&format!("ui-halo-{n}"), &src);
@@ -205,7 +202,6 @@ mod drawn {
 
     #[test]
     fn a_halo_outlines_white_text_on_pale_and_dark_grounds() {
-        let _hang = common::watchdog("a_halo_outlines_white_text_on_pale_and_dark_grounds", common::BOUND);
         let mut app = scene("ui-halo-drawn");
         let t = node(&mut app, &["row", "pale", "t"]);
         let layout_tick = app.world().entity(t).get_change_ticks::<TextLayoutInfo>().unwrap().changed;

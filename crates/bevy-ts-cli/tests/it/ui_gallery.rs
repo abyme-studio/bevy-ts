@@ -23,7 +23,6 @@ fn intrinsics() -> BTreeSet<String> {
 
 #[test]
 fn the_gallery_mounts_every_intrinsic() {
-    let _hang = common::watchdog("the_gallery_mounts_every_intrinsic", common::BOUND);
     let dir = repo().join("examples/ui-gallery");
     let mut app = app(&dir.join("src/gallery.tsx"));
     app.add_plugins(AssetPlugin { file_path: dir.join("assets").to_string_lossy().into_owned(), ..default() })

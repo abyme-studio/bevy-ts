@@ -82,7 +82,6 @@ app.scene("ui", () => (
 
 #[test]
 fn every_picking_event_reaches_its_handler_with_bevys_fields() {
-    let _hang = common::watchdog("every_picking_event_reaches_its_handler_with_bevys_fields", BOUND);
     let (_dir, mut app) = setup("ui-events-all", EVENTS);
     let (e, child) = (node(&mut app, &["root", "t"]), node(&mut app, &["root", "t", "child"]));
     let (p, h, b) = (pointer(), hit(), PointerButton::Primary);
@@ -160,7 +159,6 @@ fn background(app: &App, e: Entity) -> Color {
 
 #[test]
 fn has_pressed_styles_a_button_with_one_call_per_change_and_none_when_quiet() {
-    let _hang = common::watchdog("has_pressed_styles_a_button_with_one_call_per_change_and_none_when_quiet", BOUND);
     let (_dir, mut app) = setup("ui-events-has", BUTTONS);
     let go = node(&mut app, &["root", "go"]);
     assert_eq!(background(&app, go), Color::from(Srgba::hex("#3366cc").unwrap()));
@@ -185,7 +183,6 @@ fn has_pressed_styles_a_button_with_one_call_per_change_and_none_when_quiet() {
 
 #[test]
 fn activate_runs_on_click_and_on_enter_and_not_while_disabled() {
-    let _hang = common::watchdog("activate_runs_on_click_and_on_enter_and_not_while_disabled", BOUND);
     let (_dir, mut app) = setup("ui-events-activate", BUTTONS);
     let (go, early) = (node(&mut app, &["root", "go"]), node(&mut app, &["root", "early"]));
     press(&mut app, go);
