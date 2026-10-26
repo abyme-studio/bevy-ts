@@ -77,7 +77,7 @@ pub struct ProjectConfig {
     pub engine_cache: Option<String>,
     #[serde(default)]
     pub levels: LevelsConfig,
-    /// Adds Bevy's `MeshPickingPlugin`: 3D meshes take pointer events. Off by default, as in Bevy.
+    /// Adds Bevy's `MeshPickingPlugin`: 3D meshes and `<mesh2d>`s take pointer events. Off by default, as in Bevy.
     #[serde(default, rename = "meshPicking", deserialize_with = "mesh_picking")]
     pub mesh_picking: bool,
     /// Bevy's diagnostics plugins to add, by Bevy's names (docs/diagnostics.md). None by default.

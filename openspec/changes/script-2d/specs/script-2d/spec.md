@@ -49,7 +49,7 @@
 - **THEN** its `image_mode` is `SpriteImageMode::Sliced` with an 8 px border on every side
 
 ### Requirement: Sprites and 2D meshes are pickable
-`onPointerClick`, `onPointerPress`, `onPointerRelease`, `onPointerOver` and `onPointerOut` on an `<entity>` with a `Sprite` or a `Mesh2d` SHALL fire from Bevy's picking backends (`SpritePickingPlugin`, the `Mesh2d` picking backend) when a pointer moves or presses over it through a `Camera2d`, with no extra setup in the script.
+`onPointerClick`, `onPointerPress`, `onPointerRelease`, `onPointerOver` and `onPointerOut` on an `<entity>` with a `Sprite` or a `Mesh2d` SHALL fire from Bevy's picking backends (`SpritePickingPlugin`; for a `Mesh2d`, Bevy's `MeshPickingPlugin`, which `meshPicking` in `bevy-ts.json` adds as for 3D meshes) when a pointer moves or presses over it through a `Camera2d`, with no extra setup in the script.
 
 #### Scenario: Clicking a sprite
 - **WHEN** a headless app with a `Camera2d` and a sprite with `onPointerClick` feeds Bevy a mouse press and release at the sprite's screen position

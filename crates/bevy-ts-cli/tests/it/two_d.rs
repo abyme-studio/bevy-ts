@@ -9,7 +9,7 @@ use bevy::mesh::VertexAttributeValues;
 use bevy::picking::pointer::{Location, PointerAction, PointerButton, PointerId, PointerInput};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
-use bevy::sprite::{SpritePickingMode, SpritePickingSettings};
+use bevy::sprite::{Anchor, SpriteAlphaMode, SpriteImageMode, SpritePickingMode, SpritePickingSettings, SpriteScalingMode};
 use bevy::sprite_render::{AlphaMode2d, ColorMaterial, MeshMaterial2d};
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
@@ -22,12 +22,17 @@ use common::*;
 use std::sync::{Arc, Mutex};
 
 fn scene(body: &str) -> String {
-    format!("import {{ app }} from \"bevy-ts\";\nimport {{ Camera2d, Projection, Sprite }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
+    format!("import {{ app }} from \"bevy-ts\";\nimport {{ Anchor, Camera2d, Projection, Sprite }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <>\n{body}  </>\n));\n")
 }
 
 /// Bevy's default plugins with no window, every camera drawing into [`Offscreen`], and the first
 /// load's report.
 fn load(name: &str, body: &str) -> (App, ReloadReport) {
+    load_with(name, body, |_| {})
+}
+
+/// [`load`], with `plugins` added before the app finishes.
+fn load_with(name: &str, body: &str, plugins: impl FnOnce(&mut App)) -> (App, ReloadReport) {
     let dir = project(name, &[("game.tsx", &scene(body))]);
     let mut app = App::new();
     app.add_plugins(
@@ -39,6 +44,7 @@ fn load(name: &str, body: &str) -> (App, ReloadReport) {
     .add_plugins(bevy_ts_cli::headless::HeadlessPlugin)
     .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
     .add_plugins(bevy_ts_tsx::TsxPlugin);
+    plugins(&mut app);
     app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.tsx"), true).unwrap())));
     app.finish();
     app.cleanup();
@@ -237,6 +243,39 @@ fn a_sprite_takes_an_image_path_and_flips() {
 }
 
 #[test]
+fn a_sprites_fields_reach_bevy_in_its_reflected_form_and_anchor_sets_the_anchor() {
+    let body = concat!(
+        "    <entity key=\"a\"><Sprite color=\"#ff8000\" custom_size={[32, 16]} rect={{ min: [1, 2], max: [17, 18] }} image_mode={{ Scale: \"FitCenter\" }} alpha_mode={{ Mask: 0.25 }} /><Anchor value={[-0.5, 0.5]} /></entity>\n",
+        "    <entity key=\"b\"><Sprite image_mode={{ Sliced: { border: { min_inset: [4, 5], max_inset: [6, 7] }, center_scale_mode: { Tile: { stretch_value: 2 } }, max_corner_scale: 0.5 } }} alpha_mode=\"Opaque\" /></entity>\n",
+        "    <entity key=\"c\"><Sprite image_mode={{ Tiled: { tile_x: true, tile_y: false, stretch_value: 1.5 } }} /></entity>\n",
+        "    <entity key=\"d\"><Sprite image_mode=\"Auto\" /></entity>\n",
+    );
+    let mut app = setup("2d-sprite-fields", body);
+    let a = node(&mut app, "a");
+    let s = app.world().get::<Sprite>(a).expect("a Sprite");
+    assert_eq!(s.color.to_srgba().to_hex(), "#FF8000");
+    assert_eq!(s.custom_size, Some(Vec2::new(32.0, 16.0)));
+    assert_eq!(s.rect, Some(Rect::new(1.0, 2.0, 17.0, 18.0)));
+    assert!(matches!(s.image_mode, SpriteImageMode::Scale(SpriteScalingMode::FitCenter)), "{:?}", s.image_mode);
+    assert!(matches!(s.alpha_mode, SpriteAlphaMode::Mask(m) if m == 0.25), "{:?}", s.alpha_mode);
+    assert_eq!(app.world().get::<Anchor>(a).expect("an Anchor").as_vec(), Vec2::new(-0.5, 0.5));
+
+    let b = node(&mut app, "b");
+    let s = app.world().get::<Sprite>(b).unwrap();
+    let SpriteImageMode::Sliced(slicer) = &s.image_mode else { panic!("sliced: {:?}", s.image_mode) };
+    assert_eq!((slicer.border.min_inset, slicer.border.max_inset), (Vec2::new(4.0, 5.0), Vec2::new(6.0, 7.0)));
+    assert!(matches!(slicer.center_scale_mode, bevy::sprite::SliceScaleMode::Tile { stretch_value } if stretch_value == 2.0));
+    assert_eq!(slicer.max_corner_scale, 0.5);
+    assert!(matches!(s.alpha_mode, SpriteAlphaMode::Opaque));
+
+    let c = node(&mut app, "c");
+    let s = app.world().get::<Sprite>(c).unwrap();
+    assert!(matches!(s.image_mode, SpriteImageMode::Tiled { tile_x: true, tile_y: false, stretch_value } if stretch_value == 1.5), "{:?}", s.image_mode);
+    let d = node(&mut app, "d");
+    assert!(matches!(app.world().get::<Sprite>(d).unwrap().image_mode, SpriteImageMode::Auto));
+}
+
+#[test]
 fn a_camera2d_is_orthographic_and_draws_a_sprite() {
     // Sprite's default image is white, and the default clear colour is grey: a white centre
     // pixel is the sprite drawn through the Camera2d.
@@ -257,12 +296,9 @@ fn pointer(app: &mut App, at: Vec2, action: PointerAction) {
     app.update();
 }
 
-#[test]
-fn clicking_a_sprite_runs_its_handler_once_with_its_entity() {
-    let body = "    <entity key=\"cam\"><Camera2d /></entity>\n    <entity key=\"s\" onPointerClick={({ entity }) => console.log(`clicked ${entity}`)}><Sprite custom_size={[100, 100]} /></entity>\n";
-    let mut app = setup("2d-pick-sprite", body);
-    // No image loads: pick the sprite's rectangle, not its texels (design 6).
-    app.world_mut().resource_mut::<SpritePickingSettings>().picking_mode = SpritePickingMode::BoundingBox;
+/// Clicks the centre, then a corner, of a `Camera2d` scene whose entity `s` logs its clicks:
+/// one click, on `s`.
+fn clicks_once_at_the_centre(mut app: App) {
     // Bevy 0.20 casts a pointer's ray only when some window is primary, even into an image target;
     // `bevy-ts dev --headless` spawns this one too (mesh-picking design 5a).
     bevy_ts_viewport::spawn_windowless_primary(app.world_mut(), "two_d", (SIZE.0, SIZE.1, 1.0), ());
@@ -276,11 +312,32 @@ fn clicking_a_sprite_runs_its_handler_once_with_its_entity() {
     let clicks: Vec<String> = messages(&app).into_iter().filter(|m| m.starts_with("clicked")).collect();
     assert_eq!(clicks, vec![format!("clicked {}", e.to_bits())]);
 
-    // A click off the sprite picks nothing.
+    // A click off it picks nothing.
     let corner = Vec2::new(10.0, 10.0);
     pointer(&mut app, corner, PointerAction::Move { delta: Vec2::ZERO });
     pointer(&mut app, corner, PointerAction::Press(PointerButton::Primary));
     pointer(&mut app, corner, PointerAction::Release(PointerButton::Primary));
     updates(&mut app, 2);
     assert_eq!(messages(&app).iter().filter(|m| m.starts_with("clicked")).count(), 1);
+}
+
+#[test]
+fn clicking_a_sprite_runs_its_handler_once_with_its_entity() {
+    let body = "    <entity key=\"cam\"><Camera2d /></entity>\n    <entity key=\"s\" onPointerClick={({ entity }) => console.log(`clicked ${entity}`)}><Sprite custom_size={[100, 100]} /></entity>\n";
+    let mut app = setup("2d-pick-sprite", body);
+    // No image loads: pick the sprite's rectangle, not its texels (design 6).
+    app.world_mut().resource_mut::<SpritePickingSettings>().picking_mode = SpritePickingMode::BoundingBox;
+    clicks_once_at_the_centre(app);
+}
+
+#[test]
+fn clicking_a_mesh2d_runs_its_handler_once_with_its_entity() {
+    // Bevy's MeshPickingPlugin casts into `Mesh2d`s too; `meshPicking` in bevy-ts.json adds it.
+    let body = "    <entity key=\"cam\"><Camera2d /></entity>\n    <entity key=\"s\" onPointerClick={({ entity }) => console.log(`clicked ${entity}`)}><mesh2d shape=\"circle\" radius={50} color=\"#0f0\" /></entity>\n";
+    let (mut app, r) = load_with("2d-pick-mesh2d", body, |app| {
+        app.add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin);
+    });
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    clicks_once_at_the_centre(app);
 }

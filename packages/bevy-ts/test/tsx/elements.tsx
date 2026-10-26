@@ -2,7 +2,7 @@
 // `@ts-expect-error` must be an error.
 import { app, Component, SceneComponent, Startup } from "bevy-ts";
 import type { Commands, f32, u8, Vec3 } from "bevy-ts";
-import { AnimationGraph, Transform, Name, PlayAnimation, WorldAssetRoot } from "bevy-ts/bevy";
+import { AnimationGraph, Transform, Name, PlayAnimation, WorldAssetRoot, Sprite, Anchor } from "bevy-ts/bevy";
 
 class Health extends Component { hp: f32 = 100; max: f32 = 100 }
 class Mover extends Component { declare velocity: Vec3; declare maxSpeed: f32 }
@@ -204,6 +204,26 @@ export const BadRoot = () => <entity><WorldAssetRoot path="models/Fox.glb#Scene0
 export const BadSpeed = () => <entity><PlayAnimation speed="fast" /></entity>;
 // @ts-expect-error  PlayAnimation has no field `loop`
 export const BadField = () => <entity><PlayAnimation loop /></entity>;
+// `Sprite`: every field a prop in Bevy's reflected form; `Anchor` is a one-field tuple struct.
+export const Hero = () => (
+  <entity>
+    <Sprite
+      image="hero.png"
+      color="#f80"
+      custom_size={[32, 32]}
+      rect={{ min: [0, 0], max: [16, 16] }}
+      image_mode={{ Sliced: { border: { min_inset: [4, 4], max_inset: [4, 4] }, center_scale_mode: { Tile: { stretch_value: 1 } } } }}
+      alpha_mode={{ Mask: 0.5 }}
+      flip_x
+    />
+    <Anchor value={[-0.5, 0.5]} />
+  </entity>
+);
+export const TiledHero = () => <entity><Sprite image_mode={{ Tiled: { tile_x: true, stretch_value: 2 } }} /></entity>;
+// @ts-expect-error  `custom_size` is a size, not a number
+export const BadSize = () => <entity><Sprite custom_size={32} /></entity>;
+// @ts-expect-error  `image_mode` is Bevy's enum, not a mode name
+export const BadMode = () => <entity><Sprite image_mode="sliced" /></entity>;
 // `<input>`: Bevy's TextInput, its events typed; its text has no controlled prop.
 export const Field = () => (
   <input
