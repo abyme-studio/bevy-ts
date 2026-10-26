@@ -263,7 +263,7 @@ app.addMessage(Ping).insertResource(Score.of({ value: 0 })).addSystems(Update, s
 fn calls_over(app: &mut App, n: usize) -> u64 {
     let before = calls(app);
     updates(app, n);
-    (calls(app) - before) as u64
+    calls(app) - before
 }
 
 const BOSS_READY: &str = "export function bossReady(s: Res<Score>): boolean { return s.value >= 2; }\n";
