@@ -1316,7 +1316,7 @@ export declare class MaterialAlpha extends Component {
   declare alpha: f32;
 }
 
-/** Holes, never visible: rect: not plain data (bevy_math::rects::rect::Rect). */
+/** Holes, not columns: rect: not plain data (bevy_math::rects::rect::Rect). */
 export declare class ComputedWorldText extends Component {
   static readonly path: "bevy_ts_material::world_text::ComputedWorldText";
   static readonly native: true;
@@ -1324,12 +1324,13 @@ export declare class ComputedWorldText extends Component {
   static readonly __element: { rect: { min?: readonly [number, number]; max?: readonly [number, number] }; quads: number };
   declare quads: u32;
 }
+export interface ComputedWorldText extends Holes<{ rect: { min?: readonly [number, number]; max?: readonly [number, number] } }> {}
 
 /** `WorldText.of(...)` in commands: the value written over its default. */
 export declare const WorldText: ReflectClass<string, { value: string }>;
 export type WorldText = InstanceType<typeof WorldText>;
 
-/** Holes, never visible: width: an enum with data (core::option::Option<f32>); outline: an enum with data (core::option::Option<(f32, bevy_color::color::Color)>). */
+/** Holes, not columns: width: an enum with data (core::option::Option<f32>); outline: an enum with data (core::option::Option<(f32, bevy_color::color::Color)>). */
 export declare class WorldTextStyle extends Component {
   static readonly path: "bevy_ts_material::world_text::WorldTextStyle";
   static readonly native: true;
@@ -1339,6 +1340,7 @@ export declare class WorldTextStyle extends Component {
   declare readonly anchor: Vec2;
   declare lit: bool;
 }
+export interface WorldTextStyle extends Holes<{ width: number | null; outline: readonly [number, ColorValue] | null }> {}
 
 export declare class UiScale extends Resource {
   static readonly path: "bevy_ui::UiScale";
