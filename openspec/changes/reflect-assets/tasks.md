@@ -40,7 +40,7 @@
 - [x] 3.2 Loader-settings table with one entry, `Image` → `ImageLoaderSettings` (`sampler`, `is_srgb`); `{ $load }` in `HandleSlots`; `Image.load` in the runtime and types; unknown keys and types without an entry fail; warning for one path with two settings
 - [x] 3.3 `<material>` texture props take refs and `Image.load` values; paths map to `Image.load` with the field's `is_srgb`
 - [x] 3.4 Tests: repeating sampler set and read back; linear data; a headless render of agent town's atlas case (scale 4, repeat) in `crates/bevy-ts-cli/tests/materials.rs`
-- [ ] 3.5 Delete the `reflect-assets:` `UNCOVERED` entry for `Image`'s sampler; hole check passes
+- [ ] 3.5 Delete the `reflect-assets:` `UNCOVERED` entry for `Image`'s sampler; hole check passes. Waits on animation-control's hand-mapped round trip reaching main; stage 3 landed without it, and this is its follow-up
 - [x] 3.6 `docs/materials.md`: tiling textures; `docs/assets.md`: samplers and `Image.load`
 
 ## 4. Landing (each stage)
