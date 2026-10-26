@@ -45,7 +45,7 @@ fn arena(name: &str, extra: &[(&str, String)]) -> crate::common::TestDir {
 
 fn app(dir: &Path) -> App {
     let assets = dir.join("assets").canonicalize().unwrap();
-    let mut app = App::new();
+    let mut app = common::render_app();
     app.add_plugins(
         DefaultPlugins
             .build()
