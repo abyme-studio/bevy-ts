@@ -217,6 +217,8 @@ impl Applying {
         // live one now and removes the assets too.
         #[cfg(feature = "reflect")]
         let assets = crate::reflect_asset::reloading(world, restart);
+        #[cfg(not(feature = "reflect"))]
+        let _ = restart;
         // Flush the previous generation's console output so the log reads in order.
         crate::runtime::pump(world);
         let number = world.resource::<Generations>().live + 1;
