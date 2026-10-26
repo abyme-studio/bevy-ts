@@ -228,7 +228,8 @@ fn read_ts(world: &World, e: Entity, id: ComponentId, layout: &ComponentLayout) 
     let ptr = world.get_by_id(e, id)?;
     // SAFETY: a TS component's column holds `layout.size` bytes per entity.
     let bytes = unsafe { std::slice::from_raw_parts(ptr.as_ptr(), layout.size) };
-    Some(value::decode_component(layout, bytes).to_string())
+    // SAFETY: a live column value of `layout`.
+    Some(unsafe { value::decode_component(layout, bytes) }.to_string())
 }
 
 /// `commands.saveWorld(name, options)`: builds the save and starts its write.

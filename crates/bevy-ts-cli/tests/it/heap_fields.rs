@@ -27,7 +27,7 @@ fn rust_reads(world: &mut World) {
         .map(|r| {
             let p = r.get_by_id(c.id).unwrap();
             // SAFETY: the column holds a live value of `c.layout`.
-            let v = bevy_ts::value::decode_component(&c.layout, unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) });
+            let v = unsafe { bevy_ts::value::decode_component(&c.layout, std::slice::from_raw_parts(p.as_ptr(), c.layout.size)) };
             v["label"].as_str().unwrap().to_string()
         })
         .collect();

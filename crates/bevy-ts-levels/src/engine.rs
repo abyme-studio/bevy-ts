@@ -919,7 +919,7 @@ impl Schema for WorldSchema<'_> {
                     .layout
                     .fields
                     .iter()
-                    .map(|f| FieldSchema { name: f.name.clone(), ty: ValueType::Field(f.ty.clone()), default: value::decode_field(&f.ty, &n.defaults[f.offset..f.offset + f.ty.size()]) })
+                    .map(|f| FieldSchema { name: f.name.clone(), ty: ValueType::Field(f.ty.clone()), default: unsafe { value::decode_field(&f.ty, &n.defaults[f.offset..f.offset + f.ty.size()]) } })
                     .collect();
                 Ok(ComponentSchema { name: n.ts_name.clone(), kind: ComponentKind::Rust, fields, is_name: false })
             }

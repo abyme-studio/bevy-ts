@@ -314,7 +314,7 @@ fn a_string_field_takes_the_levels_value() {
         let c = world.resource::<bevy_ts::components::TsComponents>().live("game::Tag").unwrap();
         let p = world.get_by_id(e, c.id).unwrap();
         // SAFETY: the column holds a live value of `c.layout`.
-        bevy_ts::value::decode_component(&c.layout, unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) })
+        unsafe { bevy_ts::value::decode_component(&c.layout, std::slice::from_raw_parts(p.as_ptr(), c.layout.size)) }
     };
     assert_eq!(read(&mut f, "Gate"), json!({ "label": "gate" }));
     assert_eq!(read(&mut f, "Box"), json!({ "label": "crate" }));

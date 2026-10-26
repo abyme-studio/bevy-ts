@@ -44,7 +44,7 @@ fn movers(app: &mut App) -> Vec<serde_json::Value> {
     es.iter()
         .map(|e| {
             let p = world.get_by_id(*e, c.id).unwrap();
-            decode_component(&c.layout, unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) })
+            unsafe { decode_component(&c.layout, std::slice::from_raw_parts(p.as_ptr(), c.layout.size)) }
         })
         .collect()
 }

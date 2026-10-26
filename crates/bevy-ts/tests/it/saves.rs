@@ -132,7 +132,7 @@ impl Game {
         let (id, layout) = plugin_api::component_by_name(world, c)?;
         let ptr = world.get_by_id(e, id)?;
         // SAFETY: a TS component's column holds `layout.size` bytes per entity.
-        Some(bevy_ts::value::decode_component(&layout, unsafe { std::slice::from_raw_parts(ptr.as_ptr(), layout.size) }))
+        Some(unsafe { bevy_ts::value::decode_component(&layout, std::slice::from_raw_parts(ptr.as_ptr(), layout.size)) })
     }
 
     fn score(&self) -> Option<Value> {
@@ -141,7 +141,7 @@ impl Game {
         let e = world.resource_entities().get(id)?;
         let ptr = world.get_by_id(e, id)?;
         // SAFETY: as above.
-        Some(bevy_ts::value::decode_component(&layout, unsafe { std::slice::from_raw_parts(ptr.as_ptr(), layout.size) }))
+        Some(unsafe { bevy_ts::value::decode_component(&layout, std::slice::from_raw_parts(ptr.as_ptr(), layout.size)) })
     }
 
     fn set_score(&mut self, v: f32) {

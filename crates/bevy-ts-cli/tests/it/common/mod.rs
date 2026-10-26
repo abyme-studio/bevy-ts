@@ -156,7 +156,7 @@ pub fn read_ts(app: &App, e: Entity, component: &str) -> Option<serde_json::Valu
     let c = app.world().resource::<bevy_ts::components::TsComponents>().get(component)?.clone();
     let p = app.world().get_by_id(e, c.id)?;
     let bytes = unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) };
-    Some(bevy_ts::value::decode_component(&c.layout, bytes))
+    Some(unsafe { bevy_ts::value::decode_component(&c.layout, bytes) })
 }
 
 /// A TS resource's value, as JSON.

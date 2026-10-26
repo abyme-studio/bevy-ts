@@ -104,6 +104,8 @@ export class Tag extends Component { label: string = "crate"; scores: u32[] = []
   command leaves out takes its default, built in Rust for each entity.
 - `q.tables` gives no raw arrays for a component with a heap field; read it on `q.each` rows.
   Its plain fields stay columns on those rows.
+- An observer's lifecycle value (`Remove`, `Despawn`, `Discard`) reads a heap field live, so the
+  read throws once the component is gone; copy what you need while it is there.
 
 What a row costs, in ns, 1,000 rows, against a column (`bench/ts-heap-fields`, release, medians of
 8 rounds, `results/runs.txt`):

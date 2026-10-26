@@ -187,7 +187,11 @@ pub fn encode_field(path: &str, ty: &FieldType, v: &Value, out: &mut [u8]) -> Re
 
 /// Decodes one value of `ty` from exactly `ty.size()` bytes. For a heap type they are the slot of
 /// a live value (a column's or a [`HeapBytes`]'), whose `String` is read in place.
-pub fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
+///
+/// # Safety
+/// `b` is a live value of `ty`: for a heap type, or a struct holding one, a column's or a
+/// [`HeapBytes`]' bytes, never copied or zeroed ones. Bytes of any other type may be anything.
+pub unsafe fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
     let f32_at = |i: usize| f32::from_le_bytes(b[i * 4..i * 4 + 4].try_into().unwrap());
     match ty {
         FieldType::F32 => json!(f32_at(0)),
@@ -211,9 +215,11 @@ pub fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
         }
         FieldType::Array { of, len } => {
             let w = of.size();
-            Value::Array((0..*len as usize).map(|i| decode_field(of, &b[i * w..(i + 1) * w])).collect())
+            // SAFETY: an array's items are plain (`validate` refuses heap items).
+            Value::Array((0..*len as usize).map(|i| unsafe { decode_field(of, &b[i * w..(i + 1) * w]) }).collect())
         }
-        FieldType::Timer | FieldType::Stopwatch => decode_component(ty.fields().unwrap(), b),
+        // SAFETY: a timer's fields are plain.
+        FieldType::Timer | FieldType::Stopwatch => unsafe { decode_component(ty.fields().unwrap(), b) },
         FieldType::Str | FieldType::List { .. } => {
             assert_eq!(b.len(), ty.size(), "a heap slot");
             let kind = crate::heap::HeapKind::of(ty).expect("a heap field");
@@ -224,10 +230,15 @@ pub fn decode_field(ty: &FieldType, b: &[u8]) -> Value {
 }
 
 /// Decodes a whole component into a JSON object of its fields.
-pub fn decode_component(layout: &ComponentLayout, bytes: &[u8]) -> Value {
+///
+/// # Safety
+/// With a heap field, `bytes` is a live value of `layout` (a column's or a [`HeapBytes`]'); see
+/// [`decode_field`]. A layout with none takes any bytes. [`HeapBytes::decode`] is the safe form.
+pub unsafe fn decode_component(layout: &ComponentLayout, bytes: &[u8]) -> Value {
     let mut m = Map::new();
     for f in &layout.fields {
-        m.insert(f.name.clone(), decode_field(&f.ty, &bytes[f.offset..f.offset + f.ty.size()]));
+        // SAFETY: each field of a live value is live (this function's contract).
+        m.insert(f.name.clone(), unsafe { decode_field(&f.ty, &bytes[f.offset..f.offset + f.ty.size()]) });
     }
     Value::Object(m)
 }
@@ -237,7 +248,8 @@ pub fn zero(ty: &FieldType) -> Value {
     match ty {
         FieldType::Str => json!(""),
         FieldType::List { .. } => json!([]),
-        _ => decode_field(ty, &vec![0u8; ty.size()]),
+        // SAFETY: not a heap type, so any bytes are a value.
+        _ => unsafe { decode_field(ty, &vec![0u8; ty.size()]) },
     }
 }
 
@@ -438,7 +450,7 @@ mod tests {
         assert_eq!((t.offset, t.ty), (16, FieldType::F64));
         let mut b = [0u8; 24];
         encode_field(".cooldown", &FieldType::Timer, &json!({"duration": 2.0, "mode": "Repeating"}), &mut b).unwrap();
-        let v = decode_field(&FieldType::Timer, &b);
+        let v = unsafe { decode_field(&FieldType::Timer, &b) };
         assert_eq!(v["duration"], json!(2.0));
         assert_eq!(v["mode"], json!("Repeating"));
         assert_eq!(v["finished"], json!(false));
@@ -459,8 +471,8 @@ mod tests {
         let shape = HeapShape::of(&d.name, &l).unwrap();
         let a = encode_component(&d, &l, json!({"hp": 2}).as_object().unwrap()).unwrap();
         let b = encode_component(&d, &l, json!({"label": "door"}).as_object().unwrap()).unwrap();
-        assert_eq!(decode_component(&l, a.bytes()), json!({"hp": 2.0, "label": "crate"}));
-        assert_eq!(decode_component(&l, b.bytes()), json!({"hp": 0.0, "label": "door"}));
+        assert_eq!(a.decode(&l), json!({"hp": 2.0, "label": "crate"}));
+        assert_eq!(b.decode(&l), json!({"hp": 0.0, "label": "door"}));
         assert_eq!(shape.live(), 2);
         drop((a, b));
         assert_eq!(shape.live(), 0);
@@ -483,7 +495,7 @@ mod tests {
         };
         let l = d.layout();
         let b = encode_component(&d, &l, json!({"names": ["a", "b"]}).as_object().unwrap()).unwrap();
-        assert_eq!(decode_component(&l, b.bytes()), json!({"scores": [1, 2], "names": ["a", "b"]}));
+        assert_eq!(b.decode(&l), json!({"scores": [1, 2], "names": ["a", "b"]}));
         let e = encode_component(&d, &l, json!({"scores": [1, -1]}).as_object().unwrap()).unwrap_err();
         assert_eq!(e.path, ".scores[1]");
         assert!(resolve_path(&l, ".scores[0]").unwrap_err().message.contains("write it whole, with the path .scores"));
@@ -495,9 +507,9 @@ mod tests {
         let ty = FieldType::Enum { variants: vec!["idle".into(), "run".into()], repr: None };
         let mut b = [0u8; 1];
         encode_field(".s", &ty, &json!("run"), &mut b).unwrap();
-        assert_eq!(decode_field(&ty, &b), json!("run"));
+        assert_eq!(unsafe { decode_field(&ty, &b) }, json!("run"));
         let mut v = [0u8; 12];
         encode_field(".p", &FieldType::Vec3, &json!({"x":1,"y":2,"z":3}), &mut v).unwrap();
-        assert_eq!(decode_field(&FieldType::Vec3, &v), json!([1.0, 2.0, 3.0]));
+        assert_eq!(unsafe { decode_field(&FieldType::Vec3, &v) }, json!([1.0, 2.0, 3.0]));
     }
 }

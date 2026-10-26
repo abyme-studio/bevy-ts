@@ -406,7 +406,8 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
             // Defaults read back from the default value, for provenance.
             for (f, v) in split.2.iter_mut() {
                 let fl = n.layout.field(f).expect("layout field");
-                *v = value::decode_field(&fl.ty, &defaults[fl.offset..fl.offset + fl.ty.size()]);
+                // SAFETY: a native layout has no heap field.
+                *v = unsafe { value::decode_field(&fl.ty, &defaults[fl.offset..fl.offset + fl.ty.size()]) };
             }
             let mut r = resolved(Target::Native { id: n.id, layout: n.layout.clone(), defaults, type_path: Some(n.type_path.clone()), decl: None }, split);
             r.reflected = reflected.into_iter().collect();

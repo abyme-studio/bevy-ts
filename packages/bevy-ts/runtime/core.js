@@ -4540,7 +4540,6 @@ function encodeWithLayout(C, layout, values) {
 }
 
 function encodeWithHeap(C, layout, values) {
-  const plain = values ? Object.fromEntries(Object.entries(values).filter(([k]) => !layout.fields.some((f) => f.name === k && isHeap(f.type)))) : values;
   const out = new Uint8Array(layout.size);
   const dv = new DataView(out.buffer);
   const defaults = (C.decl && C.decl.fields) || [];
@@ -4550,7 +4549,7 @@ function encodeWithHeap(C, layout, values) {
       if (values && values[f.name] !== undefined) given.push([i, f]);
       return;
     }
-    let v = plain ? plain[f.name] : undefined;
+    let v = values ? values[f.name] : undefined;
     if (v === undefined) v = (defaults.find((d) => d.name === f.name) || {}).default;
     if (v !== undefined) encodeField(dv, f.type, f.offset, v, `${C.componentName}.${f.name}`);
   });

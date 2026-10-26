@@ -85,7 +85,7 @@ impl Game {
         let c = world.resource::<TsComponents>().get(name)?;
         let p = world.get_by_id(e, c.id)?;
         // SAFETY: the column holds a live value of `c.layout`.
-        Some(value::decode_component(&c.layout, unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) }))
+        Some(unsafe { value::decode_component(&c.layout, std::slice::from_raw_parts(p.as_ptr(), c.layout.size)) })
     }
 
     /// Applies a command buffer as a run's commands are.

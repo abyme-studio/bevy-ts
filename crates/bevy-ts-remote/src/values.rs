@@ -138,7 +138,8 @@ fn read_ts(world: &World, entity: Entity, c: &TsComponent) -> Option<Value> {
     let p = world.get_by_id(entity, c.id)?;
     // SAFETY: the component's column holds `layout.size` bytes for this entity.
     let bytes = unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) };
-    Some(decode_component(&c.layout, bytes))
+    // SAFETY: a live column value of `layout`.
+    Some(unsafe { decode_component(&c.layout, bytes) })
 }
 
 fn component_error(code: i16, message: String) -> Value {

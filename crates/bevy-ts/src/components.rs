@@ -397,7 +397,7 @@ mod tests {
     fn read(world: &World, e: Entity, c: &TsComponent) -> serde_json::Value {
         let p = world.get_by_id(e, c.id).unwrap();
         let bytes = unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) };
-        value::decode_component(&c.layout, bytes)
+        unsafe { value::decode_component(&c.layout, bytes) }
     }
 
     fn spawn_with(world: &mut World, c: &TsComponent, v: serde_json::Value) -> Entity {

@@ -492,7 +492,8 @@ fn with_requires(world: &World, ids: &[ComponentId]) -> Vec<ComponentId> {
 ///
 /// # Safety
 /// `id` must be a component whose layout is exactly `bytes.len()` bytes of plain data with no
-/// drop glue and no invalid bit patterns for the bytes given (TS components and native layouts).
+/// drop glue and no invalid bit patterns for the bytes given (TS components with no heap field, and
+/// native layouts).
 pub unsafe fn insert_bytes(entity: &mut EntityWorldMut, id: ComponentId, bytes: &[u8]) {
     // Copy into 16-aligned storage: arena bytes are unaligned.
     let mut buf = vec![0u128; bytes.len().div_ceil(16).max(1)];

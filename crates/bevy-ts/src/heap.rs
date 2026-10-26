@@ -272,12 +272,6 @@ impl HeapValue {
     pub fn read_codec(kind: HeapKind, b: &mut &[u8]) -> Result<HeapValue, String> {
         slot_type!(kind, T => T::read_codec(b).map(Slot::into_value))
     }
-
-    /// Writes the value in the codec's wire format.
-    pub fn put_codec(&self, out: &mut Vec<u8>) {
-        let kind = self.kind();
-        slot_type!(kind, T => T::from_value(self.clone()).put_codec(out))
-    }
 }
 
 fn take<'a>(b: &mut &'a [u8], n: usize) -> Result<&'a [u8], String> {
@@ -463,7 +457,7 @@ impl HeapBytes {
     pub fn new(size: usize, shape: Option<&'static HeapShape>) -> Self {
         let mut bytes = vec![0u8; size];
         if let Some(s) = shape {
-            debug_assert_eq!(s.size, size);
+            assert_eq!(s.size, size, "a heap shape's size");
             let p = bytes.as_mut_ptr();
             // SAFETY: `bytes` is `size` long, the header and every slot lie inside it.
             unsafe {
@@ -530,9 +524,19 @@ impl HeapBytes {
         Ok(std::mem::take(&mut me.bytes))
     }
 
-    /// A plain field's bytes, to write. Never a heap slot or the header.
+    /// The value as JSON, read through `layout`, which must be the one it was built with: a
+    /// different size or different heap slots panic.
+    pub fn decode(&self, layout: &ComponentLayout) -> serde_json::Value {
+        assert_eq!(layout.size, self.bytes.len(), "a layout of another size");
+        let slots: Vec<_> = layout.fields.iter().filter_map(|f| HeapKind::of(&f.ty).map(|k| (f.offset, k))).collect();
+        assert_eq!(slots, self.shape.map(|s| s.fields.clone()).unwrap_or_default(), "a layout with other heap fields");
+        // SAFETY: these bytes are a live value whose heap slots are `layout`'s.
+        unsafe { crate::value::decode_component(layout, &self.bytes) }
+    }
+
+    /// A plain field's bytes, to write. Never a heap slot or the header: asks for one panic.
     pub fn field_mut(&mut self, offset: usize, len: usize) -> &mut [u8] {
-        debug_assert!(self.shape.is_none_or(|s| offset >= HEADER && s.fields.iter().all(|&(o, _)| offset + len <= o || offset >= o + HEAP_SLOT)));
+        assert!(self.shape.is_none_or(|s| offset >= HEADER && s.fields.iter().all(|&(o, _)| offset + len <= o || offset >= o + HEAP_SLOT)));
         &mut self.bytes[offset..offset + len]
     }
 

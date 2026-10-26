@@ -155,7 +155,8 @@ fn read(world: &World, e: Entity, name: &str) -> Value {
     let Ok(ptr) = em.get_by_id(id) else { return Value::Null };
     // SAFETY: the component was registered with `layout`, so it holds `layout.size` bytes.
     let bytes = unsafe { std::slice::from_raw_parts(ptr.as_ptr(), layout.size) };
-    let mut out = value::decode_component(&layout, bytes);
+    // SAFETY: a live column value of `layout`.
+    let mut out = unsafe { value::decode_component(&layout, bytes) };
     if let Value::Object(o) = &mut out
         && world.resource::<NativeLayouts>().by_id(id).is_some_and(|n| !n.holes.is_empty())
     {
