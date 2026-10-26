@@ -10,7 +10,7 @@ use bevy::gizmos::primitives::dim2::GizmoPrimitive2d;
 use bevy::gizmos::primitives::dim3::GizmoPrimitive3d;
 use bevy::math::{Dir2, Dir3};
 use bevy::prelude::*;
-use bevy::reflect::GetTypeRegistration;
+use bevy::reflect::{GetTypeRegistration, TypeRegistry};
 use bevy::shape::{
     Annulus, Arc2d, Capsule2d, Capsule3d, Circle, CircularSector, CircularSegment, Cone, ConicalFrustum, Cuboid, Cylinder, Ellipse, Line2d, Line3d, Plane2d,
     Plane3d, Polygon, Polyline2d, Polyline3d, Rectangle, RegularPolygon, Rhombus, Segment2d, Segment3d, Sphere, Tetrahedron, Torus, Triangle2d, Triangle3d,
@@ -83,14 +83,25 @@ fn one_key<'a>(v: &'a Value, what: &str, keys: &[&str]) -> Result<(&'a str, &'a 
     }
 }
 
+/// The registry primitives and curves are read through: the app's, locked only when a call reads
+/// one, or one already read (a hand map's `Slots`).
+#[derive(Clone, Copy)]
+pub enum Registry<'a> {
+    App(&'a AppTypeRegistry),
+    Read(&'a TypeRegistry),
+}
+
 /// `json` written over `T`'s default (or given whole, for a type with none) by reflection.
-fn decode<T: FromReflect + TypePath>(registry: &AppTypeRegistry, json: &Value) -> Result<T, String> {
-    let r = registry.read();
-    let value = bevy_ts::reflect_value::value_of(&r, TypeId::of::<T>(), json).map_err(|e| format!("{}: {e}", T::short_type_path()))?;
+fn decode<T: FromReflect + TypePath>(registry: Registry, json: &Value) -> Result<T, String> {
+    let value = match registry {
+        Registry::App(r) => bevy_ts::reflect_value::value_of(&r.read(), TypeId::of::<T>(), json),
+        Registry::Read(r) => bevy_ts::reflect_value::value_of(r, TypeId::of::<T>(), json),
+    };
+    let value = value.map_err(|e| format!("{}: {e}", T::short_type_path()))?;
     T::from_reflect(value.as_ref()).ok_or_else(|| format!("{} is not a {}", json, T::short_type_path()))
 }
 
-pub fn draw_2d<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: &AppTypeRegistry, shape: &Value, isometry: Isometry2d, color: Color, settings: &Settings) -> Result<(), String> {
+pub fn draw_2d<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: Registry, shape: &Value, isometry: Isometry2d, color: Color, settings: &Settings) -> Result<(), String> {
     let (key, json) = one_key(shape, "primitive2d", PRIMITIVES_2D)?;
     macro_rules! each {
         ($($t:ident),*) => {
@@ -103,7 +114,7 @@ pub fn draw_2d<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: &AppTy
     primitives_2d!(each)
 }
 
-pub fn draw_3d<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: &AppTypeRegistry, shape: &Value, isometry: Isometry3d, color: Color, settings: &Settings) -> Result<(), String> {
+pub fn draw_3d<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: Registry, shape: &Value, isometry: Isometry3d, color: Color, settings: &Settings) -> Result<(), String> {
     let (key, json) = one_key(shape, "primitive3d", PRIMITIVES_3D)?;
     macro_rules! each {
         ($($t:ident),*) => {
@@ -118,7 +129,7 @@ pub fn draw_3d<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: &AppTy
 
 macro_rules! curves {
     ($name:ident, $gradient:ident, $what:literal, $grad_what:literal, $v:ty, $call:ident, $grad_call:ident) => {
-        pub fn $name<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: &AppTypeRegistry, curve: &Value, times: impl Iterator<Item = f32>, color: Color) -> Result<(), String> {
+        pub fn $name<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: Registry, curve: &Value, times: impl Iterator<Item = f32>, color: Color) -> Result<(), String> {
             match one_key(curve, $what, CURVES)? {
                 ("EasingCurve", j) => g.$call(decode::<EasingCurve<$v>>(registry, j)?, times, color),
                 ("SampleAutoCurve", j) => g.$call(decode::<SampleAutoCurve<$v>>(registry, j)?, times, color),
@@ -128,7 +139,7 @@ macro_rules! curves {
             Ok(())
         }
 
-        pub fn $gradient<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: &AppTypeRegistry, curve: &Value, times: Vec<(f32, Color)>) -> Result<(), String> {
+        pub fn $gradient<C: GizmoConfigGroup>(g: &mut GizmoBuffer<C, ()>, registry: Registry, curve: &Value, times: Vec<(f32, Color)>) -> Result<(), String> {
             match one_key(curve, $grad_what, CURVES)? {
                 ("EasingCurve", j) => g.$grad_call(decode::<EasingCurve<$v>>(registry, j)?, times),
                 ("SampleAutoCurve", j) => g.$grad_call(decode::<SampleAutoCurve<$v>>(registry, j)?, times),

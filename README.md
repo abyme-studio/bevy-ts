@@ -26,7 +26,8 @@ without recompiling Rust.
   picking, each with a test ([docs/2d.md](docs/2d.md)).
 - **Bevy's gizmos**: a system takes `Gizmos` or `Gizmos<LightGizmoConfigGroup>` and draws lines,
   shapes, text, every Bevy primitive and curve, with builder settings chained; config through
-  `ResMut<GizmoConfigStore>` ([docs/gizmos.md](docs/gizmos.md)).
+  `ResMut<GizmoConfigStore>`; static lines drawn once into a `GizmoAsset` and shown by
+  `<Gizmo handle={ref} />` ([docs/gizmos.md](docs/gizmos.md)).
 - **Custom materials without Rust**: a params schema in TS and the shader in a `.wgsl` file,
   hot reloaded ([docs/materials.md](docs/materials.md)).
 - **Bevy's time**: `Res<Time<Real>>`, `Res<Time<Virtual>>`, `Res<Time<Fixed>>`, and `Timer` and

@@ -194,23 +194,28 @@ through `reflect_value`; `GizmosPlugin` registers these eight generic types. `ti
 
 ### 10. Retained gizmos on reflect-assets' path
 
-`GizmoAsset` in `bevy-ts/gizmos` is a JS class with the same drawing methods, generated from the
-same `ParamSpec` by a second glue form, `host::recorder_glue`: each call writes its method index
-and encoded arguments into the instance's growable `Float64Array` instead of `H.slots`; points are
-copied inline. Builder settings record as calls too.
+`GizmoAsset` in `bevy-ts/gizmos` is a JS class with the same drawing methods and settings,
+generated from the default group's `ParamSpec` by a second glue form, `host::recorder_glue`: each
+call writes its arguments into `H.slots` exactly as the param's glue does, then `H.record` appends
+`[name, slot words, ...point-list words]` to the instance's `calls`. Slots and floats cross as
+`u32` words, which JSON keeps exact (a string's bytes in a slot can be a NaN as an `f64`). Builder
+settings record as calls after their builder's; `H.live` throws on a stale builder as on the param.
+`toJSON` gives `{ calls }`, so `assets.add(GizmoAsset, g)` sends the record as the asset's JSON.
 
-`assets.add(GizmoAsset, g)` goes through reflect-assets: a `HandMap` entry for `GizmoAsset` whose
-write replays the record onto a fresh `GizmoAsset` (it derefs to `GizmoBuffer<ErasedGizmoConfigGroup,
-()>`, `retained.rs:16-28`) through decision 1's table entries, with an `OpenBuilder` of its own.
-Read returns the record the script last wrote (`{ calls: [...] }`), as animation-control's clip
-entry does. `<Gizmo handle={ref} line_config={{ width: 4 }} depth_bias={-0.1} />` takes the ref
-through reflect-assets' handle hook and `line_config` as a reflected hole prop.
+reflect-assets widened its hand map as `app.ts_hand_map::<T: Asset>(read, write)` (on main since
+c4a2471f5), for a type with no `Reflect`, registered from outside `bevy-ts`: task 5.1's question is
+answered by that API. `bevy_ts_native::gizmos::retained` registers `GizmoAsset` when the first
+group is exposed. Its write replays the record onto a fresh `GizmoAsset` (it derefs to
+`GizmoBuffer<ErasedGizmoConfigGroup, ()>`, `retained.rs:16-28`) through decision 1's entries, each
+builder entry given the settings recorded after it, so no redraw is needed. A `set` builds afresh
+from the merged `{ calls }`, replacing the calls whole. Read returns the record the script last
+wrote (`{}` for an asset Rust made). The entries take the registry as `primitives::Registry`, the
+app's (locked only when a primitive or curve is read) or the one a hand map's `Slots` holds.
 
-`GizmoAsset` is `TypePath` only (`bevy_gizmos/src/lib.rs:325`), and `HandMap::write` returns a
-`Box<dyn Reflect>` from an `asset_type` that needs `ReflectAsset`. Stage 3 needs reflect-assets to
-widen `HandMap` for such a type: a typed `add`/`set` that inserts into `Assets<T>` directly and
-mints the ref, registered from outside `bevy-ts` (`HAND_MAPS` is a `const` list in `bevy-ts`, which
-cannot name `bevy-ts-native`'s table), for example `app.ts_hand_map(...)`. To ask of lead@reflect-assets (task 5.1); stage 3 waits on it.
+`<Gizmo handle={ref} line_config={{ width: 4 }} depth_bias={-0.1} />` takes the ref through
+reflect-assets' handle hook and `line_config` as a reflected hole prop. The type generator types a
+`Handle<T>` of a hand-mapped `T` as a ref or value of `T`'s type path, since `GizmoAsset`'s class
+is `bevy-ts/gizmos`', not `bevy-ts/bevy`'s.
 
 ### 11. Benchmark
 

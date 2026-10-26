@@ -46,7 +46,7 @@ unit test in the file it tests. "Design N" is `design.md`'s decision N.
 
 ## 5. Stage 3: retained gizmos (after reflect-assets stage 1 and its HandMap widening)
 
-- [ ] 5.1 Confirm with lead@reflect-assets the `HandMap` form for an asset type with no `Reflect`, registered from outside `bevy-ts` (design 10); if refused, amend this change to an export claiming `ResMut<Assets<GizmoAsset>>` before building
+- [x] 5.1 Confirm with lead@reflect-assets the `HandMap` form for an asset type with no `Reflect`, registered from outside `bevy-ts` (design 10); if refused, amend this change to an export claiming `ResMut<Assets<GizmoAsset>>` before building
 - [ ] 5.2 `crates/bevy-ts/src/host.rs`: `recorder_glue(spec)`: a JS class whose methods write the method index and encoded arguments into a growable `Float64Array`, points inline, settings as calls
 - [ ] 5.3 `crates/bevy-ts-cli/src/gizmos.rs`: `GizmoAsset` in `bevy-ts/gizmos` from 5.2 over the default group's table; `crates/bevy-ts-native/src/gizmos/retained.rs`: the `HandMap` entry, registered through 5.1's API, replaying the record onto a fresh `GizmoAsset` through `draw.rs`'s entries, read giving `{ calls }`
 - [ ] 5.4 Tests: `a_gizmo_asset_holds_what_gizmos_would_draw`, `set_replaces_a_gizmo_assets_calls`, `a_retained_gizmo_renders` (a `<Gizmo handle line_config={{ width: 4 }} />` gives pixels under `render_app()`)

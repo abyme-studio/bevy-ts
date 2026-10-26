@@ -485,6 +485,9 @@ const processes = {
   // Change script-gizmos task 2.11: main's release engine (its own target), this tree's
   // (bench-gizmos copies it to target/gizmos-bench), then the before and after frames.
   "gizmos-frames": { cmd: "set -o pipefail; mkdir -p target; (rm -rf target/gizmos-main-src && mkdir -p target/gizmos-main-src && git archive main | tar -x -C target/gizmos-main-src && (cd target/gizmos-main-src && CARGO_TARGET_DIR=$PWD/../gizmos-main-target cargo build --release -p bevy-ts-cli) && scripts/gizmos-frames.sh target/gizmos-main-target/release/bevy-ts target/gizmos-bench) 2>&1 | grep -v ld64 | tee target/gizmos-frames.log | tail -20" },
+  // script-gizmos stage 3: one step at a time in the shared slot; the step is
+  // target/gizmos-step.sh, written before each start; its log is target/gizmos-step.log.
+  "gizmos-step": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:script-gizmos -- bash -c 'set -o pipefail; mkdir -p target; bash target/gizmos-step.sh 2>&1 | grep --line-buffered -v ld64 > target/gizmos-step.log; echo step exit $? >> target/gizmos-step.log; tail -3 target/gizmos-step.log'" },
   "gizmos-tests": { cmd: "set -o pipefail; mkdir -p target; (cargo test -p bevy-ts --lib host && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-native && cargo test -p bevy-ts-v8 && cargo test -p bevy-ts-cli --test it -- gizmos:: native_writes:: exported:: cameras:: typescript:: && cargo clippy -p bevy-ts -p bevy-ts-v8 -p bevy-ts-native -p bevy-ts-native-derive -p bevy-ts-cli --all-targets -- -D warnings && scripts/gen-protocol.sh --check && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep -v ld64 | tee target/gizmos-tests.log | grep -E \"^error|^warning|-->|^test .*FAILED|test result|panicked|stale\"" },
 } satisfies ProcessFile;
 
