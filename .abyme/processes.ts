@@ -491,6 +491,8 @@ const processes = {
   // binaries and results live outside target/, which was emptied under a finished build once.
   "ecs-queries-bench-build": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:ecs-queries -- bash -c 'set -eo pipefail; mkdir -p $HOME/.cache/bevy-ts-ecsq-bench; b=$(git rev-parse --abbrev-ref HEAD); git switch -q ecs-queries-stage7-before; cargo static build --release -p bevy-ts-cli --example bob_bench 2>&1 | grep -v ld64 | tail -3; cp target/release/examples/bob_bench $HOME/.cache/bevy-ts-ecsq-bench/before; git switch -q $b; cargo static build --release -p bevy-ts-cli --example bob_bench 2>&1 | grep -v ld64 | tail -3; cp target/release/examples/bob_bench $HOME/.cache/bevy-ts-ecsq-bench/after; echo built'" },
   "ecs-queries-bench": { cmd: "bash -c 'set -eo pipefail; cd $HOME/.cache/bevy-ts-ecsq-bench; for i in 1 2 3 4 5 6 7 8; do for a in before after; do uptime | tee $a-$i.md; ./$a >> $a-$i.md; done; done; tail -n +1 *.md'" },
+  // The gate's three render failures (shader not loaded), rerun alone in a check slot.
+  "ecs-queries-render-recheck": { cmd: "$HOME/dev/abyme/scripts/gate-slot run bevy-ts:ecs-queries -- bash -c 'set -o pipefail; mkdir -p target; (cargo test -p bevy-ts-cli --test it -- standard_material_limits:: && cargo test -p bevy-ts-material --test it -- alpha_render) 2>&1 | grep -v ld64 | tee target/ecs-queries-render-recheck.log | grep -E \"^test result|FAILED|panicked|^error\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
