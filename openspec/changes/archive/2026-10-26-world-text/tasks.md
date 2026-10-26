@@ -30,9 +30,6 @@
 - [x] 4.3 `examples/cube/src/game.tsx` (or the closest 3D example): a label over the cube with an outline and a bound counter
 - [x] 4.4 Gate: `cargo test -p bevy-ts-material`, `-p bevy-ts-tsx`, the cli `world_text` test, the TS type tests, through the gate slot; `protocol/bevy-ts.openrpc.json` unchanged
 
-## 5. Stage 2: text along a path (after stage 1 lands)
+## 5. Stage 2: text along a path
 
-- [ ] 5.1 `WorldTextStyle` gains `path: Vec<Vec3>` and `normal: Vec3`; `ui.rs` takes `path` (at least two points) and `normal`, refuses `path` with `width` or a line break, naming the props; stage 1's refusal of `path` goes
-- [ ] 5.2 `world_text/mesh.rs`: each glyph's centre advance placed on the polyline by arc length, its quad turned to the tangent and `normal`; `justify` start, centre, end along the path; past the end along the last tangent (design 9)
-- [ ] 5.3 `world_text.rs` test: `ROME` on a 64-point half circle of radius 4, centre placement and tangent within the spec's bounds; `path` with `width` fails; `jsx-runtime.d.ts` and `elements.tsx` gain `path` and `normal`
-- [ ] 5.4 `docs/world-text.md`: the path section; `examples/cube`: a curved label
+Moved to the change `world-text-stage-2`: it starts after stage 1 lands.

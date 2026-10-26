@@ -40,7 +40,7 @@ its lines. `ComputedWorldText.rect` holds it in the entity's space once laid out
 Each names `<worldText>`, the prop and the element's file and line:
 
 - a prop `<worldText>` does not take: `<text>`'s `style`, `textShadow`, `underline`,
-  `strikethrough`, `textBackground`, and `path` (text on a path is a later stage);
+  `strikethrough`, `textBackground`, and `path` (text on a path is the change `world-text-stage-2`);
 - `size` or `width` not a positive number; `outline.width` outside 0 to 0.125; an `anchor` that is
   not a name or a pair within -0.5 to 0.5; a value of the wrong type;
 - a `<span>` or any element inside it;
@@ -110,7 +110,7 @@ The code is `crates/bevy-ts-material/src/world_text/`.
 - **Memory**: Bevy's font atlas keeps each glyph's 48 px raster too, as `<text>` at one size does.
 - Not here: labels that face the camera or keep a constant screen size, `<span>` rich text in a
   label, underline, background and shadow, colour emoji in colour (they draw as one-colour shapes),
-  text along a path.
+  text along a path (the change `world-text-stage-2`).
 
 ## The bench
 
