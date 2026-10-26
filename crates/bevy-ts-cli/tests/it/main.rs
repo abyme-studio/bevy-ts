@@ -60,6 +60,7 @@ mod scene_material;
 mod saves;
 mod schedules;
 mod screenshot;
+mod screenshot_ready;
 mod session;
 mod standard_material_limits;
 mod states;

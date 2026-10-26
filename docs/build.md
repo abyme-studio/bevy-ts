@@ -63,8 +63,15 @@ the arguments after `--` as the game's.
 Headless (`play --headless`, `dev --headless`) has no window: every camera renders into one 960x540
 offscreen image. `bevy-ts/screenshot { path }` saves it as a PNG and answers once the file is
 written, with its size and the frame it shows; for a chosen frame, `bevy-ts/pause` and
-`bevy-ts/step` there first (rendering runs while paused). A run with no protocol (`play
---headless`) takes one shot with `BEVY_TS_SCREENSHOT=<path>`, at frame 60. Game UI draws into
+`bevy-ts/step` there first (rendering runs while paused). A shot waits until no render pipeline
+is still compiling, so a material is never caught as its fallback. A run with no protocol (`play
+--headless`) takes one shot with `BEVY_TS_SCREENSHOT=<path>`, at the 60th ready frame in a row: a
+frame on which the script has started and no pipeline is waiting (after 60 s it shoots anyway,
+and warns). Under it, time runs on a fixed step, through Bevy's
+`TimeUpdateStrategy::ManualDuration`: 1/60 s a ready frame and none before. So the shot is the
+same picture at any machine load. `BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the
+same clock. `BEVY_TS_PIPELINE_TRACE=1` prints when the pipelines are ready
+([native.md](native.md#project-engines)). Game UI draws into
 that image at its size: headless gives `IsDefaultUiCamera` to the highest-order camera, as Bevy
 does for a window. A game's own `IsDefaultUiCamera` on another camera, or a root's
 `UiTargetCamera`, wins.

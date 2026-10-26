@@ -107,18 +107,6 @@ fn default_ui_camera(
     }
 }
 
-/// `BEVY_TS_SCREENSHOT=<path>` saves the view once, at frame 60, for runs that serve no protocol
-/// (`bevy-ts play --headless`). A shot at any other time is `bevy-ts/screenshot`'s.
-pub fn screenshot_on_request(world: &mut World, mut frame: Local<u32>) {
-    *frame += 1;
-    if *frame != 60 {
-        return;
-    }
-    if let Ok(path) = std::env::var("BEVY_TS_SCREENSHOT") {
-        bevy_ts_remote::screenshot::capture(world, path);
-    }
-}
-
 /// `BEVY_TS_PIPELINE_TRACE=1` prints, to stderr, each time the render world's pipeline cache
 /// empties its queue: seconds since the engine started, how many pipelines it holds, and the
 /// longest render frame so far. The last line of a run is when all its pipelines were ready.

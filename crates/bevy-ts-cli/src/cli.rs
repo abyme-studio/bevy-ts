@@ -272,11 +272,12 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_plugins(crate::rust_events::RustEventsPlugin)
         .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
         .add_plugins(crate::session::ScriptSessionPlugin)
-        .add_systems(Update, headless::screenshot_on_request.run_if(|| std::env::var_os("BEVY_TS_SCREENSHOT").is_some()))
+        .add_plugins(bevy_ts_remote::screenshot::ReadyPlugin)
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     headless::pipeline_trace(&mut app);
+    shot_from_env(&mut app);
     // After `extra`: a native crate that adds it itself keeps its own settings.
     if mesh_picking && !app.is_plugin_added::<MeshPickingPlugin>() {
         app.add_plugins(MeshPickingPlugin);
@@ -299,6 +300,19 @@ type NewMeshHandler = (With<Mesh3d>, With<TsxHandlers>, Or<(Added<Mesh3d>, Added
 /// Names, once per process, a mesh with a pointer handler while nothing picks meshes: its
 /// `onPointer*` would never fire. Checks the resource, not the switch, so a native crate that adds
 /// `MeshPickingPlugin` itself is not warned.
+/// `BEVY_TS_SCREENSHOT=<path>` saves one shot at the 60th ready frame, on a fixed step;
+/// `BEVY_TS_FIXED_STEP=1` turns on the fixed step alone, for a run driven over the protocol.
+fn shot_from_env(app: &mut App) {
+    use bevy_ts_remote::screenshot::{FixedStep, ShotWhenReady};
+    let shot = std::env::var_os("BEVY_TS_SCREENSHOT");
+    if shot.is_some() || std::env::var_os("BEVY_TS_FIXED_STEP").is_some_and(|v| v == "1") {
+        app.insert_resource(FixedStep);
+    }
+    if let Some(path) = shot {
+        app.insert_resource(ShotWhenReady::new(path));
+    }
+}
+
 fn warn_mesh_handlers(
     added: Query<(Entity, Option<&Name>), NewMeshHandler>,
     log: Option<ResMut<bevy_ts::log::ScriptLog>>,
