@@ -89,6 +89,7 @@ Each stage lands on its own: its code, its tests (every new element tested headl
 - [x] 7.2 `<image>` `flipX`, `flipY`, `rect`, `atlas`, `mode` with `sliced` and `tiled` helpers
 - [x] 7.3 Tests: UI on a second camera; a viewport node's camera; each image option's `ImageNode` field
 - [x] 7.4 Gallery panel and `docs/ui.md` "Cameras and images" section
+- [x] 7.5 `sliced()`/`tiled()` return Bevy's reflected `NodeImageMode` (`{ Sliced: TextureSlicer }`, `{ Tiled: { tile_x, tile_y, stretch_value } }`), and `<image mode>` writes it through `reflect_value` (for script-2d's `Sprite.image_mode`); their arguments are unchanged
 
 ## 8. Close
 

@@ -99,6 +99,11 @@ Every UI intrinsic SHALL take `outline` (`{ width, offset, color }` to `Outline`
 - **WHEN** `<image src="ui/panel.png" mode={sliced({ border: 8 })} />` mounts
 - **THEN** its `ImageNode.image_mode` is `Sliced` with an 8 px border
 
+#### Scenario: The mode helpers return Bevy's reflected shape
+- **WHEN** `<image src="ui/a.png" mode={{ Tiled: { tile_x: false, tile_y: true, stretch_value: 2 } }} />` mounts, the shape `tiled({ x: false, stretch: 2 })` returns
+- **THEN** its `ImageNode.image_mode` is `Tiled { tile_x: false, tile_y: true, stretch_value: 2.0 }`
+- **AND** a mode naming a field Bevy's type does not have fails to load, naming the field
+
 ### Requirement: UI on a camera
 A root UI intrinsic SHALL take `camera`, a node ref, written as `UiTargetCamera` with the ref's entity once it is mounted; `camera` on a UI element inside another SHALL fail the load naming its location. `<viewport camera>` SHALL be a `<node>` with `ViewportNode` showing that camera's output. Bevy shows only a camera that renders to an image, so a viewport SHALL give its camera an image of its own (a render target, sized to the node by Bevy) unless the camera already renders to an image other than the window's; this takes the camera off the window. A windowless run's image that stands for the window (`--headless`) SHALL count as the window.
 

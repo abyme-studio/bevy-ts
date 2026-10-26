@@ -20,7 +20,6 @@ use bevy::text::{EditableText, FontSize, FontSource, FontStyle, FontWeight, Lett
 use bevy::camera::RenderTarget;
 use bevy::image::{TextureAtlas, TextureAtlasLayout};
 use bevy::render::render_resource::TextureFormat;
-use bevy::sprite::{BorderRect, SliceScaleMode, TextureSlicer};
 use bevy::ui::widget::{NodeImageMode, TextShadow, ViewportNode};
 use crate::halo::TextHalo;
 use bevy::ui::{
@@ -1199,61 +1198,27 @@ fn image_fields(props: &Map<String, Value>) -> Result<ImageFields, String> {
     Ok(f)
 }
 
-/// `"auto"`, `"stretch"`, `sliced({ border, center, sides, maxCornerScale })` or
-/// `tiled({ x, y, stretch })`, Bevy's `NodeImageMode`.
+/// `"auto"`, `"stretch"`, or Bevy's reflected `NodeImageMode` (what `sliced(...)` and `tiled(...)`
+/// return: `{ Sliced: TextureSlicer }`, `{ Tiled: { tile_x, tile_y, stretch_value } }`), written
+/// through `reflect_value`, so a wrong field is named by its path.
 fn image_mode(v: &Value) -> Result<NodeImageMode, String> {
     match v.as_str() {
         Some("auto") => return Ok(NodeImageMode::Auto),
         Some("stretch") => return Ok(NodeImageMode::Stretch),
         _ => {}
     }
-    let o = v.as_object().ok_or_else(|| format!("mode: {v} is not one of \"auto\", \"stretch\", sliced(...), tiled(...)"))?;
-    match o.get("mode").and_then(Value::as_str) {
-        Some("sliced") => {
-            let o = fields(v, "sliced", &["mode", "border", "center", "sides", "maxCornerScale"])?;
-            let mut s = TextureSlicer { border: slice_border(o.get("border").ok_or("sliced takes a border")?)?, ..default() };
-            if let Some(c) = o.get("center") {
-                s.center_scale_mode = scale_mode(c, "sliced center")?;
-            }
-            if let Some(c) = o.get("sides") {
-                s.sides_scale_mode = scale_mode(c, "sliced sides")?;
-            }
-            if let Some(m) = o.get("maxCornerScale") {
-                s.max_corner_scale = m.as_f64().ok_or("sliced maxCornerScale takes a number")? as f32;
-            }
-            Ok(NodeImageMode::Sliced(s))
-        }
-        Some("tiled") => {
-            let o = fields(v, "tiled", &["mode", "x", "y", "stretch"])?;
-            Ok(NodeImageMode::Tiled {
-                tile_x: o.get("x").map(|x| flag(x, "tiled x")).transpose()?.unwrap_or(true),
-                tile_y: o.get("y").map(|x| flag(x, "tiled y")).transpose()?.unwrap_or(true),
-                stretch_value: o.get("stretch").map(|x| x.as_f64().ok_or("tiled stretch takes a number")).transpose()?.unwrap_or(1.0) as f32,
-            })
-        }
-        _ => Err(format!("mode: {v} is not one of \"auto\", \"stretch\", sliced(...), tiled(...)")),
+    if !v.is_object() {
+        return Err(format!("mode: {v} is not one of \"auto\", \"stretch\", sliced(...), tiled(...)"));
     }
-}
-
-/// A slice border in pixels: one for every side, or `{ left, right, top, bottom }`.
-fn slice_border(v: &Value) -> Result<BorderRect, String> {
-    if let Some(n) = v.as_f64() {
-        return Ok(BorderRect::all(n as f32));
-    }
-    let o = fields(v, "sliced border", &["left", "right", "top", "bottom"])?;
-    let side = |k: &str| o.get(k).map(|x| x.as_f64().ok_or_else(|| format!("sliced border.{k} takes pixels"))).transpose().map(|x| x.unwrap_or(0.0) as f32);
-    Ok(BorderRect::from([side("left")?, side("right")?, side("top")?, side("bottom")?]))
-}
-
-/// `"stretch"` or `{ tile: stretchValue }`, Bevy's `SliceScaleMode`.
-fn scale_mode(v: &Value, what: &str) -> Result<SliceScaleMode, String> {
-    if v.as_str() == Some("stretch") {
-        return Ok(SliceScaleMode::Stretch);
-    }
-    match v.as_object().and_then(|o| o.get("tile")).and_then(Value::as_f64) {
-        Some(n) => Ok(SliceScaleMode::Tile { stretch_value: n as f32 }),
-        None => Err(format!("{what} takes \"stretch\" or {{ tile: n }}")),
-    }
+    // `image_mode` runs with no world (a prop is checked at load), so it keeps a registry of its own.
+    static REGISTRY: std::sync::LazyLock<bevy::reflect::TypeRegistry> = std::sync::LazyLock::new(|| {
+        let mut r = bevy::reflect::TypeRegistry::new();
+        r.register::<NodeImageMode>();
+        r
+    });
+    let mut mode = NodeImageMode::Auto;
+    bevy_ts::reflect_value::write(&REGISTRY, None, &mut mode, None, v).map_err(|e| format!("mode: {e}"))?;
+    Ok(mode)
 }
 
 /// Equal grids share one `TextureAtlasLayout`, as equal meshes share one mesh.

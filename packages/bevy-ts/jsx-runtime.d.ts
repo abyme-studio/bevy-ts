@@ -411,10 +411,21 @@ export interface WorldTextProps {
   children?: WorldTextChild | readonly WorldTextChild[];
 }
 
-/** What `sliced(...)` and `tiled(...)` return. */
-export interface ImageMode {
-  readonly mode: "sliced" | "tiled";
-}
+/** Bevy's reflected `SliceScaleMode`: `"Stretch"` or `{ Tile: { stretch_value } }`. */
+export type SliceScaleMode = "Stretch" | { readonly Tile: { readonly stretch_value: number } };
+
+/** What `sliced(...)` and `tiled(...)` return: Bevy's `NodeImageMode::Sliced` and `Tiled`, reflected. */
+export type ImageMode =
+  | {
+      readonly Sliced: {
+        /** Pixels: `min_inset` is `[left, top]`, `max_inset` `[right, bottom]`. */
+        readonly border: { readonly min_inset: readonly [number, number]; readonly max_inset: readonly [number, number] };
+        readonly center_scale_mode: SliceScaleMode;
+        readonly sides_scale_mode: SliceScaleMode;
+        readonly max_corner_scale: number;
+      };
+    }
+  | { readonly Tiled: { readonly tile_x: boolean; readonly tile_y: boolean; readonly stretch_value: number } };
 
 /** `<image>`: an `ImageNode` from an asset path. */
 export interface ImageProps extends NodeProps {
@@ -430,7 +441,7 @@ export interface ImageProps extends NodeProps {
     layout: { tile: readonly [number, number]; columns: number; rows: number; padding?: readonly [number, number]; offset?: readonly [number, number] };
     index: number;
   }>;
-  /** `NodeImageMode`: `"auto"`, `"stretch"`, `sliced(...)` or `tiled(...)`. */
+  /** `NodeImageMode`: `"auto"`, `"stretch"`, `sliced(...)` or `tiled(...)` (or what they return, written out). */
   mode?: Bindable<"auto" | "stretch" | ImageMode>;
 }
 

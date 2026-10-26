@@ -1393,9 +1393,15 @@ export const deg = (n) => (n * Math.PI) / 180;
 export const linearGradient = (angle, stops) => ({ gradient: "linear", angle, stops });
 export const radialGradient = (stops, options) => ({ gradient: "radial", stops, ...options });
 export const conicGradient = (stops, options) => ({ gradient: "conic", stops, ...options });
-/** `<image mode>`: Bevy's `NodeImageMode::Sliced` and `Tiled`. */
-export const sliced = (options) => ({ mode: "sliced", ...options });
-export const tiled = (options) => ({ mode: "tiled", ...options });
+/** `<image mode>`: Bevy's `NodeImageMode::Sliced` and `Tiled`, in their reflected shape. */
+export const sliced = ({ border, center, sides, maxCornerScale = 1 } = {}) => {
+  if (border === undefined) throw new Error("sliced takes a border");
+  const { left = 0, right = 0, top = 0, bottom = 0 } = typeof border === "number" ? { left: border, right: border, top: border, bottom: border } : border;
+  return { Sliced: { border: { min_inset: [left, top], max_inset: [right, bottom] }, center_scale_mode: sliceScale(center), sides_scale_mode: sliceScale(sides), max_corner_scale: maxCornerScale } };
+};
+/** `SliceScaleMode`: `"stretch"` (the default) or `{ tile: stretchValue }`. */
+const sliceScale = (m = "stretch") => (m === "stretch" ? "Stretch" : { Tile: { stretch_value: m.tile } });
+export const tiled = ({ x = true, y = true, stretch = 1 } = {}) => ({ Tiled: { tile_x: x, tile_y: y, stretch_value: stretch } });
 
 /** The describe in progress: its context, and the owner bindings belong to. */
 let Describing = null;

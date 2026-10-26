@@ -34,6 +34,7 @@ app.scene("ui", () => (
     <image key="sides" src="ui/a.png" mode={sliced({ border: { left: 1, right: 2, top: 3, bottom: 4 } })} />
     <image key="floor" src="ui/a.png" mode={tiled({ y: false, stretch: 1.5 })} />
     <image key="stretched" src="ui/a.png" mode="stretch" />
+    <image key="reflected" src="ui/a.png" mode={{ Tiled: { tile_x: false, tile_y: true, stretch_value: 2 } }} />
   </>
 ));
 "##;
@@ -183,6 +184,19 @@ fn sliced_tiled_and_stretch_modes() {
     assert_eq!(s.border, BorderRect { min_inset: Vec2::new(1.0, 3.0), max_inset: Vec2::new(2.0, 4.0) });
     assert_eq!(image(&mut app, "floor").image_mode, NodeImageMode::Tiled { tile_x: true, tile_y: false, stretch_value: 1.5 });
     assert_eq!(image(&mut app, "stretched").image_mode, NodeImageMode::Stretch);
+    // The helpers return Bevy's reflected shape, so it can be written by hand too.
+    assert_eq!(image(&mut app, "reflected").image_mode, NodeImageMode::Tiled { tile_x: false, tile_y: true, stretch_value: 2.0 });
+}
+
+#[test]
+fn a_mode_with_a_wrong_field_fails_naming_it() {
+    let _hang = common::watchdog("a_mode_with_a_wrong_field_fails_naming_it", common::BOUND);
+    let src = "import { app } from \"bevy-ts\";\napp.scene(\"ui\", () => <image src=\"a.png\" mode={{ Tiled: { tile_x: true, tile_y: true, strech_value: 2 } } as never} />);\n";
+    let dir = project("ui-media-mode-field", &[("game.tsx", src)]);
+    let mut app = media_app(&dir.join("game.tsx"));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Failed);
+    assert!(r.errors.iter().any(|e| e.message.contains("mode") && e.message.contains("strech_value")), "{:?}", r.errors);
 }
 
 #[test]

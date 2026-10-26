@@ -180,6 +180,17 @@ const mini = ref();
 `center` and `sides` are `"stretch"` (the default) or `{ tile: n }`. `tiled` repeats along `x` and
 `y` (both by default) once the image is stretched past `stretch` (1).
 
+Both return Bevy's `NodeImageMode` in its reflected shape, written through reflection as any
+reflected value is, so a wrong field fails naming its path:
+
+```ts
+sliced({ border: { left: 1, right: 2, top: 3, bottom: 4 }, center: { tile: 2 } });
+// { Sliced: { border: { min_inset: [1, 3], max_inset: [2, 4] }, center_scale_mode: { Tile: { stretch_value: 2 } },
+//             sides_scale_mode: "Stretch", max_corner_scale: 1 } }
+tiled({ y: false });
+// { Tiled: { tile_x: true, tile_y: false, stretch_value: 1 } }
+```
+
 ## Events
 
 An event prop is `on` plus a Bevy event's name and an entity-local observer of it. Every UI
