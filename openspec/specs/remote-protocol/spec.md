@@ -170,7 +170,7 @@ A method whose answer needs later frames SHALL be served with `bevy_ts_remote::a
 - **THEN** the request stays open until the handler answers, and the reply is one JSON-RPC response, not a stream
 
 ### Requirement: Screenshot over the protocol
-`bevy-ts/screenshot` (params `path: string`) SHALL save what the run shows as a PNG at `path`. It SHALL capture once Bevy's `PipelineCache` has nothing waiting and no asset load is in flight, as a headless run's ready frame defines both, by spawning Bevy's `Screenshot` entity observed by Bevy's `save_to_disk(path)`. The target SHALL be the offscreen image under `--headless`, the viewport's frame under `--viewport`, and the primary window in a window.
+`bevy-ts/screenshot` (params `path: string`) SHALL save what the run shows as a PNG at `path`. It SHALL capture once Bevy's `PipelineCache` has nothing waiting and no asset load is in flight, as a headless run's ready frame defines both, on the third update in a row that holds, by spawning Bevy's `Screenshot` entity observed by Bevy's `save_to_disk(path)`. The target SHALL be the offscreen image under `--headless`, the viewport's frame under `--viewport`, and the primary window in a window.
 
 It SHALL answer once the file is written with `{ path, width, height, frame }`. `frame` is the bevy-ts frame it rendered in: the counter `bevy-ts/pause` and `bevy-ts/step` report, which counts paused updates too.
 
@@ -203,7 +203,11 @@ With `BEVY_TS_FIXED_STEP=1`, an engine SHALL advance time as under `BEVY_TS_SCRE
 
 #### Scenario: A texture still loading
 - **WHEN** a client asks for a shot while a material's texture is still being read
-- **THEN** no answer comes while it loads; the shot is taken once it has loaded, and shows the texture
+- **THEN** no answer comes while it loads; the shot is taken once it has loaded and the pipelines its material then needs are ready, and shows the texture
+
+#### Scenario: Under load
+- **WHEN** a client asks for a shot while the machine is so loaded that the render thread is still drawing the frame before
+- **THEN** the method waits for it, and does not fail with "no frame rendered"
 
 ### Requirement: Schemas carry string and list field types
 The layout in a TS component's `x-bevy-ts` SHALL name a `string` field's type `{ kind: "string" }` and a `T[]` field's type `{ kind: "list", of: <item type> }`, and its `properties` SHALL be a JSON Schema string or array of the item type. The protocol schema file SHALL list both kinds under a new protocol minor version.
