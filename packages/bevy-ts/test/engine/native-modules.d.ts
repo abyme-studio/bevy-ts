@@ -463,6 +463,8 @@ declare module "bevy-ts/input" {
 }
 
 declare module "bevy-ts/material" {
+  import type { AssetRef } from "bevy-ts";
+  
   /** The value a `.wgsl` import gives: the file, by path. Its WGSL stays in the engine. */
   export interface ShaderFile {
     readonly kind: "shaderFile";
@@ -511,7 +513,18 @@ declare module "bevy-ts/material" {
     readonly name: string;
     /** Types only: the params and textures `<material>` takes for this kind. */
     readonly __props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string };
+    /**
+     * An owned instance: one asset outside the shared cache, written in place at the same asset id
+     * with `assets.set(ref, patch)` and given as `<material asset={ref} />`. `assets.get(ref)` reads
+     * `{ kind, ...params, ...textures }`, colours as `{ LinearRgba }` and textures as paths or `null`.
+     */
+    add(props?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string | null }): AssetRef<KindFields<P, T>>;
   }
+  
+  /** What `assets.get` reads from an owned instance. */
+  export type KindFields<P extends Record<string, ParamType>, T extends Record<string, "texture2d">> = { kind: string } & {
+    [K in keyof P]?: P[K] extends "color" ? ParamValue<P[K]> | { LinearRgba: { red: number; green: number; blue: number; alpha: number } } : ParamValue<P[K]>;
+  } & { [K in keyof T]?: string | null };
   
   /**
    * Declares a script material: its params, laid out by WGSL's uniform rules in Rust; its textures;
