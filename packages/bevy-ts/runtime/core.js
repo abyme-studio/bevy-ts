@@ -618,6 +618,8 @@ function rustData(path, kind, entity, message) {
   C.path = path;
   C.source = "rust";
   C.native = true;
+  // A Rust message or event, crossing as JSON; a native-layout class is `native` but not this.
+  C.rustData = true;
   C[KIND] = kind;
   // A pointer event is a message too: `MessageReader<PointerClick>` and `On<PointerClick>`.
   C.message = kind === "message" || !!message;
@@ -2767,7 +2769,7 @@ class MessageWriterParam {
   }
   /** A writable view on a fresh slot; written when the run ends or at the next `next`/`write`. */
   next() {
-    if (this.cls.native) throw new TypeError(`${this.cls.name}: a Rust message has no layout to write in place; use write(value)`);
+    if (this.cls.rustData) throw new TypeError(`${this.cls.name}: a Rust message has no layout to write in place; use write(value)`);
     this.flush();
     const bytes = new Uint8Array(this.cls.size);
     const acc = new this.cls.Write();
@@ -2797,8 +2799,8 @@ const ON_KEYS = Symbol("onKeys");
  * `propagate(on)`, and the whole value as `event` (Bevy's `On::event()`).
  */
 function makeOn(cls) {
-  if (cls && !cls.native && !cls.Read) cls = undefined;
-  const rust = !!(cls && cls.native);
+  if (cls && !cls.rustData && !cls.Read) cls = undefined;
+  const rust = !!(cls && cls.rustData);
   const o = cls && !rust ? new cls.Read() : {};
   Object.defineProperty(o, "entity", { value: undefined, writable: true, enumerable: true });
   Object.defineProperty(o, "original", { value: undefined, writable: true, enumerable: true });
@@ -3387,7 +3389,7 @@ function buildSystem(g, s) {
         consumers.push(() => {});
         return ctx.commands;
       case "messageReader": {
-        const r = p.cls.native ? new RustMessageReaderParam(p.cls, g.res?.rustMessages?.[p.cls.path]) : new MessageReaderParam(p.cls);
+        const r = p.cls.rustData ? new RustMessageReaderParam(p.cls, g.res?.rustMessages?.[p.cls.path]) : new MessageReaderParam(p.cls);
         consumers.push((frame) => r.bind(frame));
         return r;
       }
@@ -3825,7 +3827,7 @@ class Commands {
   trigger(event) {
     const E = event && event.constructor;
     if (!E || E[KIND] !== "event") throw new TypeError("trigger: pass an Event or EntityEvent value (Explode.of({ entity, radius: 3 }))");
-    if (E.native) return this.reflectOp(OP_TRIGGER_REFLECT, E, event);
+    if (E.rustData) return this.reflectOp(OP_TRIGGER_REFLECT, E, event);
     const r = this.res && this.res.events[E.componentName];
     if (!r) throw new Error(`${E.componentName} is not a declared event`);
     let target;
@@ -3852,7 +3854,7 @@ class Commands {
   write(message) {
     const M = message && message.constructor;
     if (!M || (M[KIND] !== "message" && !M.message)) throw new TypeError("write: pass a Message value (Damage.of({ ... }))");
-    if (M.native) return this.reflectOp(OP_WRITE_REFLECT, M, message);
+    if (M.rustData) return this.reflectOp(OP_WRITE_REFLECT, M, message);
     const r = this.res && this.res.messages[M.componentName];
     if (!r) throw new Error(`${M.componentName} is not a declared message`);
     this.writeBytes(M, encodeWithLayout(M, r.layout, message));
