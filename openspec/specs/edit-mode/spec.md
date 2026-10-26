@@ -299,9 +299,10 @@ With `gameCameras: 0` in the game view, the view SHALL clear to the game's `Clea
 - **THEN** `gameCameras` is 1 and only the active one draws, as in Play
 
 ### Requirement: Stop restores the levels the play changed
-A level open when the game started (see scene-reconciler, "The game-start baseline") and still open at the Stop SHALL be kept: its entities the play did not change SHALL stay, with their entity ids and component values, and the Stop SHALL respawn from the level's last resolved tree, without composing or expanding it:
-- each subtree whose root entity, or any entity in it, the play changed (a component changed after the baseline, or a component added or removed), an entity below a node that is not one (a glTF model's hierarchy) included, and `OnEnter(EngineMode::Play)` and `OnExit(EngineMode::Play)` counting as the play;
-- each node tombstoned while the level was applied, with its subtree.
+A level open when the game started (see scene-reconciler, "The game-start baseline") and still open at the Stop SHALL be kept: its entities the play did not change SHALL stay, with their entity ids and component values, and the Stop SHALL restore from the level's last resolved tree, without composing or expanding it:
+- each entity the play changed whose archetype is unchanged and whose changed components tsx can write back (scene-reconciler, "Writing a node back") SHALL be written back in place, keeping its entity id;
+- each other subtree whose root entity the play changed (a component changed after the baseline, or a component added or removed) SHALL be respawned;
+- each node tombstoned while the level was applied SHALL be respawned with its subtree.
 
 A level SHALL instead take the full path, remounting as if first, when any of these holds:
 - the game started before the level was applied, or there is no baseline (a game booted in play);
@@ -310,7 +311,7 @@ A level SHALL instead take the full path, remounting as if first, when any of th
 - it is a scene's sidecar;
 - its description holds a JS callback: a binding, a handler, a ref or a `<Show>`/`<For>` slot.
 
-A kept entity SHALL fire no hook or observer and SHALL NOT appear as `Added` to a Rust system. A restored subtree SHALL be stamped (`LevelInstance`, `MissingComponents`) as a reconcile stamps it; the rest SHALL keep their stamps.
+A kept entity SHALL fire no hook or observer and SHALL NOT appear as `Added` to a Rust system. A written-back entity SHALL fire Bevy's replace and insert hooks and observers for the components written, and no others. A respawned subtree SHALL be stamped (`LevelInstance`, `MissingComponents`) as a reconcile stamps it; the rest SHALL keep their stamps.
 
 #### Scenario: Nothing touched
 - **WHEN** `levels/arena.bsn` holds 100 enemies, a client sets `play`, the game reads them and changes none, and a client sets `edit`
@@ -318,7 +319,15 @@ A kept entity SHALL fire no hook or observer and SHALL NOT appear as `Added` to 
 
 #### Scenario: One enemy moved
 - **WHEN** during play a system moves enemy `b` and adds `Stunned` to enemy `c`, then a client sets `edit`
-- **THEN** `b` and `c` are respawned with their level values and without `Stunned`, and every other enemy keeps its entity id
+- **THEN** `b` keeps its entity id and stands at its level transform, `c` is respawned with its level values and without `Stunned`, and every other enemy keeps its entity id
+
+#### Scenario: Every enemy moved
+- **WHEN** during play a system moves all 10,000 enemies of a level, then a client sets `edit`
+- **THEN** every enemy keeps its entity id and stands at its level transform, and `tsx_tree+watch` reports nothing spawned or despawned
+
+#### Scenario: A Rust-inserted component changed
+- **WHEN** a native plugin inserts `Velocity` on every enemy when it is added, and during play a system changes enemy `b`'s `Velocity`, then a client sets `edit`
+- **THEN** `b` is respawned, and its `Velocity` is the one the plugin inserts on a new enemy
 
 #### Scenario: A killed enemy
 - **WHEN** during play a system despawns enemy `a`, then a client sets `edit`
