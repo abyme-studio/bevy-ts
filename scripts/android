@@ -54,16 +54,19 @@ if [[ -f "$v8_cache/librusty_v8.a" && -f "$v8_cache/src_binding.rs" ]]; then
   export RUSTY_V8_ARCHIVE=$v8_cache/librusty_v8.a RUSTY_V8_SRC_BINDING_PATH=$v8_cache/src_binding.rs
 else
   # V8 from a git checkout: the crate leaves out build/android/, and a Mac host needs the recipe in
-  # docs/research/android.md. A Linux host needs only the checkout.
+  # docs/research/android.md.
   src=$work/rusty_v8-v$v8
   if [[ ! -f "$src/.prepared" ]]; then
     rm -rf "$src"
     git clone -q --depth 1 --branch "v$v8" --recurse-submodules --shallow-submodules -j8 https://github.com/denoland/rusty_v8.git "$src"
+    # The checkout has no android_toolchain (Chromium's CIPD package): on any host, the NDK
+    # given stands in for it, and its version for the one the package would name.
+    sed -i.bak 's/"ANDROID_NDK_VERSION_ROLL=${android_ndk_version}_1",/"ANDROID_NDK_VERSION_ROLL=r28c_1",/' "$src/build/config/android/BUILD.gn"
+    mkdir -p "$src/third_party/android_toolchain"
+    ln -sfn "$ANDROID_NDK_HOME" "$src/third_party/android_toolchain/ndk"
     if [[ $(uname -s) == Darwin ]]; then
       sed -i.bak 's/  assert(host_os == "linux", "Android builds are only supported on Linux.")/  assert(host_os == "linux" || host_os == "mac", "Android builds are only supported on Linux.")/' "$src/build/config/BUILDCONFIG.gn"
-      sed -i.bak 's/"ANDROID_NDK_VERSION_ROLL=${android_ndk_version}_1",/"ANDROID_NDK_VERSION_ROLL=r28c_1",/' "$src/build/config/android/BUILD.gn"
-      mkdir -p "$src/third_party/android_toolchain" "$src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
-      ln -sfn "$ANDROID_NDK_HOME" "$src/third_party/android_toolchain/ndk"
+      mkdir -p "$src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
       # build.rs fetches a Linux NDK for cross's linker unless this exists; a Mac host needs none.
       touch "$src/third_party/android_ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
       # Chromium's Mac clang ships no Android runtimes: add the NDK's.

@@ -76,7 +76,17 @@ fat LTO, stripped, unwinding kept for the engine's panic guard).
 
 `bench/android-smoke/run.sh` plays a game on a headless arm64 emulator through a minimal Java host,
 loading the library from `filesDir`, and records sizes and the first-frame time in
-`bench/android-smoke/results/`.
+`bench/android-smoke/results/`. On arena (API 34 emulator, SwiftShader):
+
+| | |
+|---|---|
+| `.so`, stripped | 87 MB |
+| `.so`, gzip -9 (the download) | 33 MB |
+| `Engine.load` | 0.36 s |
+| `create` to first frame | 5.4 s |
+| `surface(null)` returns | 26 ms |
+
+A real GPU's first frame is faster; the emulator renders on the CPU.
 
 ## What the phone plays
 

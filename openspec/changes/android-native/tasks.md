@@ -35,15 +35,15 @@
 - [x] 4.1 `crates/bevy-ts-android` (cdylib): JNI exports for `dev.bevyts.Engine`, `ANativeWindow_fromSurface` and release, listener calls on the engine thread (attached once)
 - [x] 4.2 `crates/bevy-ts-android/java/dev/bevyts/Engine.java`: `load(absolutePath)` by `System.load` with a version check, `version()`, no `loadLibrary`
 - [ ] 4.3 `bevy-ts-v8` builds from source for `aarch64-linux-android` (`V8_FROM_SOURCE=1`, the Mac-host patch set from `docs/research/android.md`, ninja capped at `-j4` through a `NINJA` wrapper, cached at `~/.cache/bevy-ts/v8-android`); deno_core's Android `errno_location` as a `[patch.crates-io]`, sent upstream; compiler-rt builtins at link; android-activity's `native-activity` backend for `bevy_asset` (not Bevy's `android-native-activity`, which links winit); the Android profile `opt-level = "z"`, fat LTO, `panic = "unwind"`
-- [ ] 4.4 `scripts/android`: `cargo ndk -t arm64-v8a -P 29`, writing `dist/aarch64-linux-android/` (`.so`, `Engine.java`, header)
+- [x] 4.4 `scripts/android`: `cargo ndk -t arm64-v8a -P 29`, writing `dist/aarch64-linux-android/` (`.so`, `Engine.java`, header)
 - [ ] 4.5 A CI job that builds the Android library (build only) and checks its exports with `llvm-readelf`
-- [ ] 4.7 `packages/platforms/android-arm64` and a release job publishing `@bevy-ts/android-arm64` at every version (Linux runner, V8 from source with a cached build), not an optional dependency of `bevy-ts`; the package's first version by hand on the operator's go (`docs/release.md`); document it there
+- [x] 4.7 `packages/platforms/android-arm64` and a release job publishing `@bevy-ts/android-arm64` at every version (Linux runner, V8 from source with a cached build), not an optional dependency of `bevy-ts`; the package's first version by hand on the operator's go (`docs/release.md`); document it there
 - [ ] 4.9 Adreno skinning: on Adreno only, `max_storage_buffers_per_shader_stage = 0` in `WgpuSettings.constrained_limits` (bevy#24926); confirm on a real Adreno phone with agent town's characters
 - [x] 4.8 `bevy_ts_abi()` and `bevy_ts_version()` exports, `Engine.ABI`, and a test that `Engine.load` refuses another ABI
-- [ ] 4.6 A smoke run on a headless emulator (`emulator -no-window`), from `bench/android-smoke/` outside the gate: a minimal Kotlin host creates the engine on a `SurfaceView`, plays `examples/arena`, reports `started`, a tap and `exited`. loading the `.so` by path from the app's `filesDir`. Record the stripped and gzipped `.so` sizes and the first-frame time
+- [x] 4.6 A smoke run on a headless emulator (`emulator -no-window`), from `bench/android-smoke/` outside the gate: a minimal Java host creates the engine on a `SurfaceView`, plays `examples/arena`, reports `started`, a tap and `exited`. loading the `.so` by path from the app's `filesDir`. Record the stripped and gzipped `.so` sizes and the first-frame time
 
 ## 5. Docs and handover
 
-- [ ] 5.1 `docs/android.md`: the embedding API, the Java class, the lifecycle, building, what the phone plays and leaves out
+- [x] 5.1 `docs/android.md`: the embedding API, the Java class, the lifecycle, building, what the phone plays and leaves out
 - [ ] 5.2 `docs/build.md` and `docs/viewport.md`: play as a library, input's new owner
 - [ ] 5.3 Hand abyme's follow-up to lead@abyme: the game download into `filesDir/games/`, `Streams.kt` glue for a game pane, page input over `abymeShell`, Gradle packaging of the `.so`, the `minSdk` 29 gate, `ABYME_URL` and `ABYME_KEY` in `env`
