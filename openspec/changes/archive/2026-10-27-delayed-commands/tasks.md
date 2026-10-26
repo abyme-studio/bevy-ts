@@ -33,4 +33,4 @@ New `crates/bevy-ts-cli/tests/it/delayed_commands.rs`, `mod delayed_commands;` i
 ## 5. Gate
 
 - [x] 5.1 `openspec validate delayed-commands --strict`
-- [ ] 5.2 The repo's full check green (cargo through `~/dev/abyme/scripts/gate-slot`); no protocol change
+- [x] 5.2 The repo's full check green (land's batch check) (cargo through `~/dev/abyme/scripts/gate-slot`); no protocol change
