@@ -5,6 +5,7 @@
 //! restart clears it.
 
 use crate::backend::SourceLocation;
+use crate::heap::{HeapBytes, HeapKind};
 use crate::layout::{ComponentLayout, NativeLayouts};
 use crate::manifest::{CombineOp, ComponentRef, ComponentSource, ConditionDecl, FilterDecl};
 use crate::messages::TsPayloads;
@@ -33,7 +34,8 @@ pub enum Condition {
     RunOnce { slot: String },
     ResourceExists { id: Option<ComponentId> },
     Resource { kind: ResourceKind, id: Option<ComponentId>, slot: String },
-    ResourceEquals { id: Option<ComponentId>, bytes: Vec<u8>, fields: Vec<(usize, usize)> },
+    /// The expected value, its plain fields' byte ranges, and its heap fields, compared by value.
+    ResourceEquals { id: Option<ComponentId>, bytes: HeapBytes, fields: Vec<(usize, usize)>, heap: Vec<(usize, HeapKind)> },
     AnyWith { query: Box<QueryState<Entity>> },
     AnyRemoved { id: ComponentId, slot: String },
     AnyMatch { query: Box<QueryState<Entity>>, changed: Vec<ComponentId>, added: Vec<ComponentId>, slot: String },
@@ -155,7 +157,7 @@ pub struct Compile<'a> {
 /// A resource condition's resource: `None` when no type has the name (the condition is never
 /// true), and an error, under the condition's name, when a short name names several Rust types.
 fn resource_id(world: &World, name: &str, ts: &TsLookup, condition: &str) -> Result<Option<ComponentId>, String> {
-    if let Some((id, _)) = ts(name) {
+    if let Some((id, ..)) = ts(name) {
         return Ok(Some(id));
     }
     if let Some(n) = world.resource::<NativeLayouts>().get(name) {
@@ -166,7 +168,7 @@ fn resource_id(world: &World, name: &str, ts: &TsLookup, condition: &str) -> Res
 
 fn component_id(world: &World, r: &ComponentRef, ts: &TsLookup) -> Result<ComponentId, String> {
     match r.source {
-        ComponentSource::Ts => ts(&r.name).map(|(id, _)| id).ok_or_else(|| format!("no component named {}", r.name)),
+        ComponentSource::Ts => ts(&r.name).map(|(id, ..)| id).ok_or_else(|| format!("no component named {}", r.name)),
         ComponentSource::Rust => world
             .resource::<NativeLayouts>()
             .get(&r.name)
@@ -176,12 +178,15 @@ fn component_id(world: &World, r: &ComponentRef, ts: &TsLookup) -> Result<Compon
     }
 }
 
-/// Byte ranges `[start, end)` of a layout's fields.
-type FieldRanges = Vec<(usize, usize)>;
+/// Byte ranges `[start, end)` of a layout's plain fields, and its heap fields' offsets and kinds.
+type FieldRanges = (Vec<(usize, usize)>, Vec<(usize, HeapKind)>);
 
-/// A resource value as native bytes, and the byte ranges of its fields (padding left out).
-fn encode_resource(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>, c: &Compile, condition: &str) -> Result<(Vec<u8>, FieldRanges), String> {
-    let ranges = |l: &ComponentLayout| l.fields.iter().map(|f| (f.offset, f.offset + f.ty.size())).collect::<Vec<_>>();
+/// A resource value as native bytes, and where its fields are (padding left out).
+fn encode_resource(world: &World, name: &str, values: &serde_json::Map<String, serde_json::Value>, c: &Compile, condition: &str) -> Result<(HeapBytes, FieldRanges), String> {
+    let ranges = |l: &ComponentLayout| {
+        let plain = l.fields.iter().filter(|f| !f.ty.is_heap()).map(|f| (f.offset, f.offset + f.ty.size())).collect();
+        (plain, l.fields.iter().filter_map(|f| HeapKind::of(&f.ty).map(|k| (f.offset, k))).collect())
+    };
     if let Some(r) = (c.encode)(name, values) {
         let (bytes, layout) = r.map_err(|e| format!("{condition}({name}): {e}"))?;
         return Ok((bytes, ranges(&layout)));
@@ -196,7 +201,7 @@ fn encode_resource(world: &World, name: &str, values: &serde_json::Map<String, s
         let f = n.layout.field(k).ok_or_else(|| format!("{condition}({name}): {name} has no field {k}"))?;
         crate::value::encode_field(&format!(".{k}"), &f.ty, v, &mut bytes[f.offset..f.offset + f.ty.size()]).map_err(|e| format!("{condition}({name}): {e}"))?;
     }
-    Ok((bytes, ranges(&n.layout)))
+    Ok((HeapBytes::plain(bytes), ranges(&n.layout)))
 }
 
 fn hidden_query(world: &mut World, with: &[ComponentId], without: &[ComponentId]) -> Box<QueryState<Entity>> {
@@ -261,8 +266,8 @@ pub fn compile(world: &mut World, d: &ConditionDecl, path: &str, c: &mut Compile
         ConditionDecl::ResourceEquals { resource, value } | ConditionDecl::ResourceExistsAndEquals { resource, value } => {
             let condition = if matches!(d, ConditionDecl::ResourceEquals { .. }) { "resourceEquals" } else { "resourceExistsAndEquals" };
             let id = resource_id(world, resource, c.ts, condition)?;
-            let (bytes, fields) = encode_resource(world, resource, value, c, condition)?;
-            Condition::ResourceEquals { id, bytes, fields }
+            let (bytes, (fields, heap)) = encode_resource(world, resource, value, c, condition)?;
+            Condition::ResourceEquals { id, bytes, fields, heap }
         }
         ConditionDecl::AnyWithComponent { component } => {
             let id = component_id(world, component, c.ts)?;
@@ -368,11 +373,13 @@ pub fn evaluate(world: &mut World, c: &mut Condition) -> bool {
                 (ResourceKind::Removed | ResourceKind::ChangedOrRemoved, None) => std::mem::replace(&mut st.flag, false),
             }
         }
-        Condition::ResourceEquals { id, bytes, fields } => {
+        Condition::ResourceEquals { id, bytes, fields, heap } => {
             let Some(ptr) = id.and_then(|id| world.get_resource_by_id(id)) else { return false };
             // SAFETY: the resource's layout is the one `bytes` was encoded with: `bytes.len()` bytes.
             let have = unsafe { std::slice::from_raw_parts(ptr.as_ptr(), bytes.len()) };
-            fields.iter().all(|&(a, b)| have[a..b] == bytes[a..b])
+            let want = bytes.bytes();
+            // SAFETY: the resource and `bytes` hold live heap values of these kinds at these offsets.
+            fields.iter().all(|&(a, b)| have[a..b] == want[a..b]) && heap.iter().all(|&(off, kind)| unsafe { crate::heap::eq_at(ptr.as_ptr(), off, kind, bytes) })
         }
         Condition::AnyWith { query } => {
             query.update_archetypes(world);

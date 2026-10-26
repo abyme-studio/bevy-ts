@@ -1,7 +1,9 @@
-//! What heap fields on TS components cost (openspec ts-component-heap-fields, tasks 1.20, 2.10),
-//! through V8 in release. Each arm is one TS system over 1,000 rows; its time is the system's
-//! run time less an empty system's over the same rows, per row, median of 200 frames
-//! (docs/reflection.md's method). Despawn is timed in Rust: 1,000 rows despawned, per row.
+//! What heap fields cost (openspecs ts-component-heap-fields tasks 1.20, 2.10, and
+//! ts-heap-fields-2 tasks 1.8, ...), through V8 in release. Each arm is one TS system over 1,000
+//! rows or reads; its time is the system's run time less an empty system's over the same rows, per
+//! row, median of 200 frames (docs/reflection.md's method). Despawn is timed in Rust: 1,000 rows
+//! despawned, per row. A lifecycle value's read is timed by frame: 1,000 `On<Remove>` events a
+//! frame, read against not read.
 //!
 //! `plain` (the first argument) runs the arms of a component with no heap field only, with no
 //! API this change added, so the same file builds against main: `run.sh` runs them there too,
@@ -25,9 +27,10 @@ const WARMUP: usize = 20;
 /// Apps built for the despawn arm; the median is taken.
 const DESPAWNS: usize = 15;
 
-const PLAIN: &str = r#"import { app, chain, Component, Startup, Update } from "bevy-ts";
-import type { Commands, f32, Query } from "bevy-ts";
+const PLAIN: &str = r#"import { app, chain, Component, Resource, Startup, Update } from "bevy-ts";
+import type { Commands, f32, Query, Res } from "bevy-ts";
 export class Plain extends Component { hp: f32 = 1; x: f32 = 0 }
+export class Score extends Resource { value: f32 = 1 }
 const REPEAT = __REPEAT__;
 let sink = 0;
 export function make(commands: Commands) { for (let i = 0; i < __ROWS__; i++) commands.spawn(Plain.of({ hp: i })); }
@@ -35,13 +38,20 @@ export function empty(q: Query<[Plain]>) { q.each(() => { sink++; }); }
 export function plainColumn(q: Query<[Plain]>) {
   for (let k = 0; k < REPEAT; k++) q.each((p) => { sink += p.hp; });
 }
+export function plainRes(q: Query<[Plain]>, s: Res<Score>) {
+  for (let k = 0; k < REPEAT; k++) q.each(() => { sink += s.value; });
+}
+app.insertResource(Score.of({ value: 2 }));
 app.addSystems(Startup, make);
 app.addSystems(Update, chain(__SYSTEM__));
 "#;
 
 const HEAP: &str = r#"import { app, chain, Component, Startup, Update } from "bevy-ts";
-import type { Commands, f32, Mut, Query } from "bevy-ts";
+import type { Commands, f32, Mut, Query, Res } from "bevy-ts";
+import { Resource } from "bevy-ts";
 export class Tag extends Component { label: string = "crate"; hp: f32 = 1; scores: f32[] = [] }
+export class Title extends Resource { text: string = "a title" }
+app.insertResource(Title.of({ text: "a title" }));
 const REPEAT = __REPEAT__;
 let sink = 0;
 let n = 0;
@@ -62,9 +72,43 @@ export function listHit(q: Query<[Tag]>) {
 }
 export function listMiss(q: Query<[Tag]>) { q.each((t) => { sink += t.scores.length; }); }
 export function listWrite(q: Query<[Mut<Tag>]>) { n++; q.each((t) => { t.scores = [n, 2, 3, 4, 5, 6, 7, 8]; }); }
+export function resString(q: Query<[Tag]>, t: Res<Title>) {
+  for (let k = 0; k < REPEAT; k++) q.each(() => { sink += t.text.length; });
+}
 app.addSystems(Startup, make);
 app.addSystems(Update, chain(__SYSTEM__));
 "#;
+
+/// 1,000 `On<Remove<Tag>>` events a frame: `cycle` removes and re-inserts each row's `Tag`, and the
+/// observer reads the removed value's `label`, or not.
+const LIFECYCLE: &str = r#"import { app, Component, Startup, Update } from "bevy-ts";
+import type { Commands, Entity, f32, On, Query, Remove } from "bevy-ts";
+export class Tag extends Component { label: string = "crate"; hp: f32 = 1 }
+let sink = 0;
+export function make(commands: Commands) { for (let i = 0; i < __ROWS__; i++) commands.spawn(Tag.of({ label: "tag " + i, hp: i })); }
+export function cycle(q: Query<[Entity, Tag]>, commands: Commands) { q.each((e) => { commands.entity(e).remove(Tag).insert(Tag.of({ label: "tag", hp: 1 })); }); }
+export function read(on: On<Remove<Tag>>) { sink += on.label.length; }
+export function skip(on: On<Remove<Tag>>) { sink += on.hp; }
+app.addSystems(Startup, make);
+app.addSystems(Update, cycle);
+app.addObserver(__SYSTEM__);
+"#;
+
+/// Median frame time in microseconds with `observer`, after a warm-up.
+fn frames(observer: &str) -> f64 {
+    let mut app = app(observer, LIFECYCLE, observer, None);
+    for _ in 0..WARMUP {
+        app.update();
+    }
+    let us: Vec<f64> = (0..FRAMES)
+        .map(|_| {
+            let t = Instant::now();
+            app.update();
+            t.elapsed().as_secs_f64() * 1e6
+        })
+        .collect();
+    median(us)
+}
 
 /// A component name, marked changed on every row before the TS stage, so each read misses.
 #[derive(Resource)]
@@ -150,11 +194,12 @@ fn main() {
     let empty = run(PLAIN, "empty", None);
     println!("{tree} | plain column (Plain.hp) | {} ns a row", per_row(run(PLAIN, "plainColumn", None), empty, REPEAT));
     println!("{tree} | despawn, plain | {:.0} ns a row", despawn(PLAIN, "game::Plain"));
+    println!("{tree} | plain Res read (Score.value) | {} ns a read", per_row(run(PLAIN, "plainRes", None), empty, REPEAT));
     if plain_only {
         return;
     }
     let empty = run(HEAP, "empty", None);
-    let arms: [(&str, &str, Option<&'static str>, usize); 8] = [
+    let arms: [(&str, &str, Option<&'static str>, usize); 9] = [
         ("heap component's plain field (Tag.hp)", "heapPlainField", None, REPEAT),
         ("string hit (Tag.label)", "stringHit", None, REPEAT),
         ("string miss", "stringMiss", Some("game::Tag"), 1),
@@ -162,6 +207,7 @@ fn main() {
         ("8-item f32[] hit (Tag.scores)", "listHit", None, REPEAT),
         ("8-item f32[] miss", "listMiss", Some("game::Tag"), 1),
         ("8-item f32[] write", "listWrite", None, 1),
+        ("heap Res string read (Title.text, cached)", "resString", None, REPEAT),
         ("empty system, µs a run (subtracted)", "empty", None, 0),
     ];
     for (label, system, miss, reads) in arms {
@@ -172,4 +218,6 @@ fn main() {
         println!("{tree} | {label} | {} ns a row", per_row(run(HEAP, system, miss), empty, reads));
     }
     println!("{tree} | despawn, a string and an 8-item list | {:.0} ns a row", despawn(HEAP, "game::Tag"));
+    let (read, skip) = (frames("read"), frames("skip"));
+    println!("{tree} | On<Remove> value's string read (Tag.label) | {} ns an event", per_row(read, skip, 1));
 }

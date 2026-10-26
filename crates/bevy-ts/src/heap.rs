@@ -21,8 +21,8 @@ use std::sync::{LazyLock, Mutex};
 /// Bytes before the first field of a component with a heap field: the `&'static HeapShape`.
 pub const HEADER: usize = 8;
 
-/// Why a heap field outside a component fails the load.
-pub const COMPONENTS_ONLY: &str = "heap fields (string, T[]) are allowed on components only";
+/// Why a heap field where none is held yet (a message, an event, a `Local`) fails the load.
+pub const REFUSED: &str = "heap fields (string, T[]) are allowed on components and resources only";
 
 /// A heap slot's bytes: a `String` or a `Vec<T>`.
 const HEAP_SLOT: usize = 24;
@@ -147,7 +147,7 @@ macro_rules! slot_type {
 }
 
 /// A Rust type a heap slot holds, and its codec form.
-trait Slot: Default + Clone + Sized {
+trait Slot: Default + Clone + PartialEq + Sized {
     fn into_value(self) -> HeapValue;
     fn from_value(v: HeapValue) -> Self;
     fn put_codec(&self, out: &mut Vec<u8>);
@@ -357,6 +357,20 @@ pub unsafe fn read(p: *const u8, off: usize, kind: HeapKind) -> HeapValue {
     })
 }
 
+/// Whether the heap value at `p + off` equals `other`'s at the same offset, with no copy.
+///
+/// # Safety
+/// The slot holds a live value of `kind`, and so does `other`'s.
+pub unsafe fn eq_at(p: *const u8, off: usize, kind: HeapKind, other: &HeapBytes) -> bool {
+    assert_eq!(other.slot(off), Some(kind), "offset {off} is not a {kind:?} slot");
+    // SAFETY: both are read as copies that are never dropped: the slots keep owning them.
+    slot_type!(kind, T => unsafe {
+        let a = std::mem::ManuallyDrop::new(std::ptr::read_unaligned(p.add(off) as *const T));
+        let b = std::mem::ManuallyDrop::new(std::ptr::read_unaligned(other.bytes.as_ptr().add(off) as *const T));
+        *a == *b
+    })
+}
+
 /// Writes the heap value at `p + off` in the codec's wire format.
 ///
 /// # Safety
@@ -414,7 +428,8 @@ pub fn clone_component(source: &SourceComponent, ctx: &mut ComponentCloneCtx) {
     let src = source.ptr().as_ptr();
     // SAFETY: the source is a live value of a component registered with this clone fn.
     let shape = unsafe { header(src) };
-    let copy = HeapBytes::copy_of(src, shape);
+    // SAFETY: as above.
+    let copy = unsafe { HeapBytes::copy_of(src, shape) };
     let mut buf = Aligned::new(copy.bytes());
     // SAFETY: `buf` holds a value of the component; the target takes ownership of its heap values
     // by copy, so `copy`'s own are forgotten, never dropped.
@@ -472,12 +487,15 @@ impl HeapBytes {
     }
 
     /// A deep copy of the value at `src`.
-    fn copy_of(src: *const u8, shape: &'static HeapShape) -> Self {
+    ///
+    /// # Safety
+    /// `src` points at a live value of `shape`, `shape.size` bytes long.
+    pub unsafe fn copy_of(src: *const u8, shape: &'static HeapShape) -> Self {
         let mut out = HeapBytes::new(shape.size, Some(shape));
         let mut prev = HEADER;
         // Plain bytes between heap slots, then each heap value cloned.
         for &(off, kind) in &shape.fields {
-            // SAFETY: `src` is a live value of `shape`, `size` bytes long.
+            // SAFETY: the caller's contract.
             unsafe {
                 std::ptr::copy_nonoverlapping(src.add(prev), out.bytes.as_mut_ptr().add(prev), off - prev);
                 out.set(off, read(src, off, kind));
@@ -493,7 +511,8 @@ impl HeapBytes {
     pub fn duplicate(&self) -> HeapBytes {
         match self.shape {
             None => HeapBytes::plain(self.bytes.clone()),
-            Some(s) => HeapBytes::copy_of(self.bytes.as_ptr(), s),
+            // SAFETY: these bytes are a live value of `s`.
+            Some(s) => unsafe { HeapBytes::copy_of(self.bytes.as_ptr(), s) },
         }
     }
 

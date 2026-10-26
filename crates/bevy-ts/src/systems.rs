@@ -305,7 +305,9 @@ pub struct QueryParam {
 pub enum RunParam {
     Query(Box<QueryParam>),
     /// `optional`: `Option<Res<R>>`, absent gives no frame instead of failing the run.
-    Res { name: String, id: ComponentId, size: usize, write: bool, optional: bool },
+    /// `heap`: the resource has a heap field, so even a read-only frame carries its changed tick,
+    /// which keys JS's cache of its heap reads.
+    Res { name: String, id: ComponentId, size: usize, write: bool, heap: bool, optional: bool },
     /// A reflect-tier Rust resource: its frame is the resource's changed-tick cell.
     ReflectRes { name: String, id: ComponentId, target: u32, write: bool, optional: bool },
     Time(Clock),
@@ -477,12 +479,13 @@ impl TsSystems {
     }
 }
 
-/// Resolves a TS component name to its id and size in the generation being applied.
-pub type TsLookup<'a> = dyn Fn(&str) -> Option<(ComponentId, usize)> + 'a;
+/// Resolves a TS component name to its id, its size and whether it has a heap field, in the
+/// generation being applied.
+pub type TsLookup<'a> = dyn Fn(&str) -> Option<(ComponentId, usize, bool)> + 'a;
 
 /// Encodes field values as a TS component or resource of the generation being applied: its
-/// bytes and layout, or `None` when the name is no TS type.
-pub type TsEncode<'a> = dyn Fn(&str, &serde_json::Map<String, serde_json::Value>) -> Option<Result<(Vec<u8>, ComponentLayout), String>> + 'a;
+/// value (owning its heap fields) and layout, or `None` when the name is no TS type.
+pub type TsEncode<'a> = dyn Fn(&str, &serde_json::Map<String, serde_json::Value>) -> Option<Result<(crate::heap::HeapBytes, ComponentLayout), String>> + 'a;
 
 /// Finds a registered Rust component by type path, or by its short name when only one type has
 /// it: `None` when none has it, and an error naming their paths when several share it.
@@ -517,7 +520,7 @@ fn is_sparse(world: &World, id: ComponentId) -> bool {
 /// registered component).
 fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLayouts, data: bool) -> Result<(ComponentId, usize), String> {
     match r.source {
-        ComponentSource::Ts => ts(&r.name).ok_or_else(|| format!("no component named {}", r.name)),
+        ComponentSource::Ts => ts(&r.name).map(|(id, size, _)| (id, size)).ok_or_else(|| format!("no component named {}", r.name)),
         ComponentSource::Rust => {
             // A sparse-set column is not in table order, so it cannot be a zero-copy column.
             // Checked after the resource check: a resource is a sparse-set component too.
@@ -555,7 +558,8 @@ fn resolve_ref(world: &World, r: &ComponentRef, ts: &TsLookup, native: &NativeLa
 
 /// Resolves a `Res`/`ResMut` name other than `Time`: a TS resource first, then a layout-tier
 /// Rust resource by type path or by short name when only one type has it.
-fn resolve_res(world: &mut World, name: &str, write: bool, ts: &TsLookup) -> Result<(ComponentId, usize), String> {
+/// A resource's id, size and whether it has a heap field.
+fn resolve_res(world: &mut World, name: &str, write: bool, ts: &TsLookup) -> Result<(ComponentId, usize, bool), String> {
     if let Some(hit) = ts(name) {
         return Ok(hit);
     }
@@ -578,7 +582,7 @@ fn resolve_res(world: &mut World, name: &str, write: bool, ts: &TsLookup) -> Res
         if write && !n.writable {
             return Err(format!("{name} is immutable; take Res<{name}>"));
         }
-        return Ok((n.id, n.layout.size));
+        return Ok((n.id, n.layout.size, false));
     }
     if let Some(paths) = native.ambiguous(name) {
         return Err(format!("{name} names more than one Rust type ({}); use its type path", paths.join(", ")));
@@ -858,10 +862,10 @@ fn adopt_targeted(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSys
         }
         let generation = systems.generation;
         let built = world.resource_scope(|world, ts: Mut<crate::components::TsComponents>| {
-            let lookup = |name: &str| ts.live(name).map(|c| (c.id, c.layout.size));
+            let lookup = |name: &str| ts.live(name).map(|c| (c.id, c.layout.size, c.layout.has_heap()));
             let encode = |name: &str, values: &serde_json::Map<String, serde_json::Value>| {
                 let c = ts.live(name)?;
-                Some(ts.encode(name, values).map_err(|e| e.to_string()).and_then(|b| b.into_plain()).map(|b| (b, c.layout.clone())))
+                Some(ts.encode(name, values).map_err(|e| e.to_string()).map(|b| (b, c.layout.clone())))
             };
             build_targeted(world, generation, index as usize, &decl, &lookup, &encode, &mut systems.natives)
         });
@@ -1099,13 +1103,13 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 } else {
                     // A spelling an export claims (`ResMut<Time<Virtual>>`) never gets here: the
                     // reader reads it as that export's port param, and refuses it under `Option`.
-                    let (id, size) = resolve_res(world, resource, write, ts).map_err(|m| err(format!("{kind}<{resource}>: {m}")))?;
-                    RunParam::Res { name: resource.clone(), id, size, write, optional: *optional }
+                    let (id, size, heap) = resolve_res(world, resource, write, ts).map_err(|m| err(format!("{kind}<{resource}>: {m}")))?;
+                    RunParam::Res { name: resource.clone(), id, size, write, heap, optional: *optional }
                 }
             }
             ParamDecl::Local { fields } => {
                 if let Some(f) = fields.iter().find(|f| f.ty.is_heap()) {
-                    return Err(err(format!("Local field {}: {}", f.name, crate::heap::COMPONENTS_ONLY)));
+                    return Err(err(format!("Local field {}: {}", f.name, crate::heap::REFUSED)));
                 }
                 locals.push(fields.clone());
                 RunParam::Local(locals.len() - 1)
@@ -1477,28 +1481,37 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
         adopt_targeted(world, rt, systems);
         let Some(p) = world.get_resource_mut::<ObserverQueue>().and_then(|mut q| q.0.pop_front()) else { return };
         let targets: Vec<Option<Entity>> = if p.path.is_empty() { vec![None] } else { p.path.iter().copied().map(Some).collect() };
-        'path: for (hop, target) in targets.into_iter().enumerate() {
-            let mut stop = false;
-            let bits = (target.map_or(u64::MAX, Entity::to_bits), p.original.map_or(u64::MAX, Entity::to_bits));
-            let bytes = hop.checked_sub(1).and_then(|h| p.hops.get(h)).unwrap_or(&p.bytes);
-            // Bevy's order: global observers, then the target's own.
-            for o in systems.observers.iter_mut() {
-                if o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger) {
-                    stop |= run_one(world, rt, o, Some((bytes, bits)));
+        // Every observer and hop reads its heap fields at the observer place; `p` holds the value
+        // until the last of them has run, and drops it once, here.
+        let component = match p.trigger {
+            crate::observers::Trigger::Lifecycle(_, id) => Some(id),
+            _ => None,
+        };
+        let value = crate::places::ObserverValue { ptr: p.bytes.bytes().as_ptr(), component };
+        crate::places::with_observer(world, Some(value), |world| {
+            'path: for (hop, target) in targets.into_iter().enumerate() {
+                let mut stop = false;
+                let bits = (target.map_or(u64::MAX, Entity::to_bits), p.original.map_or(u64::MAX, Entity::to_bits));
+                let bytes = hop.checked_sub(1).and_then(|h| p.hops.get(h)).map_or(p.bytes.bytes(), Vec::as_slice);
+                // Bevy's order: global observers, then the target's own.
+                for o in systems.observers.iter_mut() {
+                    if o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger) {
+                        stop |= run_one(world, rt, o, Some((bytes, bits)));
+                    }
+                }
+                // Attachments as they stood when the trigger was queued.
+                for name in p.attached.get(hop).into_iter().flatten() {
+                    if let Some(o) = systems.targeted.get_mut(name)
+                        && o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger)
+                    {
+                        stop |= run_one(world, rt, o, Some((bytes, bits)));
+                    }
+                }
+                if stop {
+                    break 'path;
                 }
             }
-            // Attachments as they stood when the trigger was queued.
-            for name in p.attached.get(hop).into_iter().flatten() {
-                if let Some(o) = systems.targeted.get_mut(name)
-                    && o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger)
-                {
-                    stop |= run_one(world, rt, o, Some((bytes, bits)));
-                }
-            }
-            if stop {
-                break 'path;
-            }
-        }
+        });
     }
     warn!(target: "bevy_ts", "observer queue still busy after 10,000 events; the rest wait for the next stage");
 }
@@ -1674,7 +1687,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                     skip |= !ok;
                     ParamFrame::Query { tables: out, last_run: last_run.get() }
                 }
-                RunParam::Res { name, id, size, write, optional } => match world.resource_entities().get(*id).and_then(|e| Some((e, world.entities().get_spawned(e).ok()?))) {
+                RunParam::Res { name, id, size, write, heap, optional } => match world.resource_entities().get(*id).and_then(|e| Some((e, world.entities().get_spawned(e).ok()?))) {
                     // A Rust resource is stored in a sparse set (`#[derive(Resource)]`); a TS one in a table.
                     Some((e, _)) if world.storages().sparse_sets.get(*id).is_some() => {
                         let set = world.storages().sparse_sets.get(*id).expect("sparse set");
@@ -1692,7 +1705,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
                         // SAFETY: as for query columns; `row < len`.
                         let base = unsafe { col.get_data_slice::<u8>(len) }.as_ptr() as *mut u8;
                         let data = unsafe { base.add(row * *size) };
-                        let ticks = write.then(|| unsafe { (table.get_changed_ticks_slice_for(*id).unwrap().as_ptr() as *mut u32).add(row) });
+                        let ticks = (*write || *heap).then(|| unsafe { (table.get_changed_ticks_slice_for(*id).unwrap().as_ptr() as *mut u32).add(row) });
                         if *write {
                             written.push((loc.table_id, *id));
                         }

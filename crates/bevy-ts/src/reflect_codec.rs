@@ -20,10 +20,12 @@
 //! `{ secs, nanos }`); the binary form only carries complete values.
 //!
 //! A TS component's heap field (`label: string`, `crate::heap`) is a target too: no reflection,
-//! its op built from its `FieldType`, read from and written to the column's slot. Its writes cross
-//! as the codec's bytes, not JSON: both ends are bevy-ts's.
+//! its op built from its `FieldType`, read from and written to its slot at the call's place
+//! (`places.rs`: an entity, a resource, or the running observer's value). Its writes cross as the
+//! codec's bytes, not JSON: both ends are bevy-ts's.
 
 use crate::manifest::{ResolvedHole, ResolvedReflect};
+use crate::places::Place;
 use crate::reflect_value;
 use bevy::ecs::change_detection::{DetectChangesMut, Tick};
 use bevy::ecs::component::ComponentId;
@@ -499,6 +501,9 @@ pub struct Target {
 pub struct ReflectTargets {
     pub targets: Vec<Target>,
     by_key: HashMap<(ComponentId, Option<String>), u32>,
+    /// Heap targets by their layout's owner name, field, offset and kind: a reload that moves a
+    /// field gets a new target.
+    by_heap: HashMap<(String, String, usize, crate::heap::HeapKind), u32>,
 }
 
 impl ReflectTargets {
@@ -550,13 +555,13 @@ impl ReflectTargets {
         Ok(self.push(key, target))
     }
 
-    /// The target of a TS component's heap field.
+    /// The target of a heap field of the layout `name` owns (a TS component or resource).
     pub fn ts_heap(&mut self, component: ComponentId, name: &str, field: &crate::layout::FieldLayout) -> u32 {
-        let key = (component, Some(field.name.clone()));
-        if let Some(i) = self.by_key.get(&key) {
+        let kind = crate::heap::HeapKind::of(&field.ty).expect("a heap field");
+        let key = (name.to_string(), field.name.clone(), field.offset, kind);
+        if let Some(i) = self.by_heap.get(&key) {
             return *i;
         }
-        let kind = crate::heap::HeapKind::of(&field.ty).expect("a heap field");
         use crate::heap::{HeapKind, Item};
         let item = |i: Item| match i {
             Item::F32 => Node::Num { t: Num::F32 },
@@ -583,7 +588,10 @@ impl ReflectTargets {
             slot_type: TypeId::of::<()>(),
             heap: Some((field.offset, kind)),
         };
-        self.push(key, target)
+        let i = self.targets.len() as u32;
+        self.targets.push(target);
+        self.by_heap.insert(key, i);
+        i
     }
 
     fn push(&mut self, key: (ComponentId, Option<String>), t: Target) -> u32 {
@@ -787,9 +795,10 @@ pub const READ_JSON: u32 = 0xFFFF_0002;
 /// Reflected host calls made so far (reads and writes), for tests and the bench.
 pub static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// `reflect_read(entity, target)` and `reflect_write(entity, target, len)`: arguments as `f64`
-/// slots, the bytes in slice 0. A read answers its byte length in slot 0; when the slice was too
-/// short nothing is copied and JS calls again with one at least that long.
+/// `reflect_read(place, target)` and `reflect_write(place, target, len)`: arguments as `f64`
+/// slots in the place layout (`places.rs`: slot 0 and 1 the place, slot 2 the target, then the
+/// call's own), the bytes in slice 0. A read answers its byte length in slot 0; when the slice was
+/// too short nothing is copied and JS calls again with one at least that long.
 pub fn call(cell: UnsafeWorldCell, tick: Tick, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
     thread_local! {
         /// Bytes a read encodes into before they are copied to JS, kept between calls.
@@ -798,33 +807,65 @@ pub fn call(cell: UnsafeWorldCell, tick: Tick, id: u32, args: &[u8], ret: &mut [
     SCRATCH.with_borrow_mut(|scratch| call_with(cell, tick, scratch, id, args, ret, slices))
 }
 
+/// The bytes of a value at a place that is no entity's: the running observer's value.
+fn value_at(world: &World, t: &Target, place: Place) -> Result<*const u8, String> {
+    match place {
+        Place::Observer => {
+            let v = world.get_resource::<crate::places::RunPlace>().and_then(|r| r.observer).ok_or_else(|| format!("{place}: no observer is running"))?;
+            if v.component != Some(t.component) {
+                return Err(format!("{place} is no {}", t.type_path));
+            }
+            Ok(v.ptr)
+        }
+        _ => Err(format!("{place} is not live")),
+    }
+}
+
 fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
     CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut r = crate::host::SlotReader::new(args);
-    let raw = r.slot()?;
+    let place = Place::decode(r.slot()?, r.slot()?)?;
     let index = r.slot()? as u32;
     // SAFETY: shared read of the resource that holds the targets; nothing writes it mid-run.
     let world = unsafe { cell.world() };
     let targets = world.get_resource::<ReflectTargets>().ok_or("no reflected targets")?;
     let t = targets.get(index).ok_or_else(|| format!("no reflected target {index}"))?;
-    // A negative entity is the target's resource, wherever it lives.
-    let entity = if raw < 0.0 {
-        world.resource_entities().get(t.component).ok_or_else(|| format!("resource {} does not exist", t.type_path))?
-    } else {
-        let bits = raw as u64;
-        Entity::try_from_bits(bits).ok_or_else(|| format!("{bits} is not an entity"))?
+    let entity = match place {
+        Place::Entity(e) => Some(e),
+        // The target's resource, wherever it lives.
+        Place::Resource => Some(world.resource_entities().get(t.component).ok_or_else(|| format!("resource {} does not exist", t.type_path))?),
+        _ => None,
     };
     let buf = slices.first_mut().ok_or("no buffer")?;
+    let answer = |scratch: &[u8], buf: &mut [u8], ret: &mut [u8]| {
+        if scratch.len() <= buf.len() {
+            buf[..scratch.len()].copy_from_slice(scratch);
+        }
+        let mut w = crate::host::SlotWriter::new(ret);
+        w.push(scratch.len() as f64);
+        w.finish()
+    };
+    let Some(entity) = entity else {
+        // A place that is no entity's holds heap values only, and reads them only: a message or
+        // an event is `&M` in Bevy, a lifecycle value is a copy.
+        let (offset, kind) = t.heap.ok_or_else(|| format!("{place}: {} is not read through reflection there", t.type_path))?;
+        return match id {
+            READ => {
+                let p = value_at(world, t, place)?;
+                scratch.clear();
+                // SAFETY: the place's value is a live value of the target's layout.
+                unsafe { crate::heap::put_codec_at(p, offset, kind, scratch) };
+                answer(scratch, buf, ret)
+            }
+            WRITE => Err(format!("{}.{}: read-only at {place}", t.type_path, t.hole.as_ref().map_or("", |h| h.0.as_str()))),
+            _ => Err(format!("no reflected host function {id} at {place}")),
+        };
+    };
     match id {
         READ => {
             scratch.clear();
             read(world, t, entity, scratch)?;
-            if scratch.len() <= buf.len() {
-                buf[..scratch.len()].copy_from_slice(scratch);
-            }
-            let mut w = crate::host::SlotWriter::new(ret);
-            w.push(scratch.len() as f64);
-            w.finish()
+            answer(scratch, buf, ret)
         }
         READ_JSON => {
             let registry = world.resource::<AppTypeRegistry>().read();
@@ -836,12 +877,7 @@ fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, 
                 Some(h) => reflect_value::read(&registry, field(v, h).ok_or("no such field")?)?,
             };
             *scratch = serde_json::to_vec(&json).map_err(|e| e.to_string())?;
-            if scratch.len() <= buf.len() {
-                buf[..scratch.len()].copy_from_slice(scratch);
-            }
-            let mut w = crate::host::SlotWriter::new(ret);
-            w.push(scratch.len() as f64);
-            w.finish()
+            answer(scratch, buf, ret)
         }
         WRITE if t.heap.is_some() => {
             let len = r.slot()? as usize;

@@ -3193,6 +3193,7 @@ function makeOn(cls) {
     },
   });
   let value;
+  const onTick = new Uint32Array(1);
   Object.defineProperty(o, "event", {
     get() {
       if (rust || !cls || value !== undefined) return value;
@@ -3213,6 +3214,10 @@ function makeOn(cls) {
       o[ON_KEYS] = keys;
     } else if (cls) {
       bindRow(o, cls, frame[0], null, 0);
+      // Its heap fields read at the observer place, cached for this bind only.
+      o[PLACE] = PLACE_OBSERVER;
+      onTick[0] = ++ON_BINDS[0];
+      o[TICKS] = onTick;
       value = undefined;
     }
     o.entity = frame[1] === 18446744073709552000 ? undefined : frame[1];
@@ -3519,6 +3524,16 @@ HOST.resultBytes = new Uint8Array(HOST.result.buffer);
 // `reflect_value::read`. Writes cross as JSON and go through Rust's `reflect_value::write`.
 
 const REFLECT_READ = 0xffff0000, REFLECT_WRITE = 0xffff0001;
+/**
+ * Every reflected and heap host call names a place in slots 0 and 1 (`places.rs`, the one place
+ * model): an entity's bits, or one of these kinds and its id. The target is slot 2, the call's own
+ * slots follow.
+ */
+const PLACE_RESOURCE = -1, PLACE_OBSERVER = -4;
+/** An accessor bound to a place that is no entity's: its kind. */
+const PLACE = Symbol("place");
+/** Binds of `On` values so far: a lifecycle value's heap reads are cached for one bind. */
+const ON_BINDS = new Uint32Array(1);
 /** Entries kept per target before its cache is cleared (despawned rows are never looked up again). */
 const REFLECT_CACHE_MAX = 1 << 16;
 const REFLECT = {
@@ -3709,13 +3724,14 @@ function reflectCommit(res) {
   }
 }
 
-/** One host call: target `t` of `entity` (-1 for a resource) decoded. */
-function reflectFetch(t, entity) {
+/** One host call: target `t` at a place (`place`, `id`: `places.rs`'s slots 0 and 1) decoded. */
+function reflectFetch(t, place, id = 0) {
   if (!core) throw new Error("reflected values need the engine");
   const H = HOST;
   for (;;) {
-    H.slots[0] = entity;
-    H.slots[1] = t;
+    H.slots[0] = place;
+    H.slots[1] = id;
+    H.slots[2] = t;
     REFLECT.calls++;
     const n = core.ops.op_bevyts_host(REFLECT_READ, H.slotBytes, H.resultBytes, REFLECT.buf, H.EMPTY, H.EMPTY, H.EMPTY);
     if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
@@ -3731,7 +3747,8 @@ export function __reflectJson(t, entity) {
   const H = HOST;
   for (;;) {
     H.slots[0] = entity;
-    H.slots[1] = t;
+    H.slots[1] = 0;
+    H.slots[2] = t;
     const n = core.ops.op_bevyts_host(0xffff0002, H.slotBytes, H.resultBytes, REFLECT.buf, H.EMPTY, H.EMPTY, H.EMPTY);
     if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
     const len = H.result[0];
@@ -3748,12 +3765,13 @@ export function __reflectTarget(C, hole) {
   return res.holes[C.componentName].find((h) => h.name === hole).target;
 }
 
-/** Target `t`'s value on `entity` whose changed tick is `tick`: cached, or fetched. */
-function reflectGet(t, entity, tick) {
+/** Target `t`'s value at a place whose changed tick is `tick`: cached, or fetched. The cache is
+ * keyed by `entity`: the place's slot 0. */
+function reflectGet(t, entity, tick, id = 0) {
   const m = REFLECT.caches[t];
   const c = m.get(entity);
   if (c !== undefined && c.t === tick) return c.v;
-  const v = reflectFetch(t, entity);
+  const v = reflectFetch(t, entity, id);
   if (c !== undefined) {
     c.t = tick;
     c.v = v;
@@ -3775,8 +3793,9 @@ function reflectSet(t, entity, value) {
   let bytes = encoder.encode(text);
   const H = HOST;
   H.slots[0] = entity;
-  H.slots[1] = t;
-  H.slots[2] = bytes.length;
+  H.slots[1] = 0;
+  H.slots[2] = t;
+  H.slots[3] = bytes.length;
   REFLECT.calls++;
   const n = core.ops.op_bevyts_host(REFLECT_WRITE, H.slotBytes, H.resultBytes, bytes, H.EMPTY, H.EMPTY, H.EMPTY);
   if (n < 0) throw new Error(core.ops.op_bevyts_host_error());
@@ -3836,10 +3855,13 @@ function reflectFlush() {
   if (failed !== undefined) throw failed;
 }
 
-/** A row's entity from an accessor's `e` view, or -1 for a resource row. */
+/**
+ * An accessor's place, as slot 0 of a host call names it (`places.rs`): its row's entity from its
+ * `e` view, else the place kind it was bound to (`PLACE`), else a resource (-1).
+ */
 function rowEntity(a) {
   const e = a[ENTS];
-  return e ? e[a[ROW] * 2] + e[a[ROW] * 2 + 1] * 4294967296 : -1;
+  return e ? e[a[ROW] * 2] + e[a[ROW] * 2 + 1] * 4294967296 : a[PLACE] ?? PLACE_RESOURCE;
 }
 
 /**
@@ -3919,8 +3941,9 @@ function heapSet(t, entity, encode, value, path) {
   const bytes = w.bytes();
   const H = HOST;
   H.slots[0] = entity;
-  H.slots[1] = t;
-  H.slots[2] = bytes.length;
+  H.slots[1] = 0;
+  H.slots[2] = t;
+  H.slots[3] = bytes.length;
   REFLECT.calls++;
   const n = core.ops.op_bevyts_host(REFLECT_WRITE, H.slotBytes, H.resultBytes, bytes, H.EMPTY, H.EMPTY, H.EMPTY);
   if (n < 0) throw new Error(core.ops.op_bevyts_host_error());

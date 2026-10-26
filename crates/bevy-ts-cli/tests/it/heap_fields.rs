@@ -1,6 +1,7 @@
-//! Heap fields in TS systems (openspec ts-component-heap-fields), through V8: a `string` or `T[]`
-//! field read through the host and cached by the row's changed tick, assigned whole on a `Mut`
-//! row, and refused outside components.
+//! Heap fields in TS systems (openspecs ts-component-heap-fields, ts-heap-fields-2), through V8: a
+//! `string` or `T[]` field of a component or resource read through the host at its place and
+//! cached by its changed tick, assigned whole on a `Mut` row or `ResMut`, read from a lifecycle
+//! value's copy, and refused where heap values are not held yet.
 
 use crate::common;
 
@@ -137,15 +138,55 @@ app.addSystems(Startup, make);
 }
 
 #[test]
+fn a_resmut_write_is_seen_by_res_and_an_unchanged_res_makes_no_host_call() {
+    let body = r#"
+import { Resource } from "bevy-ts";
+import type { Res, ResMut } from "bevy-ts";
+export class Title extends Resource { text: string = "x"; n: u32 = 0 }
+export function rename(t: ResMut<Title>) { if (t.text === "x") t.text = "hello"; }
+export function show(t: Res<Title>) { console.log("title " + t.text + " " + t.text.length); }
+app.insertResource(Title.of({ text: "x" })).addSystems(Update, chain(rename, show));
+"#;
+    let (_, mut app) = load("heap-resource", &format!("{HEAD}{body}"));
+    updates(&mut app, 2);
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l == "title hello 5"), "{m:?}");
+    // `show` reads twice a frame and `rename` once; once nothing writes it, none is a host call.
+    let quiet = (0..5).any(|_| {
+        let before = CALLS.load(Ordering::Relaxed);
+        app.update();
+        CALLS.load(Ordering::Relaxed) == before
+    });
+    assert!(quiet, "an unchanged resource's string was fetched again");
+}
+
+#[test]
+fn a_despawn_observer_reads_the_label_as_it_was() {
+    let body = r#"
+import type { Commands, Despawn, Entity, On, Remove } from "bevy-ts";
+export function gone(on: On<Despawn<Tag>>) { console.log("gone " + on.label + " " + JSON.stringify(on.scores) + " " + on.event.label); }
+export function removed(on: On<Remove<Tag>>) { console.log("removed " + on.label); }
+export function kill(q: Query<[Entity, Tag]>, commands: Commands) { q.each((e, t) => { if (t.label === "door") commands.entity(e).despawn(); }); }
+app.addObserver(gone).addObserver(removed).addSystems(Update, kill);
+"#;
+    let (_, mut app) = load("heap-despawn", &format!("{HEAD}{body}"));
+    spawn_ts(&mut app, "game::Tag", json!({ "label": "door", "scores": [7, 8] }), ());
+    updates(&mut app, 3);
+    let m = messages(&app);
+    assert!(m.iter().any(|l| l == "gone door [7,8] door"), "{m:?}");
+    assert!(m.iter().any(|l| l == "removed door"), "{m:?}");
+}
+
+#[test]
 fn heap_fields_outside_components_and_unsupported_types_fail_with_file_and_line() {
     let errors = load_errors(
-        "heap-resource",
-        r#"import { Resource } from "bevy-ts";
-export class Title extends Resource { text: string = "x" }
+        "heap-message",
+        r#"import { Message } from "bevy-ts";
+export class Said extends Message { text: string = "x" }
 "#,
     );
     let e = errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join("\n");
-    assert!(e.contains("game.ts:2:") && e.contains("Title field text") && e.contains("allowed on components only"), "{e}");
+    assert!(e.contains("game.ts:2:") && e.contains("Said field text") && e.contains("allowed on components and resources only"), "{e}");
 
     let errors = load_errors(
         "heap-list-of",

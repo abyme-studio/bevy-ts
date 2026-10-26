@@ -68,6 +68,19 @@ fn resource_equals_runs_from_the_frame_the_value_matches() {
 }
 
 #[test]
+fn resource_equals_compares_a_string_by_value() {
+    let body = r#"export class Title extends Resource { static path = "game::Title"; text: string = "a" }
+export function win() { console.log('win'); }
+export function step(t: ResMut<Title>) { t.text = t.text === "a" ? "door" : "z"; }
+app.insertResource(Title.of({ text: "a" })).addSystems(Update, step, systems(win).after(step).runIf(resourceEquals(Title.of({ text: "door" }))));
+"#;
+    let (_, mut app) = load("cond-equals-string", &src(body));
+    updates(&mut app, 3);
+    // "door", "z", "z": equal on the first frame only, though each string is a new allocation.
+    assert_eq!(said(&mut app), ["win"]);
+}
+
+#[test]
 fn any_component_removed_runs_once_per_removal() {
     let (dir, mut app) = load("cond-removed", &src(""));
     let es: Vec<Entity> = (0..3).map(|_| spawn_ts(&mut app, "game::Enemy", json!({}), ())).collect();

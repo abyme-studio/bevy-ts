@@ -323,7 +323,7 @@ app.addSystems(Startup, spawn, throws);
 #[test]
 fn load_errors_name_what_is_wrong() {
     let cases: &[(&str, &str, &str)] = &[
-        ("string", "import { Resource } from \"bevy-ts\";\nexport class Title extends Resource { text: string = \"x\" }\n", "allowed on components only"),
+        ("string", "import { Message } from \"bevy-ts\";\nexport class Title extends Message { text: string = \"x\" }\n", "allowed on components and resources only"),
         // A reflect-tier Rust component (`GlobalTransform`) is query data since reflect-coverage stage 3.
         (
             "cycle",

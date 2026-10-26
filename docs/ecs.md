@@ -79,17 +79,19 @@ matched.
 
 ## Heap fields: `string` and `T[]`
 
-A TS component may hold a string or a list, as a Bevy component holds a `String` or a `Vec<T>`:
+A TS component or resource may hold a string or a list, as a Bevy component or resource holds a
+`String` or a `Vec<T>`:
 
 ```ts
 export class Tag extends Component { label: string = "crate"; scores: u32[] = []; declare note: string }
+export class Title extends Resource { text: string = "untitled" }
 ```
 
 - A list's items are a number kind (`f32`, `f64`, `i8`..`u32`), `bool` or `string`. Vectors,
   `Entity`, objects and nested lists fail the load with the file and line. A `declare`d field
   starts as `""` or `[]`.
-- Components only: a heap field in a TS resource, a message, an event or a `Local` fails the load
-  ("heap fields (string, T[]) are allowed on components only").
+- Components and resources only, for now: a heap field in a message, an event or a `Local` fails
+  the load ("heap fields (string, T[]) are allowed on components and resources only").
 - The value lives in the component's own bytes, Rust's `String` or `Vec<T>`, so a Rust system reads
   it as Bevy would. A component with one starts with an 8-byte header Rust owns (the layout's
   offsets skip it), registers a drop fn and deep-copies on `cloneAndSpawn`. A component with no
@@ -104,8 +106,20 @@ export class Tag extends Component { label: string = "crate"; scores: u32[] = []
   command leaves out takes its default, built in Rust for each entity.
 - `q.tables` gives no raw arrays for a component with a heap field; read it on `q.each` rows.
   Its plain fields stay columns on those rows.
-- An observer's lifecycle value (`Remove`, `Despawn`, `Discard`) reads a heap field live, so the
-  read throws once the component is gone; copy what you need while it is there.
+- A resource's heap field reads and writes as a component's: `Res<Title>` reads `title.text`,
+  cached by the resource's changed tick, `ResMut<Title>` assigns it whole. `resourceEquals`
+  compares it by value.
+- An observer's lifecycle value (`On<Remove<Tag>>`, `Despawn`, `Discard`) is a copy of the value
+  taken when the event fired, heap fields included, so `on.label` reads what the component held
+  then, after it is gone. Bevy runs `On<Remove>` while the component is still on the entity; a TS
+  observer runs at the next stage boundary, so the copy is the closest match. The copy is freed
+  once, after the event's last observer. This is a behaviour change from ts-component-heap-fields,
+  where the read went to the wrong place (a resource) and always threw.
+
+Every heap read and write names a place: the row's entity, the resource, or the running
+observer's value. `crates/bevy-ts/src/places.rs` is the one owner of that model (the host call's
+slot layout and the `RunPlace` the runner sets per run); `reflect_codec::call` is its one reader.
+A place that is not live (no observer running) fails the call naming it.
 
 What a row costs, in ns, 1,000 rows, against a column (`bench/ts-heap-fields`, release, medians of
 8 rounds, `results/runs.txt`):
@@ -119,6 +133,12 @@ What a row costs, in ns, 1,000 rows, against a column (`bench/ts-heap-fields`, r
 
 A plain field of a heap component still reads as a column (8 ns). A component with no heap field
 matches main: column read 8.5 on main against 8 here, despawn 22 against 21.
+
+Resources and lifecycle values (same bench, medians of 8 rounds against main at 2ba1c6ad, load
+about 45): a plain `Res` read is 8 ns on main and 8.5 here, a plain despawn 20 against 21, within
+the bench's 1 ns step. A heap resource's string read while unchanged is 11 ns (cached by the
+resource's changed tick). An `On<Remove>` observer reading the removed value's string costs 267 ns
+an event over one that reads nothing: the trigger-time copy, its free and one host call.
 
 Saves, TSX props, `.bsn` levels (strings; a list in a level is refused) and the protocol carry heap
 fields as JSON strings and arrays (docs/saves.md, docs/reflection.md).

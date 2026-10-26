@@ -391,13 +391,8 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
                 errors.push(ScriptError::at(format!("{}.{}: {e}", p.name, f.name), p.location.clone()));
             }
             if f.ty.is_heap() {
-                errors.push(ScriptError::at(format!("{}.{}: {}", p.name, f.name, crate::heap::COMPONENTS_ONLY), p.location.clone()));
+                errors.push(ScriptError::at(format!("{}.{}: {}", p.name, f.name, crate::heap::REFUSED), p.location.clone()));
             }
-        }
-    }
-    for r in &manifest.resources {
-        for f in r.fields.iter().filter(|f| f.ty.is_heap()) {
-            errors.push(ScriptError::at(format!("{}.{}: {}", r.name, f.name, crate::heap::COMPONENTS_ONLY), r.location.clone()));
         }
     }
     for st in &manifest.states {
@@ -472,10 +467,10 @@ fn load_and_apply(world: &mut World, rt: &mut ScriptRuntime, generation: &Genera
         return fail(rt, required_errors);
     }
     let built = {
-        let lookup = |name: &str| pending.lookup(name).map(|(id, l)| (id, l.size));
+        let lookup = |name: &str| pending.lookup(name).map(|(id, l)| (id, l.size, l.has_heap()));
         let encode = |name: &str, values: &serde_json::Map<String, serde_json::Value>| {
             let (_, layout) = pending.lookup(name)?;
-            Some(pending.encode(name, values).map_err(|e| e.to_string()).and_then(|b| b.into_plain()).map(|b| (b, layout.clone())))
+            Some(pending.encode(name, values).map_err(|e| e.to_string()).map(|b| (b, layout.clone())))
         };
         systems::build(world, number, &manifest.systems, &manifest.targeted, &manifest.groups, &lookup, &encode)
     };

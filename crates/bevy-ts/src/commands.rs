@@ -764,7 +764,7 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                 let attached = crate::observers::attached_path(world, &path);
                 world.get_resource_or_init::<crate::observers::ObserverQueue>().0.push_back(crate::observers::Pending {
                     trigger: crate::observers::Trigger::Event(index as usize),
-                    bytes,
+                    bytes: crate::heap::HeapBytes::plain(bytes),
                     hops: vec![],
                     original: path.first().copied(),
                     attached,

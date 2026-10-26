@@ -94,7 +94,9 @@ A `string` or `T[]` field SHALL be allowed, with the same types, defaults and st
 - **THEN** both observers read `["fire"]`, and the list is freed once after the last one has run
 
 ### Requirement: Lifecycle values carry a copy of the component
-For a component with a heap field, the value an `On<Remove<C>>`, `On<Despawn<C>>` or `On<Discard<C>>` observer gets SHALL be a copy taken when the event fires, owning its own heap values, so its heap fields read as they were then, even once the component or entity is gone. A component with no heap field SHALL keep today's byte copy.
+For a component with a heap field, the value an `On<Remove<C>>`, `On<Despawn<C>>` or `On<Discard<C>>` observer gets SHALL be a copy taken when the event fires, owning its own heap values, so its heap fields read as they were then, even once the component or entity is gone. Its heap fields SHALL be read at the observer place, never as a resource. A component with no heap field SHALL keep today's byte copy.
+
+This is a behaviour change: under ts-component-heap-fields such a read was routed as a resource read (`reflect_codec.rs`, a negative entity) and always threw.
 
 #### Scenario: A name read after despawn
 - **WHEN** an entity with `Tag { label: "door" }` is despawned and an observer on `On<Despawn<Tag>>` reads `label`

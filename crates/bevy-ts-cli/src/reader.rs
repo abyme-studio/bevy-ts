@@ -895,9 +895,9 @@ impl Reader<'_> {
                     errors.push((f.span, format!("field {} of {} needs a type (f32, u32, bool, Entity, Vec3, Quat, a string-literal union, ...)", f.name, c.name)));
                     continue;
                 };
-                // A component's fields may be strings: a TS component's are heap fields (Rust's
-                // `String`), a reflect-tier Rust component's cross as JSON (native-components).
-                match self.field_ty(t, scope, matches!(kind, "component" | "sceneComponent" | "reflectComponent"), 0) {
+                // A component's or resource's fields may be strings: a TS one's are heap fields
+                // (Rust's `String`), a reflect-tier Rust component's cross as JSON (native-components).
+                match self.field_ty(t, scope, matches!(kind, "component" | "sceneComponent" | "reflectComponent" | "resource"), 0) {
                     Ok(ty) if matches!(ty["kind"].as_str(), Some("timer" | "stopwatch")) && f.init && f.default.is_none() => {
                         errors.push((f.span, format!("{} field {}: a {} field's initialiser is Timer.fromSeconds(s, mode), Timer.new(s, mode) or Stopwatch.new()", c.name, f.name, ty["kind"].as_str().unwrap_or(""))));
                     }
@@ -986,7 +986,7 @@ impl Reader<'_> {
     }
 
     /// A field type: `f32`, `bool`, `Vec3`, `Entity`, a string-literal union, or an alias of one.
-    /// `string` only where `strings` (components and scene props).
+    /// `string` only where `strings` (components, resources and scene props).
     fn field_ty(&mut self, t: &Ty, scope: &Scope, strings: bool, depth: u32) -> Result<Value, (Span, String)> {
         const NAMED: &[(&str, &str)] = &[
             ("f32", "f32"), ("f64", "f64"), ("i8", "i8"), ("u8", "u8"), ("i16", "i16"), ("u16", "u16"), ("i32", "i32"), ("u32", "u32"),
@@ -1004,8 +1004,8 @@ impl Reader<'_> {
             Ty::Strings(v, _) => Ok(json!({ "kind": "enum", "variants": v })),
             Ty::Keyword("boolean", _) => Ok(json!({ "kind": "bool" })),
             Ty::Keyword("string", _) if strings => Ok(json!({ "kind": "string" })),
-            Ty::Keyword("string", span) => Err((*span, "heap fields (string, T[]) are allowed on components only".into())),
-            // `T[]`: a list of numbers, bool or string, on components only.
+            Ty::Keyword("string", span) => Err((*span, "heap fields (string, T[]) are allowed on components and resources only".into())),
+            // `T[]`: a list of numbers, bool or string, on components and resources only.
             Ty::Array(of, span) if strings => {
                 let item = self.field_ty(of, scope, true, depth + 1)?;
                 match item["kind"].as_str() {
@@ -1013,7 +1013,7 @@ impl Reader<'_> {
                     _ => Err((*span, "a list holds numbers (f32, f64, i8..u32), bool or string".into())),
                 }
             }
-            Ty::Array(_, span) => Err((*span, "heap fields (string, T[]) are allowed on components only".into())),
+            Ty::Array(_, span) => Err((*span, "heap fields (string, T[]) are allowed on components and resources only".into())),
             Ty::Keyword(k, span) => Err(bad(*span, k)),
             Ty::Ref { name, args, span } if args.is_empty() => {
                 if let Some((t, s)) = scope.subst.get(name) {
@@ -1780,7 +1780,7 @@ export function wrong(p: Option<Query<[Pos]>>) {}
 
     #[test]
     fn class_fields_props_and_their_errors() {
-        let src = r#"import { Component, Resource, SceneComponent, EntityEvent, type f32, type u8, type Entity } from "bevy-ts";
+        let src = r#"import { Component, Message, Resource, SceneComponent, EntityEvent, type f32, type u8, type Entity } from "bevy-ts";
 type Team = "red" | "blue";
 interface Props { label: string; size?: f32; team?: Team }
 export class Badge extends Component { team: Team = "red"; declare owner: Entity; on: boolean = true }
@@ -1788,7 +1788,7 @@ export class Sign extends SceneComponent {
   height: f32 = 1;
   static scene({ label, size = 2, team = pick() }: Props) { return null; }
 }
-export class Bad extends Resource { name: string = "x" }
+export class Bad extends Message { name: string = "x" }
 export class Tag extends Component { label: string = "crate"; declare note: string; scores: u8[] = [1, 2]; names: string[] = ["a"] }
 export class Bare extends Component { hp = 3 }
 export class Clash extends SceneComponent { size: f32 = 1; static scene({ size = 1 }: { size?: f32 }) { return null; } }
@@ -1818,7 +1818,7 @@ class Local extends Component { x: f32 = vec3(1, 2).x }
         );
         let err = |c: &str| d[c]["error"].as_str().unwrap_or_default().to_string();
         assert!(err("Bad").starts_with("src/units/my-tank.ts:9:"), "{}", err("Bad"));
-        assert!(err("Bad").contains("Bad field name: heap fields (string, T[]) are allowed on components only"), "{}", err("Bad"));
+        assert!(err("Bad").contains("Bad field name: heap fields (string, T[]) are allowed on components and resources only"), "{}", err("Bad"));
         assert_eq!(
             d["Tag"]["fields"],
             json!([

@@ -1,6 +1,7 @@
-//! Heap fields on TS components (openspec ts-component-heap-fields): every path that builds,
-//! moves, clones or drops a `string` or `T[]` field frees each value once, counted by its shape's
-//! live values. On the fake backend: components are declared by a generation, written as commands.
+//! Heap fields on TS components and resources (openspecs ts-component-heap-fields,
+//! ts-heap-fields-2): every path that builds, moves, clones or drops a `string` or `T[]` field
+//! frees each value once, counted by its shape's live values. On the fake backend: components are
+//! declared by a generation, written as commands.
 
 use bevy::prelude::*;
 use bevy_ts::BevyTsPlugin;
@@ -11,8 +12,10 @@ use bevy_ts::fake::{FakeHandle, FakeProgram};
 use bevy_ts::generation::{self, ReloadStatus};
 use bevy_ts::heap::HeapShape;
 use bevy_ts::layout::FieldType;
-use bevy_ts::manifest::{ComponentDecl, FieldDecl, Manifest};
-use bevy_ts::{plugin_api, value};
+use bevy_ts::fake::FakeFn;
+use bevy_ts::manifest::{ComponentDecl, ComponentRef, ComponentSource, FieldDecl, Lifecycle, Manifest, ParamDecl, ResourceDecl, ScheduleDecl, Stage, SystemDecl};
+use bevy_ts::{places, plugin_api, reflect_codec, value};
+use std::sync::{Arc, Mutex};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -226,14 +229,86 @@ fn an_undeclared_component_still_frees_its_strings() {
 }
 
 #[test]
-fn heap_fields_are_refused_outside_components() {
+fn heap_fields_are_refused_on_messages() {
     let mut g = Game::new(Manifest::default());
     let bad = Manifest {
-        resources: vec![bevy_ts::manifest::ResourceDecl { name: "it::heap_fields::Title".into(), fields: vec![field("text", FieldType::Str, None)], insert: None, location: None }],
+        messages: vec![bevy_ts::manifest::PayloadDecl { name: "it::heap_fields::Said".into(), fields: vec![field("text", FieldType::Str, None)], entity: false, propagate: false, added: true, location: None }],
         ..Default::default()
     };
     g.fake.push(FakeProgram { manifest: bad, ..Default::default() });
     let r = generation::apply(g.world(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
     assert_ne!(r.status, ReloadStatus::Applied);
-    assert!(r.errors.iter().any(|e| e.message.contains("it::heap_fields::Title.text") && e.message.contains("allowed on components only")), "{:?}", r.errors);
+    assert!(r.errors.iter().any(|e| e.message.contains("it::heap_fields::Said.text") && e.message.contains("allowed on components and resources only")), "{:?}", r.errors);
+}
+
+/// `name { text: string = "x", n: f32 }`, inserted with `text: "hello"`.
+fn title(name: &str) -> Manifest {
+    let fields = vec![field("text", FieldType::Str, Some(json!("x"))), field("n", FieldType::F32, None)];
+    let insert = Some(json!({ "text": "hello" }).as_object().unwrap().clone());
+    Manifest { resources: vec![ResourceDecl { name: name.into(), fields, insert, location: None }], ..Default::default() }
+}
+
+#[test]
+fn a_resource_string_is_freed_once_on_restart_and_world_drop() {
+    let name = "it::heap_fields::Title";
+    let mut g = Game::new(title(name));
+    let shape = g.shape(name);
+    let value = |g: &Game| {
+        let id = g.app.world().resource::<TsComponents>().live(name).unwrap().id;
+        let e = g.app.world().resource_entities().get(id).unwrap();
+        g.read(e, name).unwrap()
+    };
+    assert_eq!(value(&g), json!({ "text": "hello", "n": 0.0 }));
+    assert_eq!(shape.live(), 1);
+    g.fake.push(FakeProgram { manifest: title(name), ..Default::default() });
+    let r = generation::apply(g.world(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, true);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    assert_eq!(value(&g), json!({ "text": "hello", "n": 0.0 }));
+    assert_eq!(shape.live(), 1, "the restart freed the old value and inserted a new one");
+    drop(g);
+    assert_eq!(shape.live(), 0);
+}
+
+#[test]
+fn a_lifecycle_value_is_a_copy_read_at_the_observer_place_and_freed_once() {
+    let name = "it::heap_fields::Removed";
+    let mut manifest = tag(name, vec![]);
+    let decl = |n: &str, schedule, params| SystemDecl { name: n.into(), schedule, params, after: vec![], before: vec![], sets: vec![], condition: None, groups: vec![], location: None };
+    let on = ParamDecl::On { event: None, lifecycle: Some(Lifecycle::Remove), component: Some(ComponentRef { name: name.into(), source: ComponentSource::Ts }) };
+    manifest.systems = vec![decl("game.ts#gone", ScheduleDecl::Observer, vec![on]), decl("game.ts#late", ScheduleDecl::Stage { stage: Stage::Update }, vec![])];
+    let saw = Arc::new(Mutex::new(Vec::<String>::new()));
+    // Reads `label` at the observer place: during an observer's run, and from a system, where no
+    // observer is running.
+    let read = |saw: Arc<Mutex<Vec<String>>>| -> FakeFn {
+        Box::new(move |call| {
+            let t = call.resolution.holes["it::heap_fields::Removed"].iter().find(|h| h.name == "label").unwrap().target;
+            let mut buf = vec![0u8; 64];
+            let got = match call.host_call(reflect_codec::READ, &[places::OBSERVER, 0.0, t as f64], &mut [&mut buf]) {
+                Ok(ret) => {
+                    let n = u32::from_le_bytes(buf[..4].try_into().unwrap()) as usize;
+                    assert_eq!(ret[0] as usize, 4 + n);
+                    String::from_utf8(buf[4..4 + n].to_vec()).unwrap()
+                }
+                Err(e) => e.message,
+            };
+            saw.lock().unwrap().push(got);
+            Ok(())
+        })
+    };
+    let mut g = Game::new(Manifest::default());
+    g.fake.push(FakeProgram { manifest, systems: vec![read(saw.clone()), read(saw.clone())], ..Default::default() });
+    let r = generation::apply(g.world(), ModuleSet { entry: PathBuf::from("/game.ts"), modules: vec![] }, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    generation::start_game(g.world());
+    let shape = g.shape(name);
+    let a = g.spawn(name, json!({ "label": "door" }));
+    g.app.update();
+    saw.lock().unwrap().clear();
+    g.world().despawn(a);
+    assert_eq!(shape.live(), 1, "the queued event holds a copy of the value the entity dropped");
+    g.app.update();
+    let saw = saw.lock().unwrap().clone();
+    assert!(saw.contains(&"door".to_string()), "the observer reads the value as it was: {saw:?}");
+    assert!(saw.iter().any(|m| m.contains("no observer is running")), "a system names the place that is not live: {saw:?}");
+    assert_eq!(shape.live(), 0, "the drain dropped the copy once its observer ran");
 }

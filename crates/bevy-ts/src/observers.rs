@@ -6,6 +6,7 @@
 //! observer entity watching `e` and naming the function's declaration, so Bevy despawns it with
 //! `e`; the drain runs the declaration's observer for a hop whose target `e` is watched by it.
 
+use crate::heap::HeapBytes;
 use crate::manifest::{Lifecycle, SystemDecl};
 use bevy::ecs::observer::ObservedBy;
 use bevy::ecs::component::ComponentId;
@@ -23,10 +24,14 @@ pub enum Trigger {
     Rust(TypeId),
 }
 
-#[derive(Clone, Debug)]
+/// A queued event. Not `Clone`: its value may own heap fields, dropped once after its last
+/// observer has run.
+#[derive(Debug)]
 pub struct Pending {
     pub trigger: Trigger,
-    pub bytes: Vec<u8>,
+    /// The value every observer and hop of it reads: a TS event's or a lifecycle value's bytes, or
+    /// a Rust event's JSON.
+    pub bytes: HeapBytes,
     /// A Rust event's value at each later hop of `path`, as Bevy rewrote its target for that hop
     /// (`On::event()`); empty when the value is the same at every hop.
     pub hops: Vec<Vec<u8>>,
@@ -42,6 +47,9 @@ pub struct Pending {
 
 #[derive(Resource, Default, Debug)]
 pub struct ObserverQueue(pub VecDeque<Pending>);
+
+/// A lifecycle value's size, and its heap shape when it has heap fields.
+type Carried = (usize, Option<&'static crate::heap::HeapShape>);
 
 /// The Bevy observers feeding lifecycle triggers for the live generation.
 #[derive(Resource, Default, Debug)]
@@ -121,19 +129,20 @@ pub fn propagation_path(world: &World, target: Entity, bubble: bool) -> Vec<Enti
 }
 
 /// Replaces the lifecycle observers with ones for `watched` (kind, component) pairs. `Discard`,
-/// `Remove` and `Despawn` copy a layout-tier component's bytes at trigger time, since the TS
-/// observer runs later, when the value (or the entity) is gone.
+/// `Remove` and `Despawn` copy a layout-tier component's value at trigger time, since the TS
+/// observer runs later, when the value (or the entity) is gone: its bytes, and a component with
+/// heap fields deep, so they read as they were when the event fired.
 pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
     let old = std::mem::take(&mut world.get_resource_or_init::<LifecycleObservers>().0);
     for o in old {
         let _ = world.try_despawn(o);
     }
-    // Layout-tier components by id, with their size: only these carry a value.
-    let mut sizes: HashMap<ComponentId, usize> = HashMap::new();
+    // Layout-tier components by id, with their size and heap shape: only these carry a value.
+    let mut sizes: HashMap<ComponentId, Carried> = HashMap::new();
     if let Some(ts) = world.get_resource::<crate::components::TsComponents>() {
         let native = world.get_resource::<crate::layout::NativeLayouts>().cloned().unwrap_or_default();
-        sizes = ts.writable_sizes(&native).into_iter().map(|(id, w)| (id, w.size)).collect();
-        sizes.extend(native.iter().map(|n| (n.id, n.layout.size)));
+        sizes = ts.writable_sizes(&native).into_iter().map(|(id, w)| (id, (w.size, w.heap.map(|f| f.shape)))).collect();
+        sizes.extend(native.iter().map(|n| (n.id, (n.layout.size, None))));
     }
     let mut spawned = Vec::new();
     for kind in [Lifecycle::Add, Lifecycle::Insert, Lifecycle::Discard, Lifecycle::Remove, Lifecycle::Despawn] {
@@ -141,18 +150,20 @@ pub fn install(world: &mut World, watched: &[(Lifecycle, ComponentId)]) {
         if ids.is_empty() {
             continue;
         }
-        let watch: Vec<(ComponentId, Option<usize>)> = ids.iter().map(|id| (*id, kind.carries_value().then(|| sizes.get(id).copied()).flatten())).collect();
+        let watch: Vec<(ComponentId, Option<Carried>)> = ids.iter().map(|id| (*id, kind.carries_value().then(|| sizes.get(id).copied()).flatten())).collect();
         // A despawn's `Remove` runs before Bevy's `ObservedBy` hook, so the attachments are still
         // readable here.
         let push = move |entity: Entity, components: &[ComponentId], mut world: DeferredWorld| {
             if world.get_resource::<ObserverQueue>().is_none() || world.get::<crate::ScriptHidden>(entity).is_some() {
                 return;
             }
-            for (id, size) in watch.iter().filter(|(c, _)| components.contains(c)) {
-                let bytes = match (size, world.get_entity(entity).ok().and_then(|e| e.get_by_id(*id).ok())) {
-                    // SAFETY: a layout-tier component is `size` bytes of plain data.
-                    (Some(n), Some(p)) => unsafe { std::slice::from_raw_parts(p.as_ptr(), *n) }.to_vec(),
-                    _ => vec![],
+            for (id, carried) in watch.iter().filter(|(c, _)| components.contains(c)) {
+                let bytes = match (carried, world.get_entity(entity).ok().and_then(|e| e.get_by_id(*id).ok())) {
+                    // SAFETY: the component's value is live, of this shape.
+                    (Some((_, Some(shape))), Some(p)) => unsafe { HeapBytes::copy_of(p.as_ptr(), shape) },
+                    // SAFETY: a layout-tier component with no heap field is `n` bytes of plain data.
+                    (Some((n, None)), Some(p)) => HeapBytes::plain(unsafe { std::slice::from_raw_parts(p.as_ptr(), *n) }.to_vec()),
+                    _ => HeapBytes::plain(vec![]),
                 };
                 let attached = vec![attached(&world, entity)];
                 world.resource_mut::<ObserverQueue>().0.push_back(Pending { trigger: Trigger::Lifecycle(kind, *id), bytes, hops: vec![], path: vec![entity], original: Some(entity), attached });
@@ -218,7 +229,7 @@ fn sink(id: TypeId) -> crate::rust_events::TsEventSink {
             back.attached.push(attached.unwrap_or_default());
             return;
         }
-        let pending = Pending { trigger: Trigger::Rust(id), bytes, hops: vec![], path: current.into_iter().collect(), original, attached: attached.into_iter().collect() };
+        let pending = Pending { trigger: Trigger::Rust(id), bytes: HeapBytes::plain(bytes), hops: vec![], path: current.into_iter().collect(), original, attached: attached.into_iter().collect() };
         world.resource_mut::<ObserverQueue>().0.push_back(pending);
     })
 }

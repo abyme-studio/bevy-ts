@@ -26,6 +26,7 @@ pub mod messages;
 pub mod modules;
 pub mod net;
 pub mod observers;
+pub mod places;
 pub mod plugin_api;
 #[cfg(feature = "reflect")]
 pub mod reflect_codec;

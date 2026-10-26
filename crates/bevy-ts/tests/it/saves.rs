@@ -533,3 +533,28 @@ fn strings_and_lists_round_trip_and_retyped_ones_reset() {
     assert_eq!(g.read_ts(a, "game::Tag"), Some(json!({ "label": 7.0, "scores": [], "hp": 2.0 })));
     assert!(g.log().iter().any(|l| l.contains("game::Tag migrated on 1 entities; reset label, scores")), "{:?}", g.log());
 }
+
+#[test]
+fn a_resource_string_round_trips() {
+    let mut m = declarations();
+    let text = |s: &str| json!({ "text": s }).as_object().unwrap().clone();
+    m.resources.push(ResourceDecl { name: "game::Title".into(), fields: vec![field("text", FieldType::Str, Some(json!("x")))], insert: Some(text("first")), location: None });
+    let mut g = Game::new("saves-resource-string", m);
+    let title = |g: &Game| {
+        let world = g.app.world();
+        let (id, layout) = plugin_api::component_by_name(world, "game::Title").unwrap();
+        let ptr = world.get_by_id(world.resource_entities().get(id).unwrap(), id).unwrap();
+        // SAFETY: a TS resource's row holds a live value of `layout`.
+        unsafe { bevy_ts::value::decode_component(&layout, std::slice::from_raw_parts(ptr.as_ptr(), layout.size)) }
+    };
+    g.save_ok("title", json!({ "resources": ["game::Title"] }));
+    let world = g.world();
+    let (id, _) = plugin_api::component_by_name(world, "game::Title").unwrap();
+    let e = world.resource_entities().get(id).unwrap();
+    let bytes = plugin_api::encode_component(world, "game::Title", &text("second")).unwrap();
+    // SAFETY: encoded with the resource's own layout.
+    unsafe { insert_owned(&mut world.entity_mut(e), id, bytes) };
+    assert_eq!(title(&g), json!({ "text": "second" }));
+    g.load_ok("title");
+    assert_eq!(title(&g), json!({ "text": "first" }));
+}

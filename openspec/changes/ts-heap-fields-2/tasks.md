@@ -5,20 +5,20 @@ binary, lowest layer, no fixed waits. Every cargo job through `~/dev/abyme/scrip
 
 ## 0. Before starting
 
-- [ ] 0.1 Operator's go on design.md "Ask first" (heap places, end-of-run list diff, protocol minor, lifecycle copy). Stage 1 does not land without it
+- [x] 0.1 Operator's go on design.md "Ask first" (heap places, end-of-run list diff, protocol minor, lifecycle copy). Stage 1 does not land without it
 
 ## 1. Stage 1: places, resources, lifecycle values
 
-- [ ] 1.1 `crates/bevy-ts/src/reflect_codec.rs`: one slot layout for every reflect and heap host call (design decision 4): slot 0 entity bits or a place kind (resource -1, `Local` -2, message -3, observer value -4), slot 1 place id, slot 2 target, then the call's own; a `RunPlace` resource the runner sets once per system or observer run; a non-live place fails naming it. `Target::ts_heap` keyed by the layout's owner name, so non-component layouts get targets
-- [ ] 1.2 `crates/bevy-ts-v8/js/core.js`: each accessor kind binds its place (`rowEntity` replaced by a per-bind place kind and id); `reflectFetch`, `heapSet` and reflected writes put slots in the new layout. Regenerate `packages/bevy-ts/runtime/core.js` the way the repo does
-- [ ] 1.3 `crates/bevy-ts/src/generation.rs`: drop the resource refusal (`:398`); `crates/bevy-ts/src/systems.rs` `RunParam::Res`: a heap resource's frame carries its changed tick, as `ResMut` does
-- [ ] 1.4 `crates/bevy-ts/src/conditions.rs` `ResourceEquals`: heap fields compared by value (`heap::read`), plain ranges as today; the expected value built as `HeapBytes`
-- [ ] 1.5 `crates/bevy-ts/src/observers.rs`: `Pending.bytes` a `HeapBytes`; a heap component's `Remove`/`Despawn`/`Discard` value copied with `HeapBytes::copy_of`; `Pending` not `Clone`; `crates/bevy-ts/src/systems.rs` drain sets the observer place and drops the value once after the last observer
-- [ ] 1.6 `crates/bevy-ts-cli/src/reader.rs` `field_ty`: `string` and `T[]` allowed on resources
-- [ ] 1.7 Tests: `crates/bevy-ts/tests/it/heap_fields.rs` a resource's string freed once on restart and world drop; a lifecycle copy freed once after the drain; `crates/bevy-ts-cli/tests/it/heap_fields.rs` `ResMut` write seen by `Res`, second `Res` read makes no host call (`reflect_codec::CALLS`), `On<Despawn<Tag>>` reads `label`; `crates/bevy-ts-cli/tests/it/conditions.rs` `resourceEquals` on a string; `crates/bevy-ts/tests/it/saves.rs` a resource string round-trips
-- [ ] 1.8 Bench (`bench/ts-heap-fields/src/main.rs`): plain `Res` read control (built against main too), heap `Res` string read, `On<Remove>` value read on a heap component
-- [ ] 1.9 Docs: `docs/ecs.md` (resources, lifecycle copy replaces "reads live, throws once gone"), `docs/scripts.md` field-type rules
-- [ ] 1.10 `cargo build`, tests of `bevy-ts` and `bevy-ts-cli` through `gate-slot`; `openspec validate ts-heap-fields-2 --strict`
+- [x] 1.1 `crates/bevy-ts/src/reflect_codec.rs`: one slot layout for every reflect and heap host call (design decision 4): slot 0 entity bits or a place kind (resource -1, `Local` -2, message -3, observer value -4), slot 1 place id, slot 2 target, then the call's own; a `RunPlace` resource the runner sets once per system or observer run; a non-live place fails naming it. `Target::ts_heap` keyed by the layout's owner name, so non-component layouts get targets
+- [x] 1.2 `crates/bevy-ts-v8/js/core.js`: each accessor kind binds its place (`rowEntity` replaced by a per-bind place kind and id); `reflectFetch`, `heapSet` and reflected writes put slots in the new layout. Regenerate `packages/bevy-ts/runtime/core.js` the way the repo does
+- [x] 1.3 `crates/bevy-ts/src/generation.rs`: drop the resource refusal (`:398`); `crates/bevy-ts/src/systems.rs` `RunParam::Res`: a heap resource's frame carries its changed tick, as `ResMut` does
+- [x] 1.4 `crates/bevy-ts/src/conditions.rs` `ResourceEquals`: heap fields compared by value (`heap::read`), plain ranges as today; the expected value built as `HeapBytes`
+- [x] 1.5 `crates/bevy-ts/src/observers.rs`: `Pending.bytes` a `HeapBytes`; a heap component's `Remove`/`Despawn`/`Discard` value copied with `HeapBytes::copy_of`; `Pending` not `Clone`; `crates/bevy-ts/src/systems.rs` drain sets the observer place and drops the value once after the last observer
+- [x] 1.6 `crates/bevy-ts-cli/src/reader.rs` `field_ty`: `string` and `T[]` allowed on resources
+- [x] 1.7 Tests: `crates/bevy-ts/tests/it/heap_fields.rs` a resource's string freed once on restart and world drop; a lifecycle copy freed once after the drain; `crates/bevy-ts-cli/tests/it/heap_fields.rs` `ResMut` write seen by `Res`, second `Res` read makes no host call (`reflect_codec::CALLS`), `On<Despawn<Tag>>` reads `label`; `crates/bevy-ts-cli/tests/it/conditions.rs` `resourceEquals` on a string; `crates/bevy-ts/tests/it/saves.rs` a resource string round-trips
+- [x] 1.8 Bench (`bench/ts-heap-fields/src/main.rs`): plain `Res` read control (built against main too), heap `Res` string read, `On<Remove>` value read on a heap component
+- [x] 1.9 Docs: `docs/ecs.md` (resources, lifecycle copy replaces "reads live, throws once gone"), `docs/scripts.md` field-type rules
+- [x] 1.10 `cargo build`, tests of `bevy-ts` and `bevy-ts-cli` through `gate-slot`; `openspec validate ts-heap-fields-2 --strict`
 
 ## 2. Stage 2: `Local`
 
