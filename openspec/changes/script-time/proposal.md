@@ -52,7 +52,7 @@ Stage 2 (built in this change, on writable-native-params' exports and `stands_fo
 
 Later stages (named here, built when their shapes land):
 
-- Stage 4: `commands.delayed().secs(s)`. Waits on writable-native-params' `Commands`.
+- Stage 4: `commands.delayed().secs(s)`. Built by change delayed-commands.
 
 Out of scope: `TimeUpdateStrategy`, `TimeSender`/`TimeReceiver`, `Time::advance_by`,
 `advance_to`, `Time<Fixed>::accumulate_overstep`.

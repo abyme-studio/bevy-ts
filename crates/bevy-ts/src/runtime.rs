@@ -62,7 +62,7 @@ impl ScriptRuntime {
         match commands::decode(&bytes, &sizes, &kinds) {
             Ok(ops) => {
                 self.pool.drain(..out.pool_used.min(self.pool.len()));
-                for w in commands::apply(world, ops, &kinds, &recipes) {
+                for w in commands::apply(world, ops, &kinds, &recipes, label) {
                     self.log_warn(world, format!("{label}: {w}"), None);
                 }
             }

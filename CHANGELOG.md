@@ -4,6 +4,8 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `bevy_ts::commands::apply` takes a fifth argument, `label`: what queued the ops, named in a
+  delayed queue's warnings. A Rust caller passes its own context (`"my plugin"`).
 - Protocol 1.36.0: `mutate_components` takes `.field[i]` and `.field[i].member` on a list field,
   writing that item in place; past the end fails naming the list's length. It used to refuse them.
 - Protocol 1.35.0: a system's `schedule.kind` (and the `Stage` enum) may be `"predicate"`, a

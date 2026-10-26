@@ -253,7 +253,8 @@ the element under it, or insert components.
 host call per 256 spawns past the first 256.
 
 `commands`: `spawn`, `spawnBatch(list)` (one op, entities in order), `insertBatch([[e, ...parts]])`,
-`entity(e)`, `trigger`, `write`, `spawnNative`, `mount`, `unmount`.
+`entity(e)`, `trigger`, `write`, `spawnNative`, `mount`, `unmount`, `delayed()` (commands that run
+later on the game clock: docs/time.md, "Delayed commands").
 
 `commands.entity(e)`, each Bevy's `EntityCommands` method of the same name, applied in order
 after the run:

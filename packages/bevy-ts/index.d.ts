@@ -840,6 +840,13 @@ export declare const EnableOnExit: StateScoped;
 export declare const EnableOnEnter: StateScoped;
 
 type Part = Component | ReflectComponent | ComponentClass;
+/** Bevy's `DelayedCommands`: one queue per delay, run by Bevy's `check_delayed_command_queues`. */
+export interface DelayedCommands {
+  /** Bevy's `secs`: commands that run `seconds` of game time later, the delay rounded to `f32`. Throws on a negative or non-finite delay. */
+  secs(seconds: number): Commands;
+  /** Bevy's `duration`: commands that run `seconds` of game time later, exact to the nanosecond. Throws on a negative or non-finite delay. */
+  duration(seconds: number): Commands;
+}
 export interface Commands {
   /**
    * Components (`Health.of({ hp: 3 })`, or a class for its defaults) and at most one element
@@ -853,6 +860,11 @@ export interface Commands {
   /** `[entity, ...parts]` each, in one op, as Bevy's `insert_batch`. */
   insertBatch(list: Iterable<readonly [Entity, ...Part[]]>): void;
   entity(e: Entity): EntityCommands;
+  /**
+   * Bevy's `commands.delayed()`: commands that run later on the game clock (`Time<Virtual>`), so
+   * a pause holds them and the relative speed scales them. Use it in the run that made it.
+   */
+  delayed(): DelayedCommands;
   /** As Rust's `commands.trigger(Explode { entity, radius })`: an entity event carries its target. */
   trigger(event: EntityEvent | Event): void;
   write(message: Message): void;

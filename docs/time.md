@@ -110,11 +110,45 @@ timer ticks only when the condition is evaluated, as in Bevy: while the editor p
 do not run, so no condition ticks. Each use keeps its own timer. A reload that keeps the call and
 its seconds keeps the timer; other seconds start a fresh one; a Stop clears them all.
 
+## Delayed commands
+
+Bevy's `commands.delayed()` (`bevy_time`'s `DelayedCommandsExt`), on every `Commands`: a system's,
+an observer's, a one-shot system's, and a delayed one.
+
+```ts
+const d = commands.delayed();
+const e = d.secs(1).spawn(Dummy);  // the entity now, spawned in 1 s
+d.secs(2).entity(e).despawn();     // gone in 2 s
+commands.delayed().duration(3).write(Wave.of({ n: 2 }));
+```
+
+- `secs(s)` rounds `s` to `f32`, as Bevy's `secs(f32)`; `duration(s)` takes seconds as every
+  `Duration` does, exact to the nanosecond. Each returns a `Commands`: every method works on it,
+  `delayed()` too, and nested delays add up.
+- A negative, `NaN` or infinite delay throws at the call, naming the method and the value.
+- Calls on one `DelayedCommands` with the same delay share one queue. When the run's commands
+  apply, each queue becomes a Bevy `DelayedCommandQueue` entity with `submit_at` the `Time`
+  elapsed now plus the delay. Bevy's `check_delayed_command_queues` runs it in `PreUpdate` once
+  `Time` reaches `submit_at`: its commands apply then, all or nothing, warnings to the log under
+  "delayed commands of <system>". Queues due on one frame have no order between them, as in Bevy.
+- The clock is the game clock, `Time<Virtual>`: a game's pause and the editor's hold a delay, and
+  a relative speed of 0.5 doubles it in wall time. A delay queued in `FixedUpdate` counts from
+  `Time<Fixed>`'s elapsed time, as in Bevy.
+- `spawn`, `spawnBatch`, `cloneAndSpawn` and `withChildren`'s `spawn` return the entity at once;
+  later commands may name it. A command now on an entity a delay has not spawned yet warns that it
+  does not exist.
+- A run that throws drops its delayed commands with the rest. A `DelayedCommands`, or the
+  `Commands` it returned, kept past its run throws on use.
+- A Stop or a restart despawns every pending TS queue. A queue made before a reload applies
+  nothing when it comes due, and logs one warning naming its generation and how many commands it
+  held.
+- Queue entities are ordinary entities: `Query<[DelayedCommandQueue]>` (`bevy-ts/bevy`) reads
+  `submit_at` in seconds; the queue itself is not visible, and TS cannot insert one.
+
 ## Not yet built
 
 - Writing the clocks: `ResMut<Time<Virtual>>` (`pause`, `unpause`, `toggle`, `setRelativeSpeed`,
   `setMaxDelta`) and `ResMut<Time<Fixed>>` (`setTimestep`, `setTimestepSeconds`,
   `setTimestepHz`, `discardOverstep`). Waits on writable-native-params.
-- `commands.delayed().secs(s)`. Waits on writable-native-params' `Commands`.
 
 Out of scope: `TimeUpdateStrategy`, `TimeSender`/`TimeReceiver`, `Time::advance_by`.

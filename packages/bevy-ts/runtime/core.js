@@ -4959,7 +4959,7 @@ function saveEntities(x) {
 const REFLECT_INSERT = 0, REFLECT_PATCH = 1;
 const OP_SPAWN_BATCH = 18, OP_INSERT_BATCH = 19, OP_INSERT_IF_NEW = 20, OP_TRY_INSERT = 21, OP_RETAIN = 22, OP_CLEAR = 23;
 const OP_REMOVE_WITH_REQUIRES = 24, OP_CLONE_AND_SPAWN = 25, OP_INSERT_RECURSIVE = 26, OP_REMOVE_RECURSIVE = 27, OP_ADD_CHILDREN = 28;
-const OP_DETACH_CHILDREN = 29, OP_DESPAWN_CHILDREN = 30, OP_WRITE_REFLECT = 31, OP_TRIGGER_REFLECT = 32;
+const OP_DETACH_CHILDREN = 29, OP_DESPAWN_CHILDREN = 30, OP_WRITE_REFLECT = 31, OP_TRIGGER_REFLECT = 32, OP_DELAYED = 33;
 /** The `reserve(n)` host function (`commands::RESERVE`): `n` more spawn ids when the pool runs out. */
 const HOST_RESERVE = 0x3fffffff;
 const RESERVE_N = 256;
@@ -5132,8 +5132,16 @@ class Commands {
     this.poolUsed = 0;
     this.kinds = null;
     this.res = null;
+    /** The root `Commands` of the run: itself, or a delayed queue's. */
+    this.root = this;
+    /** Bumped at each run's begin and end, so a delayed object kept past its run is refused. */
+    this.run = 0;
+    /** `delayed()`'s objects, each one `OP_DELAYED` at the end, in call order. */
+    this.delays = [];
   }
   begin(arena, pool, kinds, res) {
+    this.run++;
+    this.delays = [];
     this.arena = new Uint8Array(arena);
     this.at = 0;
     this.overflow = null;
@@ -5145,6 +5153,15 @@ class Commands {
   }
   /** Returns [arena bytes used, overflow bytes or null, pool ids used]. */
   end() {
+    // A run that never called `delayed()` pays this one check.
+    if (this.delays.length) {
+      for (const d of this.delays) {
+        const b = d.encode();
+        if (b) this.op(b);
+      }
+      this.delays = [];
+    }
+    this.run++;
     let over = null;
     if (this.overflow) {
       const total = this.overflow.reduce((n, c) => n + c.length, 0);
@@ -5169,6 +5186,10 @@ class Commands {
       }
       this.overflow.push(bytes.slice());
     }
+  }
+  /** Throws unless run `run` of this root is under way. */
+  live(run) {
+    if (run !== this.run || run % 2 === 0) throw new Error("delayed commands are used in the run that made them");
   }
   /** The next spawn id: from the pool, then from `reserve` host calls once it runs out. */
   alloc() {
@@ -5254,6 +5275,12 @@ class Commands {
   /** Commands for one entity. */
   entity(e) {
     return new EntityCommands(this, e);
+  }
+  /** Bevy's `commands.delayed()`: `secs(s)` and `duration(s)` give a `Commands` whose commands run `s` seconds of game time later. */
+  delayed() {
+    const d = new DelayedCommands(this);
+    this.delays.push(d);
+    return d;
   }
   /** Triggers an event; an entity event carries its target, `Explode.of({ entity: e, radius: 3 })`. */
   trigger(event) {
@@ -5432,6 +5459,104 @@ class Commands {
   }
 }
 
+/** Bevy's `DelayedCommands`: one queue per delay, each spawned as a `DelayedCommandQueue` when the run's commands apply. */
+class DelayedCommands {
+  constructor(parent) {
+    this.root = parent.root;
+    this.run = this.root.run;
+    this.queues = [];
+    this.live();
+  }
+  /** Throws once the run that made it has ended. */
+  live() {
+    this.root.live(this.run);
+  }
+  /** Commands run `seconds` later, as Bevy's `secs`: the delay rounded to `f32`. */
+  secs(seconds) {
+    return this.queue(0, "secs", seconds);
+  }
+  /** Commands run `seconds` later, as Bevy's `duration`: the delay exact to the nanosecond. */
+  duration(seconds) {
+    return this.queue(1, "duration", seconds);
+  }
+  queue(kind, method, seconds) {
+    this.live();
+    if (typeof seconds !== "number") throw new TypeError(`delayed().${method}(${String(seconds)}): the delay is a number of seconds`);
+    const value = kind === 0 ? Math.fround(seconds) : seconds;
+    // Past 2^64 s a `Duration` overflows, as Bevy's `from_secs_f32`/`from_secs_f64` would panic.
+    if (!(value >= 0) || value >= 2 ** 64) {
+      throw new RangeError(`delayed().${method}(${seconds}): the delay is a finite number of seconds, 0 or more`);
+    }
+    let q = this.queues.find((q) => q.kind === kind && q.value === value);
+    if (!q) {
+      q = new DelayedQueue(this, kind, value);
+      this.queues.push(q);
+    }
+    return q;
+  }
+  /** Its `OP_DELAYED`, or null when no queue holds a command. */
+  encode() {
+    const queues = [];
+    for (const q of this.queues) {
+      const body = q.body();
+      if (body.length) queues.push([q, body]);
+    }
+    if (!queues.length) return null;
+    if (queues.length > 0xffff) throw new RangeError(`delayed: at most ${0xffff} delays per delayed()`);
+    const w = new Writer();
+    w.u8(OP_DELAYED);
+    w.u16(queues.length);
+    for (const [q, body] of queues) {
+      w.u8(q.kind);
+      w.f64(q.value);
+      w.u32(body.length);
+      w.raw(body);
+    }
+    return w.bytes().slice();
+  }
+}
+
+/** A delayed `Commands`: its ops go in its own buffer; spawn ids come from the run's pool. */
+class DelayedQueue extends Commands {
+  constructor(owner, kind, value) {
+    super();
+    this.owner = owner;
+    this.root = owner.root;
+    this.kind = kind;
+    this.value = value;
+    this.kinds = this.root.kinds;
+    this.res = this.root.res;
+    this.chunks = [];
+  }
+  op(bytes) {
+    this.owner.live();
+    this.chunks.push(bytes.slice());
+  }
+  alloc() {
+    this.owner.live();
+    return this.root.alloc();
+  }
+  delayed() {
+    this.owner.live();
+    return super.delayed();
+  }
+  /** Its ops, then its own `delayed()`'s, which add their delay when this queue fires. */
+  body() {
+    for (const d of this.delays) {
+      const b = d.encode();
+      if (b) this.chunks.push(b);
+    }
+    this.delays = [];
+    const out = new Uint8Array(this.chunks.reduce((n, c) => n + c.length, 0));
+    let o = 0;
+    for (const c of this.chunks) {
+      out.set(c, o);
+      o += c.length;
+    }
+    return out;
+  }
+}
+
 class Writer {
   constructor() {
     this.buf = new Uint8Array(64);
@@ -5459,6 +5584,11 @@ class Writer {
     this.room(4);
     this.dv.setUint32(this.n, v, true);
     this.n += 4;
+  }
+  f64(v) {
+    this.room(8);
+    this.dv.setFloat64(this.n, v, true);
+    this.n += 8;
   }
   entity(e) {
     if (typeof e !== "number" || !(e >= 0)) throw new TypeError(`not an entity: ${e}`);

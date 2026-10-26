@@ -17,6 +17,7 @@ mod build;
 mod cameras;
 mod classes;
 mod conditions;
+mod delayed_commands;
 mod diagnostics;
 mod dev_edit;
 mod ecs_queries;

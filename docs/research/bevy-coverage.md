@@ -92,7 +92,7 @@ Bevy features with no owner. They are ranked at the end.
 | `GlobalTransform` read; `TransformHelper` | `GlobalTransform` idiomatic: `bevy-ts` ships it typed, with Bevy 0.20's read methods (`translation()`, `rotation()`, `scale()`, `computeTransform()`, directions, `transformPoint`, `reparentedTo`, ...); writes refused. `TransformHelper` missing | `reflect_systems.rs` `global_transform_reads_as_bevys`, `a_computed_component_refuses_a_write`; `schedules.rs` `after_propagation_reads_this_frames_global_transform` | `TransformHelper`: open |
 | `Res<Time>` | idiomatic, read-only (`docs/time.md`) | `surface.rs` `time_is_a_read_only_view`; `time.rs` `fixed_update_reads_timestep` | — |
 | `Time<Real>`, `Time<Virtual>`, `Time<Fixed>` | partial: every clock reads; writes fail the load | `time.rs` `clocks_read_bevy_values`, `game_pause_survives_next_frame`, `clock_writes_fail_the_load` | script-time stage 2 |
-| `Timer`, `Stopwatch`, `on_timer`, delayed commands | partial: timers and Bevy's time conditions work; `commands.delayed()` missing (its blocker, writable-native-params, has landed) | `time.rs` `timer_matches_bevy`, `stopwatch_pauses`, `time_conditions_match_bevy`, `paused_follows_the_game_clock` | open (script-time lists stage 4 as not its task) |
+| `Timer`, `Stopwatch`, `on_timer`, delayed commands | idiomatic: timers, Bevy's time conditions, and `commands.delayed()` on Bevy's own `DelayedCommandQueue` | `time.rs` `timer_matches_bevy`, `stopwatch_pauses`, `time_conditions_match_bevy`, `paused_follows_the_game_clock`; `delayed_commands.rs` `bevys_test_matches_rust`, `delays_follow_the_game_clock`, `every_command_kind_can_wait` | — |
 | Keyboard (`ButtonInput<KeyCode>`, `ButtonInput<Key>`), `InputFocus`, `KeyCode`, `Key` | idiomatic: `Keys`, `LogicalKeys`, `InputFocus`, generated `KeyCode` and `Key` (`bevy-ts/input`) | `text_input.rs` `keys_and_input_focus_read_n_only_while_nothing_has_focus`, `logical_keys_read_what_the_key_types`; `rust_events.rs` `a_ts_reader_sees_keyboard_input_once` | — |
 | Mouse buttons, motion, scroll, cursor position | idiomatic: `MouseButtons`, `Cursor`, `AccumulatedMouseMotion`/`Scroll` | `input_devices.rs` `mouse_buttons_read_bevys_button_input`, `the_cursor_is_the_primary_windows`, `mouse_motion_and_scroll_read_as_bevys_resources` | — |
 | Touch, gestures | idiomatic: `Touches`; gestures as messages | `input_devices.rs` `touches_list_by_index_with_bevys_positions`; `rust_events.rs` `input_messages_reach_a_ts_reader` | — |
@@ -191,16 +191,15 @@ Missing or partial, no running owner, ranked by which a game team waits on.
 1. `PointerInteraction` under the headless pointer: untested; 3D mesh picking is tested only
    through observers. Agent town waits; its build is bisecting whether the empty value is ours.
 2. 2D in the editor: the editor camera is a `Camera3d`. script-2d waits and lists it as a non-goal.
-3. `commands.delayed()`: its blocker has landed; script-time disowns stage 4.
-4. `Gltf` asset fields unreadable (no reflection).
-5. A project's own Rust messages are not emitted to `native.d.ts`.
-6. `Image` pixel data from TS (procedural textures); custom vertex attributes and morph targets.
-7. `<mesh>` line shapes and rings.
-8. Hierarchy sibling-order helpers.
-9. `GamepadSettings` writes.
-10. UI materials (`MaterialNode`): ask-first, nobody has asked.
-11. The 18 `StandardMaterial` textures: upstream, Bevy's sampler limit; no issue filed.
-12. Test-only gaps, no code missing: `Window`/`CursorOptions` from TS, `Name`/`Disabled` from
+3. `Gltf` asset fields unreadable (no reflection).
+4. A project's own Rust messages are not emitted to `native.d.ts`.
+5. `Image` pixel data from TS (procedural textures); custom vertex attributes and morph targets.
+6. `<mesh>` line shapes and rings.
+7. Hierarchy sibling-order helpers.
+8. `GamepadSettings` writes.
+9. UI materials (`MaterialNode`): ask-first, nobody has asked.
+10. The 18 `StandardMaterial` textures: upstream, Bevy's sampler limit; no issue filed.
+11. Test-only gaps, no code missing: `Window`/`CursorOptions` from TS, `Name`/`Disabled` from
     commands, the `Insert` observer, `RenderTarget`, `Hdr`, `CursorIcon`, render markers.
 
 Owned by a running change, so not ranked: heap fields (ts-heap-fields-2), `iterDescendants`

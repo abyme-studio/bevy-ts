@@ -60,7 +60,7 @@ test tools). A Time-only write path. Reflecting Bevy's own `Timer` into TS colum
 | a time condition's timer across a reload | 3 | kept while the seconds stay the same | `time.rs::time_condition_survives_a_reload` |
 | a bad duration | 3 | load error at the call | `time.rs::a_bad_duration_fails_the_load` |
 | condition types | 3 | `(seconds: number) => Condition` | `packages/bevy-ts/test/time.ts::timeConditionsTakeSeconds` |
-| `DelayedCommands` (`commands.delayed().secs(s)`) | 4 | `commands.delayed().secs(s)` | stage 4's tests |
+| `DelayedCommands` (`commands.delayed().secs(s)`) | 4 | `commands.delayed().secs(s)` | change delayed-commands, `delayed_commands.rs` |
 | `Duration` | 1 | seconds as `number` | every row above |
 
 Test files are under `crates/bevy-ts-cli/tests/` unless named in a crate's `src`.
@@ -257,4 +257,4 @@ Additions only. `Res<Time>` keeps its four fields at their offsets; the new fiel
 
 ## Open Questions
 
-- Stage 4: whether writable-native-params' `Commands` work covers `delayed()`.
+- Stage 4: answered by change delayed-commands, which builds `delayed()` on Bevy's own queue.

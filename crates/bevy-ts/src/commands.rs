@@ -35,6 +35,7 @@
 //! | despawnChildren | 30 | entity u64 |
 //! | writeReflect | 31 | type path len u16, type path, len u32, the message's JSON |
 //! | triggerReflect | 32 | type path len u16, type path, len u32, the event's JSON |
+//! | delayed | 33 | n u16, n × (kind u8 (0 `secs`, 1 `duration`), seconds f64, len u32, that many bytes of ops) |
 //!
 //! Entities are `Entity::to_bits`. Component values are native layout bytes; a TS component with a
 //! heap field (`string`) carries its values after them, in the same `len`: a `u16` count, then per
@@ -53,6 +54,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub const OP_SPAWN: u8 = 1;
 pub const OP_INSERT: u8 = 2;
@@ -88,6 +90,9 @@ pub const OP_DETACH_CHILDREN: u8 = 29;
 pub const OP_DESPAWN_CHILDREN: u8 = 30;
 pub const OP_WRITE_REFLECT: u8 = 31;
 pub const OP_TRIGGER_REFLECT: u8 = 32;
+/// `commands.delayed()`: queues of ops, each run by Bevy's `check_delayed_command_queues` once its
+/// delay has passed on `Time`.
+pub const OP_DELAYED: u8 = 33;
 
 /// `OP_INSERT_REFLECT`'s modes.
 pub const REFLECT_INSERT: u8 = 0;
@@ -174,7 +179,15 @@ pub enum Op {
     WriteReflect { path: String, json: serde_json::Value },
     /// A Rust event by type path, from its JSON (an entity event's target is in it).
     TriggerReflect { path: String, json: serde_json::Value },
+    /// `commands.delayed()`: each queue's delay and its ops, equal delays merged in first-use order.
+    Delayed { queues: Vec<(Duration, Vec<Op>)> },
 }
+
+// A delayed queue's ops move into a Bevy `Command`, which is `Send`.
+const _: fn() = || {
+    fn send<T: Send>() {}
+    send::<Op>();
+};
 
 /// How an insert treats what is there, as Bevy's `EntityCommands` methods of the same names.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -451,11 +464,37 @@ pub fn decode(bytes: &[u8], sizes: &HashMap<ComponentId, Writable>, kinds: &Comm
                 let json = serde_json::from_slice(r.take(n)?).map_err(|e| format!("{path}: {e}"))?;
                 if code == OP_WRITE_REFLECT { Op::WriteReflect { path, json } } else { Op::TriggerReflect { path, json } }
             }
+            OP_DELAYED => {
+                let n = r.u16()?;
+                let mut queues: Vec<(Duration, Vec<Op>)> = Vec::new();
+                for _ in 0..n {
+                    let delay = delay(r.u8()?, f64::from_le_bytes(r.take(8)?.try_into().unwrap()))?;
+                    let len = r.u32()? as usize;
+                    let body = decode(r.take(len)?, sizes, kinds)?;
+                    // Bevy's `DelayedCommands` keys its queues by `Duration`.
+                    match queues.iter_mut().find(|(d, _)| *d == delay) {
+                        Some((_, ops)) => ops.extend(body),
+                        None => queues.push((delay, body)),
+                    }
+                }
+                Op::Delayed { queues }
+            }
             other => return Err(format!("unknown command op {other} at byte {}", r.at - 1)),
         };
         ops.push(op);
     }
     Ok(ops)
+}
+
+/// A delayed queue's `Duration`, as Bevy's `secs` (`Duration::from_secs_f32`, kind 0) or
+/// `duration` (kind 1) makes it; a value either would panic on is an error naming the method.
+fn delay(kind: u8, value: f64) -> Result<Duration, String> {
+    let (method, d) = match kind {
+        0 => ("secs", Duration::try_from_secs_f32(value as f32)),
+        1 => ("duration", Duration::try_from_secs_f64(value)),
+        other => return Err(format!("unknown delay kind {other}")),
+    };
+    d.map_err(|e| format!("delayed().{method}({value}): {e}"))
 }
 
 /// `e` and its descendants through `Children`, parents first.
@@ -540,8 +579,8 @@ pub unsafe fn insert_bytes_many<'a>(entity: &mut EntityWorldMut, typed: Vec<(Com
 }
 
 /// Applies decoded ops in order. Errors in single ops (a missing entity) are collected as
-/// warnings and the rest still apply.
-pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &NativeRecipes) -> Vec<String> {
+/// warnings and the rest still apply. `label` names what queued them, for a delayed queue's log.
+pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &NativeRecipes, label: &str) -> Vec<String> {
     let mut warnings = Vec::new();
     let mut ops = ops.into_iter().peekable();
     while let Some(op) = ops.next() {
@@ -565,13 +604,13 @@ pub fn apply(world: &mut World, ops: Vec<Op>, kinds: &CommandKinds, recipes: &Na
                 warnings.push(format!("{what} {entity}: {err}; the command was skipped"));
                 continue;
             }
-            apply_one(world, op, kinds, recipes, &mut warnings);
+            apply_one(world, op, kinds, recipes, label, &mut warnings);
             for r in reflected {
-                apply_one(world, r, kinds, recipes, &mut warnings);
+                apply_one(world, r, kinds, recipes, label, &mut warnings);
             }
             continue;
         }
-        apply_one(world, op, kinds, recipes, &mut warnings);
+        apply_one(world, op, kinds, recipes, label, &mut warnings);
     }
     warnings
 }
@@ -582,7 +621,7 @@ fn bookkeeping(world: &World) -> Vec<ComponentId> {
 }
 
 /// Applies one op, pushing what fails to `warnings`.
-fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRecipes, warnings: &mut Vec<String>) {
+fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRecipes, label: &str, warnings: &mut Vec<String>) {
     {
         match op {
             Op::Spawn { entity, components } => match world.spawn_empty_at(entity) {
@@ -843,12 +882,51 @@ fn apply_one(world: &mut World, op: Op, kinds: &CommandKinds, recipes: &NativeRe
                     warnings.push(format!("trigger: {e}"));
                 }
             }
+            Op::Delayed { queues } => {
+                // As Bevy's `DelayedCommands::submit`: the default clock's elapsed time now, plus
+                // the delay. The entity is TS-spawned, so a restart despawns it.
+                let Some(elapsed) = world.get_resource::<Time>().map(Time::elapsed) else {
+                    warnings.push("delayed: the app has no Time (TimePlugin); the delayed commands were dropped".into());
+                    return;
+                };
+                let generation = world.get_resource::<crate::generation::Generations>().map_or(0, |g| g.live);
+                for (delay, ops) in queues {
+                    let mut queue = bevy::ecs::world::CommandQueue::default();
+                    let label = label.to_owned();
+                    queue.push(move |world: &mut World| fire(world, generation, &label, ops));
+                    world.spawn((bevy::time::DelayedCommandQueue { submit_at: elapsed + delay, queue }, TsSpawned));
+                }
+            }
             Op::Plugin { opcode, bytes } => {
                 let (name, decoder) = kinds.get(opcode).expect("decode checked the opcode").clone();
                 if let Err(err) = decoder(world, &bytes) {
                     warnings.push(format!("command {name}: {err}"));
                 }
             }
+        }
+    }
+}
+
+/// The start of a delayed queue's log context.
+const DELAYED_OF: &str = "delayed commands of ";
+
+/// Runs a delayed queue's ops when Bevy fires it, as one TS run's commands apply; a queue made
+/// under another generation applies nothing, since its indices and layouts may have changed.
+fn fire(world: &mut World, generation: u64, label: &str, ops: Vec<Op>) {
+    let live = world.get_resource::<crate::generation::Generations>().map_or(0, |g| g.live);
+    let warnings = if live == generation {
+        let context = if label.starts_with(DELAYED_OF) { label.to_owned() } else { format!("{DELAYED_OF}{label}") };
+        let kinds = world.get_resource::<CommandKinds>().cloned().unwrap_or_default();
+        let recipes = world.get_resource::<NativeRecipes>().cloned().unwrap_or_default();
+        apply(world, ops, &kinds, &recipes, &context).into_iter().map(|w| format!("{context}: {w}")).collect()
+    } else {
+        let n = ops.len();
+        vec![format!("delayed commands from generation {generation} dropped by a reload ({n} command{})", if n == 1 { "" } else { "s" })]
+    };
+    let at = crate::runtime::current_generation(world);
+    if let Some(mut log) = world.get_resource_mut::<crate::log::ScriptLog>() {
+        for w in warnings {
+            log.push_deduped(crate::log::LogLevel::Warn, w, None, at);
         }
     }
 }
@@ -1078,6 +1156,17 @@ impl Encoder {
         self.bytes.extend((j.len() as u32).to_le_bytes());
         self.bytes.extend(j.as_bytes());
     }
+    /// `OP_DELAYED`: each queue's kind (0 `secs`, 1 `duration`), seconds and ops.
+    pub fn delayed(&mut self, queues: &[(u8, f64, &Encoder)]) {
+        self.bytes.push(OP_DELAYED);
+        self.bytes.extend((queues.len() as u16).to_le_bytes());
+        for (kind, value, ops) in queues {
+            self.bytes.push(*kind);
+            self.bytes.extend(value.to_le_bytes());
+            self.bytes.extend((ops.bytes.len() as u32).to_le_bytes());
+            self.bytes.extend_from_slice(&ops.bytes);
+        }
+    }
     pub fn plugin(&mut self, opcode: u16, bytes: &[u8]) {
         self.bytes.push(OP_PLUGIN);
         self.bytes.extend(opcode.to_le_bytes());
@@ -1100,7 +1189,7 @@ mod tests {
         enc.spawn(b, &[]);
         enc.set_parent(b, Some(a));
         let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
-        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default());
+        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default(), "test");
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(world.get::<ChildOf>(b).unwrap().parent(), a);
         assert!(world.get::<TsSpawned>(a).is_some());
@@ -1131,7 +1220,7 @@ mod tests {
         let c = world.entity_allocator().alloc();
         enc.spawn(c, &[]);
         let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
-        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default());
+        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default(), "test");
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert!(warnings[0].contains("DirectionalLight") && warnings[0].contains("colour") && warnings[0].contains("skipped"), "{warnings:?}");
         assert!(world.get_entity(b).is_err(), "the failing spawn left nothing");
@@ -1171,7 +1260,7 @@ mod tests {
         enc.spawn(b, &[]);
         enc.insert_reflect(b, REFLECT_INSERT, "Seeded", Some(&json!({ "seed": 3 })));
         let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
-        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default());
+        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default(), "test");
         assert!(warnings.len() == 1 && warnings[0].contains("Seeded") && warnings[0].contains("skipped"), "{warnings:?}");
         assert!(world.get_entity(a).is_err(), "the failing spawn left nothing");
         assert_eq!(world.get::<Seeded>(b).unwrap().seed, 3);
@@ -1184,7 +1273,7 @@ mod tests {
         let mut enc = Encoder::default();
         enc.spawn_native(a, "camera3d", &serde_json::json!({}));
         let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
-        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default());
+        let warnings = apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default(), "test");
         assert!(warnings[0].contains("removed") && warnings[0].contains("Transform.lookingAt"), "{warnings:?}");
     }
 
@@ -1246,8 +1335,86 @@ mod tests {
         enc.plugin(op, &a.to_bits().to_le_bytes());
         enc.despawn(other);
         let ops = decode(&enc.bytes, &HashMap::new(), &kinds).unwrap();
-        assert!(apply(&mut world, ops, &kinds, &NativeRecipes::default()).is_empty());
+        assert!(apply(&mut world, ops, &kinds, &NativeRecipes::default(), "test").is_empty());
         assert_eq!(world.get::<Name>(a).unwrap().as_str(), "named");
         assert!(world.get_entity(other).is_err());
+    }
+
+    #[test]
+    fn delayed_queues_merge_by_duration() {
+        let (a, b) = (Entity::from_raw_u32(1).unwrap(), Entity::from_raw_u32(2).unwrap());
+        let mut one = Encoder::default();
+        one.despawn(a);
+        let mut two = Encoder::default();
+        two.despawn(b);
+        // Two `f64`s that round to one `f32` share a `secs` queue; `secs(1)` and `duration(1)` make
+        // the same `Duration`, so they share one too; `duration(0.1)` is exact and does not.
+        let mut enc = Encoder::default();
+        enc.delayed(&[(0, 0.1, &one), (0, 0.1 + 1e-12, &two), (1, 0.1, &one), (0, 1.0, &one), (1, 1.0, &two)]);
+        let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
+        let [Op::Delayed { queues }] = &ops[..] else { panic!("{ops:?}") };
+        let d = |e| Op::Despawn { entity: e };
+        assert_eq!(
+            queues,
+            &vec![
+                (Duration::from_secs_f32(0.1), vec![d(a), d(b)]),
+                (Duration::from_secs_f64(0.1), vec![d(a)]),
+                (Duration::from_secs(1), vec![d(a), d(b)]),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_nested_delay_decodes() {
+        let a = Entity::from_raw_u32(1).unwrap();
+        let mut inner = Encoder::default();
+        inner.despawn(a);
+        let mut outer = Encoder::default();
+        outer.delayed(&[(0, 1.0, &inner)]);
+        let mut enc = Encoder::default();
+        enc.delayed(&[(1, 2.0, &outer)]);
+        let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
+        let inner = Op::Delayed { queues: vec![(Duration::from_secs(1), vec![Op::Despawn { entity: a }])] };
+        assert_eq!(ops, vec![Op::Delayed { queues: vec![(Duration::from_secs(2), vec![inner])] }]);
+    }
+
+    #[test]
+    fn a_bad_delay_fails_decode() {
+        let empty = Encoder::default();
+        for (kind, value, method) in [(0, -1.0, "secs(-1)"), (0, f64::NAN, "secs(NaN)"), (1, f64::INFINITY, "duration(inf)"), (1, 1e30, "duration(1000000000000000000000000000000)")] {
+            let mut enc = Encoder::default();
+            enc.delayed(&[(kind, value, &empty)]);
+            let e = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap_err();
+            assert!(e.contains(method), "{e}");
+        }
+        // A bad op inside a queue fails the whole buffer.
+        let mut bad = Encoder::default();
+        bad.plugin(9, b"x");
+        let mut enc = Encoder::default();
+        enc.delayed(&[(0, 1.0, &bad)]);
+        assert!(decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap_err().contains("opcode 9"));
+    }
+
+    #[test]
+    fn a_delayed_queue_is_bevys_queue_entity() {
+        let mut world = World::new();
+        let mut time = Time::<()>::default();
+        time.advance_by(Duration::from_secs(3));
+        world.insert_resource(time);
+        let a = world.entity_allocator().alloc();
+        let mut later = Encoder::default();
+        later.spawn(a, &[]);
+        let mut enc = Encoder::default();
+        enc.delayed(&[(0, 0.5, &later)]);
+        let ops = decode(&enc.bytes, &HashMap::new(), &CommandKinds::default()).unwrap();
+        assert!(apply(&mut world, ops, &CommandKinds::default(), &NativeRecipes::default(), "test").is_empty());
+        assert!(world.get_entity(a).is_err(), "the spawn waits");
+        let mut q = world.query_filtered::<(Entity, &mut bevy::time::DelayedCommandQueue), With<TsSpawned>>();
+        let (e, mut queue) = q.single_mut(&mut world).unwrap();
+        assert_eq!(queue.submit_at, Duration::from_secs_f32(3.5));
+        let mut commands = std::mem::take(&mut queue.queue);
+        world.despawn(e);
+        commands.apply(&mut world);
+        assert!(world.get::<TsSpawned>(a).is_some(), "the queue's spawn applied when it fired");
     }
 }

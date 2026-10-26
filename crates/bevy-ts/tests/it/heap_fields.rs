@@ -96,7 +96,7 @@ impl Game {
         let world = self.app.world_mut();
         let sizes = world.resource::<TsComponents>().writable_sizes(world.resource::<bevy_ts::layout::NativeLayouts>());
         let ops = commands::decode(bytes, &sizes, &CommandKinds::default()).unwrap();
-        commands::apply(world, ops, &CommandKinds::default(), &NativeRecipes::default())
+        commands::apply(world, ops, &CommandKinds::default(), &NativeRecipes::default(), "test")
     }
 }
 

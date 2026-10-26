@@ -68,4 +68,4 @@ Rebase on `main` first: writable-native-params (584b78c) and protocol 1.29.0 are
 
 Not tasks of this change: a follow-up change once its shape lands.
 
-- Stage 4, `commands.delayed().secs(s)`: waits on writable-native-params' `Commands`
+- Stage 4, `commands.delayed().secs(s)`: built by change delayed-commands

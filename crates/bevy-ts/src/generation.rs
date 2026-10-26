@@ -240,6 +240,12 @@ impl Applying {
     /// A restart's first step: despawns TS-spawned entities and TS resources, forgets startups
     /// and per-generation memory, and runs the restart handlers.
     pub fn reset(&mut self, world: &mut World) {
+        // A TS delayed queue counts on the clock a Stop resets: it goes, without Bevy's drop
+        // warning.
+        let mut queues = world.query_filtered::<&mut bevy::time::DelayedCommandQueue, With<TsSpawned>>();
+        for mut q in queues.iter_mut(world) {
+            q.queue.silence_drop_warning();
+        }
         let spawned: Vec<Entity> = world.query_filtered::<Entity, With<TsSpawned>>().iter(world).collect();
         for e in spawned {
             // Children may already be gone with their parent.
