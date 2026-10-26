@@ -24,12 +24,12 @@ variables, waits on conditions with deadlines.
 ## 4. TS API
 
 - [x] 4.1 `crates/bevy-ts-v8/js/core.js`: `commands.saveWorld(name, { entities, allow, deny, resources })` and `commands.loadWorld(name, { parent })`, the name checked in JS with the same rule, classes sent as their name or reflect path; regenerate `packages/bevy-ts/runtime/core.js` with `packages/bevy-ts/scripts/sync-runtime.mjs`
-- [ ] 4.2 (stage 2: the methods, their options and `Save` are in; `WorldSaved`, `WorldLoaded` wait for rust-events' TS reader) `packages/bevy-ts/index.d.ts`: the two methods on `Commands` with their option types; `Save`, `WorldSaved`, `WorldLoaded` declared and exported
+- [x] 4.2 `packages/bevy-ts/index.d.ts`: the two methods on `Commands` with their option types; `Save` declared and exported; `WorldSaved`, `WorldLoaded` are generated into `bevy-ts/bevy` (rust-events)
 
 ## 5. Tests
 
 - [x] 5.1 `crates/bevy-ts/tests/it/saves.rs` (new, `mod saves;` in `main.rs`), an app with `MinimalPlugins`, `AssetPlugin` and `SaveDir` in the test's `common::project` folder, TS components registered through `TsComponents`: save, despawn all, load, compare (Rust `Transform`, a Rust resource, TS components, a TS resource; compared by component per `Name`, never by entity id); a TS `target: Entity` remapped, including a high-generation entity and one outside the save; `ChildOf` remapped; `Save` default set vs `entities`; `allow` and `deny` for Rust and TS classes; `resources`; load adds (twice gives double); an added field defaults and a retyped one resets, with the migration logged; an undeclared class kept in `TsSaved` and saved again; a missing slot gives `WorldLoaded.error`; a failed write (the temp path a folder) keeps the old file whole; a Rust-only save read by Bevy's `WorldAssetLoader`; a mesh handle saved as its path and loaded
-- [ ] 5.2 (stage 2: the test is in and reads the messages in Rust; the TS read waits for rust-events) `crates/bevy-ts-cli/tests/it/saves.rs` (new, `mod saves;` in `main.rs`): one headless engine on a project, a script that spawns `Save`-marked entities, saves, despawns, loads, and reads `WorldSaved` / `WorldLoaded`; asserts the file is under `<project>/.bevy-ts/saves/` and the reloaded values match; `saveWorld("../x")` throws in TS
+- [x] 5.2 `crates/bevy-ts-cli/tests/it/saves.rs` (new, `mod saves;` in `main.rs`): one headless engine on a project, a script that spawns `Save`-marked entities, saves, despawns, loads, and reads `WorldSaved` / `WorldLoaded`; asserts the file is under `<project>/.bevy-ts/saves/` and the reloaded values match; `saveWorld("../x")` throws in TS
 - [x] 5.3 `bench/world-saves` (new, outside the workspace): save and load of 10k `Save`-marked entities each with `Transform` and two TS components, `cargo static test --release`, 3 runs; record main-thread ms for save (walk plus serialise), file size, and load (apply) in design.md and docs/saves.md
 
 ## 6. Docs

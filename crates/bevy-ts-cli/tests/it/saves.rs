@@ -1,5 +1,6 @@
 //! World saves from a script (openspec world-saves): `commands.saveWorld` and `loadWorld` through
-//! V8, the dev save folder, and a name with a path refused in TS. The save and load rules
+//! V8, read back with a TS `MessageReader<WorldSaved>` / `<WorldLoaded>`, the dev save folder, and
+//! a name with a path refused in TS. The save and load rules
 //! themselves are `crates/bevy-ts/tests/it/saves.rs`'s.
 
 use crate::common;
@@ -12,7 +13,8 @@ use serde_json::json;
 use std::time::{Duration, Instant};
 
 const GAME: &str = r#"import { app, Component, Resource, Save, Startup, Transform, u32, f32, Update, With } from "bevy-ts";
-import type { Commands, Entity, Query, ResMut } from "bevy-ts";
+import type { Commands, Entity, MessageReader, Query, ResMut } from "bevy-ts";
+import { WorldLoaded, WorldSaved } from "bevy-ts/bevy";
 export class Health extends Component { static path = "game::Health"; declare hp: f32 }
 export class Follow extends Component { static path = "game::Follow"; declare target: Entity }
 export class Phase extends Resource { static path = "game::Phase"; declare n: u32 }
@@ -44,12 +46,24 @@ export function report(p: ResMut<Phase>, q: Query<[Entity, Health, Transform, Fo
   console.log(`saved ${h.len}`);
   p.n = 6;
 }
-app.insertResource(Phase.of({ n: 0 })).addSystems(Startup, setup).addSystems(Update, drive, report);
+export function outcomes(s: MessageReader<WorldSaved>, l: MessageReader<WorldLoaded>) {
+  for (const m of s) console.log(`outcome saved ${m.name} ${m.error ?? "ok"}`);
+  for (const m of l) console.log(`outcome loaded ${m.name} ${m.entities.length} ${m.error ?? "ok"}`);
+}
+app.insertResource(Phase.of({ n: 0 })).addSystems(Startup, setup).addSystems(Update, drive, report, outcomes);
 "#;
 
+/// The script's `WorldSaved` / `WorldLoaded` lines, read with a TS `MessageReader`.
+fn outcomes(app: &App) -> Vec<String> {
+    messages(app).into_iter().filter(|m| m.starts_with("outcome ")).collect()
+}
+
+/// A Rust reader, for a save made from Rust.
+#[cfg(target_os = "macos")]
 #[derive(Resource, Default)]
 struct Got(Vec<String>);
 
+#[cfg(target_os = "macos")]
 fn collect(mut s: MessageReader<WorldSaved>, mut l: MessageReader<WorldLoaded>, mut got: ResMut<Got>) {
     got.0.extend(s.read().map(|m| format!("saved {} {:?}", m.name, m.error)));
     got.0.extend(l.read().map(|m| format!("loaded {} {} {:?}", m.name, m.entities.len(), m.error)));
@@ -67,7 +81,7 @@ fn set_phase(app: &mut App, n: u32) {
 fn until(app: &mut App, what: &str, done: impl Fn(&App) -> bool) {
     let deadline = Instant::now() + Duration::from_secs(60);
     while !done(app) {
-        assert!(Instant::now() < deadline, "timed out waiting for {what}: {:?} {:?}", app.world().resource::<Got>().0, messages(app));
+        assert!(Instant::now() < deadline, "timed out waiting for {what}: {:?}", messages(app));
         app.update();
         std::thread::sleep(Duration::from_millis(1));
     }
@@ -78,14 +92,14 @@ fn a_script_saves_and_loads_in_the_dev_folder() {
     let dir = project("saves-script", &[("game.ts", GAME)]);
     let mut app = common::app(&dir.join("game.ts"));
     app.add_plugins(AssetPlugin::default());
-    app.insert_resource(SaveDir(bevy_ts_cli::cli::dev_save_dir(&dir))).init_resource::<Got>().add_systems(Last, collect);
+    app.insert_resource(SaveDir(bevy_ts_cli::cli::dev_save_dir(&dir)));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     updates(&mut app, 2);
 
     set_phase(&mut app, 1);
-    until(&mut app, "the save", |a| a.world().resource::<Got>().0.iter().any(|m| m.starts_with("saved")));
-    assert_eq!(app.world().resource::<Got>().0, ["saved slot1 None"]);
+    until(&mut app, "the save", |a| !outcomes(a).is_empty());
+    assert_eq!(outcomes(&app), ["outcome saved slot1 ok"]);
     let file = dir.join(".bevy-ts/saves/slot1.scn.ron");
     assert!(file.is_file(), "the dev save is in the project's .bevy-ts/saves");
     let refused: Vec<String> = messages(&app).into_iter().filter(|m| m.starts_with("refused")).collect();
@@ -94,8 +108,8 @@ fn a_script_saves_and_loads_in_the_dev_folder() {
     assert!(!dir.join(".bevy-ts/x.scn.ron").exists() && !dir.join("x.scn.ron").exists());
 
     set_phase(&mut app, 3);
-    until(&mut app, "the load", |a| a.world().resource::<Got>().0.iter().any(|m| m.starts_with("loaded")));
-    assert_eq!(app.world().resource::<Got>().0[1], "loaded slot1 2 None", "{:?}", messages(&app));
+    until(&mut app, "the load", |a| outcomes(a).len() > 1);
+    assert_eq!(outcomes(&app)[1], "outcome loaded slot1 2 ok", "{:?}", messages(&app));
     set_phase(&mut app, 5);
     until(&mut app, "the report", |a| messages(a).iter().any(|m| m.starts_with("saved ")));
     let lines: Vec<String> = messages(&app).into_iter().filter(|m| m.starts_with("a ") || m.starts_with("saved ")).collect();

@@ -6,7 +6,8 @@ builds the save, `DynamicWorld::serialize` writes Bevy's own `.scn.ron`, and Bev
 
 ```ts
 import { Component, f32, Save, With } from "bevy-ts";
-import type { Commands, Entity, Query } from "bevy-ts";
+import type { Commands, Entity, MessageReader, Query } from "bevy-ts";
+import { WorldLoaded, WorldSaved } from "bevy-ts/bevy";
 
 export class Health extends Component { static path = "game::Health"; declare hp: f32 }
 
@@ -22,6 +23,11 @@ export function saveGame(c: Commands) {
 export function loadGame(c: Commands, saved: Query<[Entity], With<Save>>) {
   saved.each((e) => c.entity(e).despawn());
   c.loadWorld("slot1");
+}
+
+export function outcomes(saved: MessageReader<WorldSaved>, loaded: MessageReader<WorldLoaded>) {
+  for (const m of saved) console.log(m.error ?? `saved ${m.name}`);
+  for (const m of loaded) console.log(m.error ?? `loaded ${m.entities.length} entities`);
 }
 ```
 
@@ -39,8 +45,8 @@ export function loadGame(c: Commands, saved: Query<[Entity], With<Save>>) {
   save failed; `WorldLoaded { name, entities, error }` once the entities are in the world, with
   the new entities. `error` is absent on success and names the cause: a missing file, Bevy's parse
   error with its position, a component with no serde form (its type path), an IO error (the
-  path). A script reads them with `MessageReader<WorldSaved>` once rust-events (TS readers of Rust
-  messages) has landed; Rust reads them as any message.
+  path). A script reads them with `MessageReader<WorldSaved>` (both from `bevy-ts/bevy`);
+  Rust reads them as any message.
 
 ## What a save holds
 

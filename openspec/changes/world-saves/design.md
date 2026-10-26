@@ -140,8 +140,8 @@ components, and `ObservedBy` (it names observer entities). With that list
   `saves::register` gives it an empty native layout (as `ts_layout` does), so `spawn(Save, ...)`
   works.
 - The dev folder is set in `run_dev`, which knows the project, not `base_app`, which does not.
-- The two messages are registered with `ReflectTsMessage`; a script reads them once rust-events
-  (TS readers of Rust messages) lands. Until then the CLI test reads them in Rust.
+- The two messages are registered with rust-events' `register_message`, so `bevy-ts/bevy`
+  generates `WorldSaved` and `WorldLoaded` and a script reads them with `MessageReader`.
 
 ## Measured (task 5.3)
 
