@@ -8,6 +8,10 @@
 #
 #   bench/android-smoke/run.sh [game]     (default arena; a game folder under examples/)
 #
+# SMOKE_PROJECT (a project folder, else examples/<game>), SMOKE_ENTRY (its entry, else the project's
+# own) and SMOKE_ENV (the engine's env, JSON) play another game under the name <game>; SETTLE is the
+# seconds to wait before each screenshot (5). abyme-game.mjs plays agent town's worlds this way.
+#
 # Needs: dist/aarch64-linux-android/ (scripts/android), the SDK's build-tools 35, platform 34, the
 # emulator and system-images;android-34;google_apis;arm64-v8a. Nothing shows on screen.
 set -euo pipefail
@@ -49,7 +53,10 @@ apk=$build/smoke.apk
 # The game, built by this checkout's engine; only its game/ folder goes to the phone.
 out=$cache/game-$game
 ~/dev/abyme/scripts/gate-slot run bevy-ts:android-smoke -- cargo build -q -p bevy-ts-cli
-./target/debug/bevy-ts build "examples/$game" --out "$out" >/dev/null
+project=${SMOKE_PROJECT:-examples/$game}
+./target/debug/bevy-ts build "$project" --out "$out" ${SMOKE_ENTRY:+--entry "$SMOKE_ENTRY"} >/dev/null
+env64=$(printf '%s' "${SMOKE_ENV:-{\}}" | base64 | tr -d '\n')
+settle=${SETTLE:-5}
 
 # A headless emulator of its own.
 if [[ ! -d "$ANDROID_AVD_HOME/bevy-ts-smoke.avd" ]]; then
@@ -92,12 +99,12 @@ tar -C "$out/game" -cf "$cache/game.tar" .
 "$adb" -s $serial logcat -c
 
 # Play: started from the library in filesDir.
-"$adb" -s $serial shell am start -W -n $pkg/.SmokeActivity --es game "$game" >/dev/null
+"$adb" -s $serial shell am start -W -n $pkg/.SmokeActivity --es game "$game" --es env64 "$env64" >/dev/null
 until_ok 'logged "\"event\":\"started\"" || logged "failed"' 180 "started"
 logged "failed" && { log; exit 1; }
 say "$(log | grep -o 'loaded .*' | head -1)"
 say "$(log | grep -o 'first frame in .*' | head -1)"
-sleep 5 # frames to look at, for the screenshot only
+sleep "$settle" # frames to look at, for the screenshot only
 close_dialogs
 "$adb" -s $serial exec-out screencap -p > "$results/$game-playing.png"
 
@@ -117,7 +124,7 @@ until_ok '(( $(count "surface released") > released && $(count "paused") > pause
 say "$(log | grep -o 'surface released in .*' | tail -1)"
 "$adb" -s $serial shell am start -W -n $pkg/.SmokeActivity >/dev/null
 until_ok '(( $(count "resumed") > resumed ))' 30 "resumed"
-sleep 5
+sleep "$settle"
 close_dialogs
 "$adb" -s $serial exec-out screencap -p > "$results/$game-after-replace.png"
 say "resumed on a new surface"

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.util.Base64;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
@@ -66,6 +67,11 @@ public final class SmokeActivity extends Activity implements SurfaceHolder.Callb
         String game = getIntent().getStringExtra("game");
         JSONObject c = new JSONObject();
         c.put("game", new File(getFilesDir(), "games/" + (game == null ? "arena" : game)).getAbsolutePath());
+        // The game's env as base64 JSON, so it survives `adb shell am start`'s quoting.
+        String env = getIntent().getStringExtra("env64");
+        if (env != null) {
+            c.put("env", new JSONObject(new String(Base64.decode(env, Base64.DEFAULT), "UTF-8")));
+        }
         return c.toString();
     }
 
