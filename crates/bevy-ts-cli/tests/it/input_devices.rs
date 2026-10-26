@@ -315,6 +315,52 @@ fn a_gamepad_condition_fails_the_load_pointing_at_gamepads() {
     assert!(at.file.ends_with("game.ts") && at.line == 4, "the call's location, not the module's: {at:?}");
 }
 
+// Change `logical-keys`: the conditions take a `Key`, read against `ButtonInput<Key>`.
+const LOGICAL_CONDITIONS: &str = r#"import { app, systems, Update } from "bevy-ts";
+import { inputJustPressed, inputToggleActive, Key } from "bevy-ts/input";
+
+export function pause() { console.log("pause"); }
+export function menu() { console.log("menu"); }
+app.addSystems(Update,
+  systems(pause).runIf(inputJustPressed(Key.Character("p"))),
+  systems(menu).runIf(inputToggleActive(false, Key.Escape)));
+"#;
+
+/// A key down then up with `logical_key`, a frame each.
+fn logical_tap(app: &mut App, key_code: KeyCode, logical_key: Key) {
+    let window = window(app);
+    for state in [ButtonState::Pressed, ButtonState::Released] {
+        app.world_mut().write_message(KeyboardInput { key_code, logical_key: logical_key.clone(), state, text: None, repeat: false, window });
+        app.update();
+    }
+}
+
+#[test]
+fn input_conditions_take_a_logical_key() {
+    let mut app = input_app("input-conditions-key", LOGICAL_CONDITIONS, true);
+    app.update();
+    let before = calls(&app);
+    common::updates(&mut app, 3);
+    assert_eq!(calls(&app), before, "no input, no call into JS");
+
+    // The key at KeyY types p (a layout that swaps them): the condition reads what it types.
+    logical_tap(&mut app, KeyCode::KeyY, Key::Character("p".into()));
+    common::updates(&mut app, 2);
+    assert_eq!(runs(&mut app, "pause"), 1, "just pressed is the press frame only");
+    logical_tap(&mut app, KeyCode::KeyP, Key::Character("q".into()));
+    assert_eq!(runs(&mut app, "pause"), 1, "KeyP typing q is not p");
+
+    // Escape on, Escape off: the menu runs only between the two presses.
+    let n = runs(&mut app, "menu");
+    logical_tap(&mut app, KeyCode::Escape, Key::Escape);
+    common::updates(&mut app, 2);
+    let on = runs(&mut app, "menu");
+    assert_eq!(on - n, 4, "on from the press: its frame, the release's and two more");
+    logical_tap(&mut app, KeyCode::Escape, Key::Escape);
+    common::updates(&mut app, 2);
+    assert_eq!(runs(&mut app, "menu"), on, "the second press turns it off");
+}
+
 const MOTION: &str = r#"import { app, Update } from "bevy-ts";
 import type { Res } from "bevy-ts";
 import { AccumulatedMouseMotion, AccumulatedMouseScroll } from "bevy-ts/bevy";

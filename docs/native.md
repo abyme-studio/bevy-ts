@@ -727,8 +727,10 @@ export function menuArrows(keys: Keys, nav: DirectionalNavigation) {
 }
 ```
 
-Bevy's input conditions come from `bevy-ts/input` too, taking a `KeyCode` or a `MouseButton`:
-`inputPressed`, `inputJustPressed`, `inputJustReleased` and `inputToggleActive(initial, code)`.
+Bevy's input conditions come from `bevy-ts/input` too, taking a `KeyCode`, a `MouseButton` or a
+`Key`, read against `ButtonInput<KeyCode>`, `ButtonInput<MouseButton>` or `ButtonInput<Key>` as
+Bevy's generic conditions are: `inputPressed`, `inputJustPressed`, `inputJustReleased` and
+`inputToggleActive(initial, code)`.
 Each is Bevy's own condition, exposed with `app.ts_condition("input:just-pressed", ..)` and
 called through `nativeCondition`, so it runs in Rust and a skipped system costs no call into JS.
 `inputToggleActive` keeps its on/off state per use across reloads, as any native condition does.
@@ -737,10 +739,11 @@ its entity, not to a `ButtonInput`. Read them with `Gamepads` in the system.
 
 ```ts
 import { app, systems, Update } from "bevy-ts";
-import { inputJustPressed, inputToggleActive, KeyCode } from "bevy-ts/input";
+import { inputJustPressed, inputToggleActive, Key, KeyCode } from "bevy-ts/input";
 
 app.addSystems(Update,
   systems(pause).runIf(inputJustPressed(KeyCode.Escape)),
+  systems(help).runIf(inputJustPressed(Key.Character("?"))),
   systems(debugOverlay).runIf(inputToggleActive(false, KeyCode.F1)));
 ```
 
@@ -811,7 +814,7 @@ Every public Bevy 0.20 input type, and where TS reaches it:
 | `GamepadEvent`, `GamepadConnectionEvent`, `GamepadButtonChangedEvent`, `GamepadButtonStateChangedEvent`, `GamepadAxisChangedEvent`, `RawGamepadEvent` and its parts | `MessageReader` | rust-events |
 | `GamepadRumbleRequest`, `GamepadRumbleIntensity` | `MessageWriter`, `duration` in seconds | rust-events |
 | Rumble in viewport mode | none: the viewport protocol carries no rumble | a follow-up |
-| `input_pressed`, `input_just_pressed`, `input_just_released`, `input_toggle_active` | `inputPressed` and friends, native conditions | script-input-devices |
+| `input_pressed`, `input_just_pressed`, `input_just_released`, `input_toggle_active` | `inputPressed` and friends, native conditions, over `KeyCode`, `MouseButton` and `Key` | script-input-devices; logical-keys |
 | Condition combinators | `not`, `and`, `or` | ecs-schedules |
 | `ButtonState`, `Axis<T>` | through the params | none needed |
 | `Gilrs`, `GilrsGamepads`, `RunningRumbleEffects`, `RumbleSystems` | none: backend internals | none |
