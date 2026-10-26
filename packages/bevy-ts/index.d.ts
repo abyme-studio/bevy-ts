@@ -719,6 +719,8 @@ export interface QueryOf<R extends unknown[]> extends Iterable<R> {
   iterCombinations(k: number): IterableIterator<R[]>;
   /** With `ChildOf` data: `e`'s parent, then its parent, up to the root (Bevy's `iter_ancestors`). */
   iterAncestors(e: Entity): IterableIterator<Entity>;
+  /** With `Children` data: `e`'s children, then theirs, breadth first; not `e` (Bevy's `iter_descendants`). */
+  iterDescendants(e: Entity): IterableIterator<Entity>;
   readonly len: number;
   /** This run's change tick, for `split` tables. */
   readonly tick: number;

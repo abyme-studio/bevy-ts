@@ -3183,6 +3183,24 @@ class QueryParam {
       e = parent;
     }
   }
+  /** `entity`'s children, then their children, breadth first, through `Children` data (Bevy's
+   * `iter_descendants`). `entity` itself is not yielded. */
+  *iterDescendants(entity) {
+    const di = this.data.findIndex((d) => d.cls && d.cls.componentName === "Children");
+    if (di < 0) throw new Error("iterDescendants needs Children in the query's data (Query<[Children]>)");
+    const seen = new Set([entity]);
+    const queue = [entity];
+    for (let i = 0; i < queue.length; i++) {
+      const row = this.get(queue[i]);
+      // Children reads through reflection: its value is the list of child entities.
+      for (const child of (row && row[di] ? row[di].value : null) ?? []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        yield child;
+        queue.push(child);
+      }
+    }
+  }
 }
 
 class MessageReaderParam {

@@ -43,8 +43,9 @@ sparse-set component hands a table once per matched archetype.
 `q.len`, `q.isEmpty()`, `q.single()` (throws unless one), `q.get(e)`, `q.contains(e)`,
 `q.iterMany(list)` (rows of the listed entities that match, in list order), `q.getMany(list)`
 (throws naming the first that does not match), `q.iterCombinations(k)` (each set of `k` rows
-once), `q.iterAncestors(e)` (with `ChildOf` data: parent first, up to the root), and `q.tables`
-for raw typed arrays.
+once), `q.iterAncestors(e)` (with `ChildOf` data: parent first, up to the root),
+`q.iterDescendants(e)` (with `Children` data: children, then theirs, breadth first; not `e`),
+and `q.tables` for raw typed arrays.
 
 ### Params that skip the system
 
