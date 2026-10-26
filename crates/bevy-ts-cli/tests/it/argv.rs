@@ -45,7 +45,7 @@ fn argv_game(name: &str) -> PathBuf {
         entry: "src/game.ts".into(),
         bevy_ts: env!("CARGO_PKG_VERSION").into(),
         engine: "prebuilt".into(),
-        mesh_picking: false,
+        switches: Default::default(),
         diagnostics: vec![],
         net: Default::default(),
         env: vec![],

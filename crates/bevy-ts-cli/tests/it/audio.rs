@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 fn engine(display: Display, assets: Option<&Path>) -> App {
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    base_app(&engine, bevy_ts_cli::Prebuilt, display, Default::default(), assets, false, false, &[], false)
+    base_app(&engine, bevy_ts_cli::Prebuilt, display, Default::default(), assets, false, Default::default(), &[], false)
 }
 
 const TONE_OGG: &[u8] = include_bytes!("fixtures/tone.ogg");

@@ -181,7 +181,7 @@ app.scene("ui", () => <>{{Array.from({{ length: 1000 }}, (_, i) => <node key={{`
     );
     let dir = project(&format!("scale-moved-{arm}"), &[("game.tsx", &src)]);
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, Default::default(), &[]);
+    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, Default::default(), &[], false);
     app.insert_resource(DevSource(Arc::new(bevy_ts_cli::compile::Compiler::new(dir.join("game.tsx"), true).unwrap())));
     app.finish();
     app.cleanup();
@@ -235,7 +235,7 @@ app.scene("ui", () => <>{{Array.from({{ length: {n} }}, (_, i) => (
     );
     let dir = project(&format!("scale-halo-{n}-{arm}"), &[("game.tsx", &src)]);
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, Default::default(), &[]);
+    let mut app = base_app(&engine, bevy_ts_cli::Prebuilt, Display::Headless, Default::default(), None, true, Default::default(), &[], false);
     app.insert_resource(DevSource(Arc::new(bevy_ts_cli::compile::Compiler::new(dir.join("game.tsx"), true).unwrap())));
     app.finish();
     app.cleanup();

@@ -24,7 +24,7 @@ pub(crate) fn engine() -> Engine {
 }
 
 pub(crate) fn unfinished(display: Display, switches: Switches, entry: &Path) -> App {
-    let mut app = base_app(&engine(), bevy_ts_cli::Prebuilt, display, Default::default(), None, true, switches, &[]);
+    let mut app = base_app(&engine(), bevy_ts_cli::Prebuilt, display, Default::default(), None, true, switches, &[], false);
     app.insert_resource(DevSource(Arc::new(Compiler::new(entry, true).unwrap())));
     app
 }

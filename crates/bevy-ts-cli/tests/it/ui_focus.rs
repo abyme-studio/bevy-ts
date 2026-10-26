@@ -31,7 +31,7 @@ fn engine() -> Engine {
 
 /// The engine `bevy-ts dev` builds, before `finish`, with `entry` as its source.
 fn unfinished(extra: impl Plugin, display: Display, switches: Switches, entry: &Path) -> App {
-    let mut app = base_app(&engine(), extra, display, Default::default(), None, true, switches, &[]);
+    let mut app = base_app(&engine(), extra, display, Default::default(), None, true, switches, &[], false);
     app.insert_resource(DevSource(Arc::new(Compiler::new(entry, true).unwrap())));
     app
 }
