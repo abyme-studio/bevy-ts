@@ -1,5 +1,5 @@
 //! ts-conditions: Bevy's run conditions and combinators evaluated in Rust, their state across
-//! reloads, collective and distributive `runIf`, and conditions a crate exposes.
+//! reloads, collective and distributive `runIf`, conditions a crate exposes, and TS predicates.
 
 use crate::common;
 
@@ -11,8 +11,8 @@ use common::*;
 use serde_json::json;
 use std::time::Duration;
 
-const HEAD: &str = r#"import { Message, onMessage, PostUpdate, anyComponentRemoved, anyMatchFilter, anyWithComponent, app, Changed, Component, conditionChanged, conditionChangedTo, inState, nativeCondition, not, resourceAdded, resourceChanged, resourceChangedOrRemoved, resourceEquals, resourceExists, resourceExistsAndChanged, resourceExistsAndEquals, resourceRemoved, runOnce, Resource, States, systems, u32, Update, With, Without } from "bevy-ts";
-import type { Commands, MessageReader, MessageWriter, NextState, ResMut } from "bevy-ts";
+const HEAD: &str = r#"import { Message, onMessage, PostUpdate, anyComponentRemoved, anyMatchFilter, anyWithComponent, app, Changed, Component, conditionChanged, conditionChangedTo, inState, nativeCondition, not, resourceAdded, resourceChanged, resourceChangedOrRemoved, resourceEquals, resourceExists, resourceExistsAndChanged, resourceExistsAnd, resourceExistsAndEquals, resourceRemoved, runOnce, Resource, States, systems, u32, Update, With, Without } from "bevy-ts";
+import type { Commands, Entity, MessageReader, MessageWriter, NextState, Res, ResMut, Single } from "bevy-ts";
 export class Score extends Resource { static path = "game::Score"; declare value: u32 }
 export class Boss extends Resource { static path = "game::Boss"; declare hp: u32 }
 export class Enemy extends Component { static path = "game::Enemy" }
@@ -257,4 +257,96 @@ app.addMessage(Ping).insertResource(Score.of({ value: 0 })).addSystems(Update, s
     updates(&mut app, 4);
     // One message: the group runs in the one stage run after it was written, not while it stays buffered.
     assert_eq!(said(&mut app), ["a1", "b"]);
+}
+
+/// Calls into JS over `n` frames.
+fn calls_over(app: &mut App, n: usize) -> u64 {
+    let before = calls(app);
+    updates(app, n);
+    (calls(app) - before) as u64
+}
+
+const BOSS_READY: &str = "export function bossReady(s: Res<Score>): boolean { return s.value >= 2; }\n";
+
+#[test]
+fn a_predicate_gates_a_system_with_one_call_per_frame() {
+    let body = format!("{BOSS_READY}export function boss() {{ console.log('boss'); }}\napp.insertResource(Score.of({{ value: 0 }})).addSystems(Update, systems(boss).runIf(bossReady));\n");
+    let (_, mut app) = load("cond-predicate", &src(&body));
+    updates(&mut app, 2);
+    assert_eq!(calls_over(&mut app, 3), 3, "the predicate is one call a frame");
+    assert!(said(&mut app).is_empty());
+    write_res(&mut app, "game::Score", json!({ "value": 2 }));
+    assert_eq!(calls_over(&mut app, 3), 6, "the predicate and boss, each frame");
+    assert_eq!(said(&mut app), ["boss", "boss", "boss"]);
+}
+
+#[test]
+fn a_writing_predicate_fails_the_load_at_its_function() {
+    let errors = load_errors("cond-predicatewrites", &src("export function bad(s: ResMut<Score>): boolean { return s.value > 0; }\nexport function gated() {}\napp.insertResource(Score.of({ value: 0 })).addSystems(Update, systems(gated).runIf(bad));\n"));
+    let e = errors.iter().find(|e| e.message.contains("predicate bad")).unwrap_or_else(|| panic!("{errors:?}"));
+    assert!(e.message.contains("a condition reads only; ResMut<Score> writes"), "{e:?}");
+    let at = e.location.as_ref().unwrap();
+    assert!(at.file.ends_with("game.ts") && at.line as usize == HEAD.lines().count() + 1, "{at:?}");
+}
+
+#[test]
+fn a_group_shares_one_predicate_call_and_distributive_is_one_each() {
+    let members = "export function never() { return false; }\nexport function a() {}\nexport function b() {}\nexport function c() {}\n";
+    let (_, mut app) = load("cond-predicategroup", &src(&format!("{members}app.addSystems(Update, systems(a, b, c).runIf(never));\n")));
+    updates(&mut app, 2);
+    assert_eq!(calls_over(&mut app, 3), 3, "one call per frame for the group");
+    let (_, mut app) = load("cond-predicatedistributive", &src(&format!("{members}app.addSystems(Update, systems(a, b, c).distributiveRunIf(never));\n")));
+    updates(&mut app, 2);
+    assert_eq!(calls_over(&mut app, 3), 9, "one call per member per frame");
+}
+
+#[test]
+fn a_short_circuit_before_a_predicate_makes_no_call() {
+    let body = format!("{BOSS_READY}export function boss() {{ console.log('boss'); }}\napp.initState(Game.Menu).insertResource(Score.of({{ value: 5 }})).addSystems(Update, systems(boss).runIf(inState(Game.Playing).andThen(bossReady)));\n");
+    let (_, mut app) = load("cond-predicateandthen", &src(&body));
+    updates(&mut app, 2);
+    assert_eq!(calls_over(&mut app, 3), 0, "outside Playing the predicate is never called");
+    assert!(said(&mut app).is_empty());
+}
+
+#[test]
+fn resource_exists_and_calls_the_predicate_only_while_it_exists() {
+    let body = "export function alive(b: Res<Boss>): boolean { return b.hp > 0; }\nexport function fight() { console.log('fight'); }\napp.insertResource(Boss.of({ hp: 3 })).addSystems(Update, systems(fight).runIf(resourceExistsAnd(Boss, alive)));\n";
+    let (_, mut app) = load("cond-predicateexists", &src(body));
+    updates(&mut app, 2);
+    assert_eq!(calls_over(&mut app, 2), 4);
+    remove_res(&mut app, "game::Boss");
+    assert_eq!(calls_over(&mut app, 3), 0, "no Boss, no call");
+    assert_eq!(said(&mut app), ["fight", "fight", "fight", "fight"]);
+}
+
+#[test]
+fn a_removed_resource_no_longer_exists_and_skips_its_readers() {
+    let body = "export function read(b: Res<Boss>) { console.log(`hp${b.hp}`); }\nexport function gated() { console.log('gated'); }\napp.insertResource(Boss.of({ hp: 3 })).addSystems(Update, read, systems(gated).runIf(resourceExists(Boss)));\n";
+    let (_, mut app) = load("cond-removedexists", &src(body));
+    app.update();
+    remove_res(&mut app, "game::Boss");
+    updates(&mut app, 2);
+    assert_eq!(said(&mut app), ["hp3", "gated"]);
+}
+
+#[test]
+fn rust_skipped_systems_and_predicates_make_no_call() {
+    // gated is skipped by a Rust condition, lone by its Single finding no Enemy: neither calls JS,
+    // and only the predicate that does run is a call.
+    let body = format!("{BOSS_READY}export function lone(e: Single<[Entity], With<Enemy>>): boolean {{ return true; }}\nexport function gated() {{ console.log('gated'); }}\nexport function solo() {{ console.log('solo'); }}\nexport function boss() {{ console.log('boss'); }}\napp.initState(Game.Menu).insertResource(Score.of({{ value: 0 }})).addSystems(Update, systems(gated).runIf(inState(Game.Playing)), systems(solo).runIf(lone), systems(boss).runIf(bossReady));\n");
+    let (_, mut app) = load("cond-predicaterustskip", &src(&body));
+    updates(&mut app, 2);
+    assert_eq!(calls_over(&mut app, 3), 3, "bossReady alone is called");
+    assert!(said(&mut app).is_empty());
+}
+
+#[test]
+fn a_predicate_returning_no_boolean_warns_and_is_false() {
+    let body = "export function score(s: Res<Score>) { return s.value; }\nexport function gated() { console.log('gated'); }\napp.insertResource(Score.of({ value: 1 })).addSystems(Update, systems(gated).runIf(score as any));\n";
+    let (_, mut app) = load("cond-predicatenobool", &src(body));
+    updates(&mut app, 3);
+    let warned = messages(&app).iter().filter(|m| m.contains("predicate score returned no boolean")).count();
+    assert_eq!(warned, 1, "{:?}", messages(&app));
+    assert!(said(&mut app).is_empty());
 }

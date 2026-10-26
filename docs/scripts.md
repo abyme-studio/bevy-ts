@@ -168,6 +168,24 @@ resets it.
 stage, before the group's first member, and holds for every member in that run.
 `distributiveRunIf(c)` gives each member its own `c`.
 
+A condition can also be an exported function returning `boolean`, a predicate:
+
+```ts
+export function bossReady(s: Res<Score>): boolean { return s.value >= 100; }
+app.addSystems(Update, systems(spawnBoss).runIf(bossReady),
+  systems(fight).runIf(resourceExistsAnd(Boss, alive)));
+```
+
+It goes wherever a condition goes: `runIf`, `distributiveRunIf`, `not` and the combinators.
+Each evaluation is one call into JS, about 3 µs when the stage already runs TS. In a stage
+with no other TS system, the first call costs about 20 µs, the price of entering JS at all.
+Put Rust conditions first: `inState(Game.Playing).andThen(bossReady)` makes no call outside
+`Playing`. `resourceExistsAnd(R, pred)` calls `pred` only while `R` exists. A predicate reads
+only: a `ResMut`, `Commands`, `MessageWriter`, `NextState` or `Mut<C>` param fails the load
+with "a condition reads only; ResMut<Score> writes". A return that is not a boolean counts as
+false and warns. When a predicate gates a single system, an early `return` in that system costs
+the same.
+
 ### States
 
 ```ts
