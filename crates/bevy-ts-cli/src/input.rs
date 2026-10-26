@@ -197,8 +197,9 @@ enum Cond {
     ToggleActive(bool),
 }
 
-/// Builds Bevy's condition `c` over `ButtonInput<KeyCode>` or `ButtonInput<MouseButton>`, chosen
-/// by the range of the call's `code`. Gamepad numbers fail: a pad's buttons are its entity's.
+/// Builds Bevy's condition `c` over `ButtonInput<KeyCode>`, `ButtonInput<MouseButton>` or
+/// `ButtonInput<Key>`, chosen by the range of the call's `code`. Gamepad numbers fail: a pad's
+/// buttons are its entity's.
 fn condition(args: &serde_json::Value, call: &str, c: Cond) -> Result<BoxedCondition, String> {
     fn of<T: Clone + Eq + std::hash::Hash + Send + Sync + 'static>(input: T, c: Cond) -> BoxedCondition {
         use bevy::input::common_conditions::*;
@@ -209,14 +210,17 @@ fn condition(args: &serde_json::Value, call: &str, c: Cond) -> Result<BoxedCondi
             Cond::ToggleActive(default) => Box::new(IntoSystem::into_system(input_toggle_active(default, input))),
         }
     }
-    let n = args["code"].as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| format!("{call} takes a KeyCode or a MouseButton"))?;
+    let n = args["code"].as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| format!("{call} takes a KeyCode, a MouseButton or a Key"))?;
     match input_code_of(n) {
         Some(InputCode::Key(k)) => Ok(of(k, c)),
         Some(InputCode::Mouse(b)) => Ok(of(b, c)),
         Some(InputCode::GamepadButton(_) | InputCode::GamepadAxis(_)) => Err(format!(
             "{call}({n}): {n} is a gamepad input, and Bevy has no gamepad condition; read a pad's buttons with Gamepads in the system"
         )),
-        None => Err(not_a(n, "KeyCode or MouseButton", "KeyCode.Space")),
+        None => match key_of(n) {
+            Some(k) => Ok(of(k, c)),
+            None => Err(not_a(n, "KeyCode, MouseButton or Key", "KeyCode.Space")),
+        },
     }
 }
 
@@ -573,14 +577,15 @@ export const inputJustReleased = (code) => nativeCondition("input:just-released"
 export const inputToggleActive = (initial, code) => nativeCondition("input:toggle-active", { default: initial, code });
 "#;
 
-const CONDITIONS_DTS: &str = r#"/** Bevy's `input_pressed`: true while the key or button is down. Evaluated in Rust. */
-export declare function inputPressed(code: KeyCode | MouseButton): Condition;
+const CONDITIONS_DTS: &str = r#"/** Bevy's `input_pressed`: true while the key or button is down. Evaluated in Rust, against
+ * `ButtonInput<KeyCode>`, `ButtonInput<MouseButton>` or `ButtonInput<Key>` by the code's enum. */
+export declare function inputPressed(code: KeyCode | MouseButton | Key): Condition;
 /** Bevy's `input_just_pressed`: true on the frame the key or button goes down. */
-export declare function inputJustPressed(code: KeyCode | MouseButton): Condition;
+export declare function inputJustPressed(code: KeyCode | MouseButton | Key): Condition;
 /** Bevy's `input_just_released`: true on the frame the key or button goes up. */
-export declare function inputJustReleased(code: KeyCode | MouseButton): Condition;
+export declare function inputJustReleased(code: KeyCode | MouseButton | Key): Condition;
 /** Bevy's `input_toggle_active`: starts at `initial` and flips each frame the input is just pressed. */
-export declare function inputToggleActive(initial: boolean, code: KeyCode | MouseButton): Condition;
+export declare function inputToggleActive(initial: boolean, code: KeyCode | MouseButton | Key): Condition;
 "#;
 
 /// The module's declarations; the params are declared from their `#[export]`.

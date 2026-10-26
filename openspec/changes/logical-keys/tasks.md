@@ -18,7 +18,7 @@
 
 ## 4. Conditions (after script-input-devices lands its arms)
 
-- [ ] 4.1 `crates/bevy-ts/src/systems.rs`: the four input condition arms decode the `Key` ranges and read `ButtonInput<Key>`
+- [ ] 4.1 `crates/bevy-ts-cli/src/input.rs` (where script-input-devices put them): the four input condition arms decode the `Key` ranges and read `ButtonInput<Key>`
 - [ ] 4.2 Test: `runIf(inputJustPressed(Key.Character("p")))` runs on the press frame only, no JS call for the condition; `inputToggleActive(false, Key.Escape)` flips per press
 
 ## 5. Docs
