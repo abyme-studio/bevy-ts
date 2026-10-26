@@ -2014,8 +2014,8 @@ function end() {
   return [JSON.stringify(manifest), sections];
 }
 
-/** Field values as JSON for Rust (vectors as arrays). */
-/** A TS component's decl with its `static require = [B, C.of({ ... })]`, by name and values. */
+/** A TS component's decl with its `static require = [B, C.of({ ... })]`, by name and values.
+ * Its own: a subclass does not inherit its base's `require`, as Rust's `#[require]` is per type. */
 function withRequire(C) {
   if (!Object.prototype.hasOwnProperty.call(C, "require")) return C.decl;
   const at = C.decl.location;
@@ -2024,11 +2024,12 @@ function withRequire(C) {
     if (typeof r === "function" && r.componentName) return { name: r.componentName };
     const R = r && typeof r === "object" ? r.constructor : undefined;
     if (R && R.componentName) return { name: R.componentName, values: jsonValues(R, r) };
-    throw declError(`${C.name}: static require[${i}] is not a component class or value; declare it before ${C.name}`, at);
+    throw declError(`${C.name}: static require[${i}] is not a component class or value`, at);
   });
   return { ...C.decl, require };
 }
 
+/** Field values as JSON for Rust (vectors as arrays). */
 function jsonValues(C, values) {
   const out = {};
   for (const [k, v] of Object.entries(values)) out[k] = v && typeof v.toArray === "function" ? v.toArray() : v instanceof StructValue ? v.toJSON() : v;

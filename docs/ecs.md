@@ -136,6 +136,11 @@ it. A cycle fails the load naming the classes. `removeWithRequires` removes them
 
 They land one flush after Bevy's would: bevy-ts inserts them from the component's `on_add` hook,
 through the world's commands, not in the same bundle. They are there before the next system.
+A subclass does not inherit its base's `require`.
+
+On a hot reload, a new or changed `require` touches no entity that already has the component; it
+applies to inserts from then on. A layout change to a component re-adds it to its entities, which
+runs its `on_add` again: a required part an entity had removed comes back.
 
 ## Commands
 
