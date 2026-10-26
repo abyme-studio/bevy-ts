@@ -6,6 +6,10 @@
 //! - `raw, no tick`: the column's `f32` array through `table.read`, no tick written;
 //! - `raw+tick`: `table.split` and `ticks[row] = ctx.tick`.
 //!
+//! And, over 1,000 and 100,000 entities with every other one tagged, `accessor+tick` narrowed by
+//! a filter: `With<TableTag>` (a table marker, so the dense path) and `With<SparseTag>` (a
+//! sparse-set marker, so per-table row lists from the matched archetypes).
+//!
 //! Reported per variant: the TS system's run (view building, the one call into JS, post-run
 //! ticks), and the whole `app.update()`.
 
@@ -25,13 +29,30 @@ use std::sync::Arc;
 use std::time::Instant;
 
 const HEAD: &str = r#"import { app, Component, f32, Time, Transform, Update } from "bevy-ts";
-import type { Mut, Query, Res } from "bevy-ts";
+import { rustComponent } from "bevy-ts";
+import type { Mut, Query, Res, With } from "bevy-ts";
+export const TableTag = rustComponent("TableTag");
+export const SparseTag = rustComponent("SparseTag");
 export class Mover extends Component { static path = "game::Mover"; speed: f32 = 1; amplitude: f32 = 2 }
 "#;
 
+/// A table marker on every other entity.
+#[derive(Component)]
+struct TableTag;
+
+/// A sparse-set marker on every other entity.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct SparseTag;
+
 fn variant(name: &str) -> String {
+    let filter = match name {
+        "With<TableTag>" => ", With<TableTag>",
+        "With<SparseTag>" => ", With<SparseTag>",
+        _ => "",
+    };
     let body = match name {
-        "accessor+tick" => "q.each((m, t) => { t.translation.y = Math.sin(time.elapsed_secs * m.speed) * m.amplitude; });",
+        "accessor+tick" | "With<TableTag>" | "With<SparseTag>" => "q.each((m, t) => { t.translation.y = Math.sin(time.elapsed_secs * m.speed) * m.amplitude; });",
         "raw, no tick" => {
             "for (const tb of q.tables) { const m = tb.read(Mover), t = tb.read(Transform); const ms = m.size / 4, ts = t.size / 4, sp = m.offsets.speed / 4, am = m.offsets.amplitude / 4, ty = t.offsets.translation / 4 + 1; for (let r = 0; r < tb.len; r++) t.f32![r * ts + ty] = Math.sin(time.elapsed_secs * m.f32![r * ms + sp]) * m.f32![r * ms + am]; }"
         }
@@ -39,7 +60,7 @@ fn variant(name: &str) -> String {
             "for (const tb of q.tables) { const m = tb.read(Mover), t = tb.split(Transform); const ms = m.size / 4, ts = t.size / 4, sp = m.offsets.speed / 4, am = m.offsets.amplitude / 4, ty = t.offsets.translation / 4 + 1, tick = q.tick, ticks = t.ticks; for (let r = 0; r < tb.len; r++) { t.f32![r * ts + ty] = Math.sin(time.elapsed_secs * m.f32![r * ms + sp]) * m.f32![r * ms + am]; ticks[r] = tick; } }"
         }
     };
-    format!("{HEAD}export function bob(time: Res<Time>, q: Query<[Mover, Mut<Transform>]>) {{ {body} }}\napp.addSystems(Update, bob);\n")
+    format!("{HEAD}export function bob(time: Res<Time>, q: Query<[Mover, Mut<Transform>]{filter}>) {{ {body} }}\napp.addSystems(Update, bob);\n")
 }
 
 fn median(mut v: Vec<f64>) -> f64 {
@@ -54,10 +75,13 @@ fn main() {
     println!("| entities | variant | bob run (µs, median) | app.update (µs, median) |");
     println!("|---|---|---|---|");
     for n in [1usize, 1_000, 100_000] {
-        for v in ["accessor+tick", "raw, no tick", "raw+tick"] {
+        let filtered: &[&str] = if n == 1 { &[] } else { &["With<TableTag>", "With<SparseTag>"] };
+        for v in ["accessor+tick", "raw, no tick", "raw+tick"].iter().chain(filtered) {
             std::fs::write(&entry, variant(v)).unwrap();
             let mut app = App::new();
             app.add_plugins(MinimalPlugins).add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(V8Options::default())));
+            app.world_mut().register_component::<TableTag>();
+            app.world_mut().register_component::<SparseTag>();
             app.insert_resource(DevSource(Arc::new(Compiler::new(&entry, false).unwrap())));
             let r = bevy_ts::generation::reload_now(app.world_mut(), false).unwrap();
             assert!(r.errors.is_empty(), "{:?}", r.errors);
@@ -65,6 +89,12 @@ fn main() {
             let bytes = [1f32.to_le_bytes(), 2f32.to_le_bytes()].concat();
             for i in 0..n {
                 let mut e = app.world_mut().spawn(Transform::from_xyz(i as f32, 0.0, 0.0));
+                // Only the filtered variants tag, so the others stay one table as before.
+                if i % 2 == 0 && *v == "With<TableTag>" {
+                    e.insert(TableTag);
+                } else if i % 2 == 0 && *v == "With<SparseTag>" {
+                    e.insert(SparseTag);
+                }
                 unsafe { bevy_ts::commands::insert_bytes(&mut e, id, &bytes) };
             }
             for _ in 0..100 {
