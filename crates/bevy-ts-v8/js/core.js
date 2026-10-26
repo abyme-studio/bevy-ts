@@ -1265,8 +1265,27 @@ export class Condition {
 }
 
 function cond(c, what) {
-  if (!(c instanceof Condition)) throw declError(`${what}: pass a condition (inState(...), runOnce(), ...)`, callerLocation());
+  if (typeof c === "function") return predicate(c);
+  if (!(c instanceof Condition)) throw declError(`${what}: pass a condition (inState(...), runOnce(), ...) or a predicate function`, callerLocation());
   return c.decl;
+}
+/** A TS predicate: an exported function returning `boolean`, registered once per generation and
+ * named in the condition by its identity, read when the manifest is written. One call into JS
+ * per evaluation. */
+function predicate(fn) {
+  const g = loadingOrThrow("runIf");
+  if (!g.predicateFns.has(fn)) {
+    g.predicateFns.add(fn);
+    g.registrations.push({ schedule: { schedule: "predicate" }, target: fn, after: [], before: [], sets: [], conditions: [], groups: [], at: callerLocation() });
+  }
+  const location = callerLocation();
+  return {
+    kind: "predicate",
+    get system() {
+      return identityOf(fn);
+    },
+    location,
+  };
 }
 function combine(op, a, b, eager) {
   return new Condition({ kind: "combine", op, a: a.decl, b: cond(b, op), eager });
@@ -1310,6 +1329,11 @@ export function runOnce() {
   return new Condition({ kind: "runOnce" });
 }
 export const resourceExists = resCond("resourceExists");
+/** `resourceExistsAnd(Boss, bossReady)`: `bossReady` is called only while `Boss` exists. */
+export function resourceExistsAnd(R, pred) {
+  if (typeof pred !== "function") throw declError("resourceExistsAnd(R, pred): pred is a predicate function", callerLocation());
+  return resourceExists(R).andThen(pred);
+}
 export const resourceAdded = resCond("resourceAdded");
 export const resourceChanged = resCond("resourceChanged");
 export const resourceExistsAndChanged = resCond("resourceExistsAndChanged");
@@ -2478,6 +2502,7 @@ function newGeneration(number) {
     systems: [],
     groups: [],
     oneShotFns: new Set(),
+    predicateFns: new Set(),
     initSchedules: [],
     scheduleOrder: [],
     resourceInserts: new Map(),
@@ -5511,9 +5536,10 @@ function runSystem(gen, index, dt, elapsed, tick, frame, frames, arena, pool) {
   b.marks.length = 0;
   for (let i = 0; i < b.consumers.length; i++) b.consumers[i](frames[i], tick, i);
   S.calling = b.ctx;
+  let returned;
   try {
-    if (b.s.call === "setup") b.s.body();
-    else b.s.fn(...b.args);
+    if (b.s.call === "setup") returned = b.s.body();
+    else returned = b.s.fn(...b.args);
     reflectFlush();
   } finally {
     S.calling = null;
@@ -5522,7 +5548,8 @@ function runSystem(gen, index, dt, elapsed, tick, frame, frames, arena, pool) {
   }
   for (const w of b.ctx.writers) w.flush();
   const [len, over, used] = b.ctx.commands.end();
-  return [len, over, used, b.marks, !!(b.ctx.on && b.ctx.on[STOPPED])];
+  // A boolean return is a predicate's value; anything else is left out.
+  return [len, over, used, b.marks, !!(b.ctx.on && b.ctx.on[STOPPED]), typeof returned === "boolean" ? returned : null];
 }
 
 function callEntry(name, payload, dt, elapsed, tick, frame, arena, pool) {

@@ -21,7 +21,7 @@ export type ReloadStatus = "compiling" | "applied" | "failed";
  */
 export type ComponentSource = "ts" | "rust";
 /**
- * The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition.
+ * The bevy-ts stage a system runs in (one per Bevy main and fixed schedule), or preStartup, startup, postStartup, onEnter, onExit, onTransition, observer, oneShot (a one-shot system) or schedule (a custom schedule, named in schedule.label) for systems outside them. (1.28) every main and fixed schedule, the startup lists, oneShot and schedule. (1.30) onTransition. (1.32) predicate (a TS predicate condition, run when a condition naming it is evaluated).
  *
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
  * via the `definition` "Stage".
@@ -47,6 +47,7 @@ export type Stage =
   | "onTransition"
   | "observer"
   | "oneShot"
+  | "predicate"
   | "schedule";
 /**
  * This interface was referenced by `ProtocolTypes`'s JSON-Schema
@@ -821,7 +822,7 @@ export interface SystemInfo {
    */
   id: string;
   /**
-   * Where it runs: {kind: preStartup|startup|postStartup|stage|schedule|onEnter|onExit|observer|oneShot, ...}; a custom schedule's is {kind: schedule, label} with its label (game::Waves, net:tick).
+   * Where it runs: {kind: preStartup|startup|postStartup|stage|schedule|onEnter|onExit|onTransition|observer|oneShot|predicate, ...}; a custom schedule's is {kind: schedule, label} with its label (game::Waves, net:tick).
    */
   schedule: {
     kind: string;

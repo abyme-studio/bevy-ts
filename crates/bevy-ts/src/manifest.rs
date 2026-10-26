@@ -378,6 +378,9 @@ pub enum ScheduleDecl {
     Observer,
     /// A one-shot system, run by `commands.runSystem` or `RunTsSystem`.
     OneShot,
+    /// A TS predicate condition: run when a condition naming it is evaluated, its `boolean`
+    /// return the condition's value. Its params only read.
+    Predicate,
 }
 
 /// A component filter in `anyMatchFilter`, as a query filter.
@@ -412,6 +415,12 @@ pub enum ConditionDecl {
     All { conditions: Vec<ConditionDecl> },
     /// A combinator: `a.andThen(b)` and the others; `eager` evaluates `b` even when `a` decides.
     Combine { op: CombineOp, a: Box<ConditionDecl>, b: Box<ConditionDecl>, #[serde(default)] eager: bool },
+    /// A TS predicate: the system declared with `ScheduleDecl::Predicate` under this identity.
+    Predicate {
+        system: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        location: Option<SourceLocation>,
+    },
     /// A condition a crate exposed with `ts_condition`, with its JSON arguments.
     Native {
         name: String,

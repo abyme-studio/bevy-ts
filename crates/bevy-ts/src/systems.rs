@@ -370,6 +370,8 @@ pub struct TsSystems {
     pub observers: Vec<TsSystem>,
     /// One-shot systems by identity; `None` while one runs.
     pub one_shot: BTreeMap<String, Option<TsSystem>>,
+    /// TS predicate conditions by identity, run when a condition naming one is evaluated.
+    pub predicates: BTreeMap<String, TsSystem>,
     /// Collective `runIf` conditions, by group id.
     pub groups: HashMap<String, Condition>,
     /// Native condition instances the generation uses.
@@ -410,6 +412,7 @@ impl TsSystems {
             .chain(self.stages.values().flatten())
             .chain(self.schedules.values().flatten())
             .chain(self.one_shot.values().flatten())
+            .chain(self.predicates.values())
             .chain(self.slots.values().flatten())
             .chain(self.on_enter.values().flatten())
             .chain(self.on_exit.values().flatten())
@@ -753,8 +756,9 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
         }
     }
     let mut out = TsSystems { generation, ..Default::default() };
+    let predicates: HashSet<String> = decls.iter().filter(|d| d.schedule == ScheduleDecl::Predicate).map(|d| d.name.clone()).collect();
     for g in groups {
-        let mut c = conditions::Compile { ts, encode, config: &g.id, natives: &mut out.natives };
+        let mut c = conditions::Compile { ts, encode, config: &g.id, natives: &mut out.natives, predicates: &predicates };
         match conditions::compile(world, &g.condition, "", &mut c) {
             Ok(cond) => drop(out.groups.insert(g.id.clone(), cond)),
             Err(e) => {
@@ -766,9 +770,10 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
     let mut lists: BTreeMap<String, ScheduleGroup> = BTreeMap::new();
     let exposed: HashSet<String> = world.get_resource::<crate::sets::TsSets>().map(|s| s.iter().map(|x| x.name.clone()).collect()).unwrap_or_default();
     for (i, d) in decls.iter().enumerate() {
-        if matches!(d.schedule, ScheduleDecl::Observer | ScheduleDecl::OneShot) {
-            match build_one(world, generation, i, d, ts, encode, &mut out.natives) {
+        if matches!(d.schedule, ScheduleDecl::Observer | ScheduleDecl::OneShot | ScheduleDecl::Predicate) {
+            match build_one(world, generation, i, d, ts, encode, &mut out.natives, &predicates) {
                 Ok(s) if d.schedule == ScheduleDecl::Observer => out.observers.push(s),
+                Ok(s) if d.schedule == ScheduleDecl::Predicate => drop(out.predicates.insert(d.name.clone(), s)),
                 Ok(s) => drop(out.one_shot.insert(d.name.clone(), Some(s))),
                 Err(e) => errors.push(e),
             }
@@ -792,7 +797,7 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
         };
         let mut built = Vec::new();
         for index in ordered {
-            match build_one(world, generation, index, &decls[index], ts, encode, &mut out.natives) {
+            match build_one(world, generation, index, &decls[index], ts, encode, &mut out.natives, &predicates) {
                 Ok(s) => built.push(s),
                 Err(e) => errors.push(e),
             }
@@ -827,7 +832,7 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
                 (Ok((slot, a)), Ok((_, b))) => drop(out.on_transition.insert((slot, a, b), built)),
                 (Err(e), _) | (_, Err(e)) => errors.push(ScriptError::new(e)),
             },
-            ScheduleDecl::Observer | ScheduleDecl::OneShot => unreachable!(),
+            ScheduleDecl::Observer | ScheduleDecl::OneShot | ScheduleDecl::Predicate => unreachable!(),
         }
     }
     for (i, d) in targeted.iter().enumerate() {
@@ -841,9 +846,10 @@ pub fn build(world: &mut World, generation: u64, decls: &[SystemDecl], targeted:
     if errors.is_empty() { Ok(out) } else { Err(errors) }
 }
 
-/// An observer for `commands.entity(e).observe(fn)`: its first param must be an entity event.
+/// An observer for `commands.entity(e).observe(fn)`: its first param must be an entity event. It
+/// carries no `runIf`, so it names no predicate.
 fn build_targeted(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup, encode: &TsEncode, natives: &mut HashSet<String>) -> Result<TsSystem, ScriptError> {
-    let s = build_one(world, generation, index, d, ts, encode, natives)?;
+    let s = build_one(world, generation, index, d, ts, encode, natives, &HashSet::new())?;
     let entity_event = match &s.observes {
         Some(ObserverOf(Trigger::Event(i))) => world.resource::<TsPayloads>().events[*i].entity,
         Some(ObserverOf(Trigger::Lifecycle(..))) => true,
@@ -1077,10 +1083,33 @@ fn flatten_params<'a>(params: &'a [ParamDecl], out: &mut Vec<&'a ParamDecl>) {
     }
 }
 
-fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup, encode: &TsEncode, natives: &mut HashSet<String>) -> Result<TsSystem, ScriptError> {
+/// The param a predicate may not take, as TS writes it: a predicate only reads.
+fn writing_param(p: &ParamDecl) -> Option<String> {
+    let short = |n: &str| n.rsplit("::").next().unwrap_or(n).to_string();
+    match p {
+        ParamDecl::ResMut { resource, .. } => Some(format!("ResMut<{}>", short(resource))),
+        ParamDecl::Commands => Some("Commands".into()),
+        ParamDecl::MessageWriter { message } => Some(format!("MessageWriter<{}>", short(message))),
+        ParamDecl::NextState { state } => Some(format!("NextState<{}>", short(state))),
+        ParamDecl::Query { data, .. } | ParamDecl::Single { data, .. } | ParamDecl::Populated { data, .. } => {
+            data.iter().flat_map(DataDecl::components).find(|(_, m)| *m).map(|(c, _)| format!("Mut<{}>", short(&c.name)))
+        }
+        ParamDecl::In { event } => Some(format!("In<{}>", short(event))),
+        ParamDecl::On { .. } => Some("On<...>".into()),
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, ts: &TsLookup, encode: &TsEncode, natives: &mut HashSet<String>, predicates: &HashSet<String>) -> Result<TsSystem, ScriptError> {
     let err = |m: String| ScriptError::at(format!("system {}: {m}", d.name), d.location.clone());
     let mut flat = Vec::new();
     flatten_params(&d.params, &mut flat);
+    let predicate = d.schedule == ScheduleDecl::Predicate;
+    let reads_only = |what: String| ScriptError::at(format!("predicate {}: a condition reads only; {what} writes", d.name.rsplit('#').next().unwrap_or(&d.name)), d.location.clone());
+    if predicate && let Some(w) = flat.iter().find_map(|p| writing_param(p)) {
+        return Err(reads_only(w));
+    }
     let mut params = Vec::new();
     let mut locals = Vec::new();
     let mut observes = None;
@@ -1135,8 +1164,9 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
                 RunParam::None
             }
             ParamDecl::Commands | ParamDecl::NextState { .. } => RunParam::None,
-            ParamDecl::Port { name } => match world.get_resource::<crate::host::HostParams>().and_then(|h| h.index(name)) {
-                Some(index) => RunParam::Port(index),
+            ParamDecl::Port { name } => match world.get_resource::<crate::host::HostParams>().and_then(|h| h.index(name).map(|i| (i, h.writes(i).is_empty()))) {
+                Some((_, false)) if predicate => return Err(reads_only(name.clone())),
+                Some((index, _)) => RunParam::Port(index),
                 None => return Err(err(format!("{name} is not a system param any loaded crate exports"))),
             },
             ParamDecl::MessageReader { message } => match world.resource::<TsPayloads>().message(message) {
@@ -1202,7 +1232,7 @@ fn build_one(world: &mut World, generation: u64, index: usize, d: &SystemDecl, t
     }
     let condition = match &d.condition {
         Some(c) => {
-            let mut cx = conditions::Compile { ts, encode, config: &d.name, natives };
+            let mut cx = conditions::Compile { ts, encode, config: &d.name, natives, predicates };
             Some(conditions::compile(world, c, "", &mut cx).map_err(|e| match e.location {
                 Some(at) => ScriptError::at(format!("system {}: {}", d.name, e.message), Some(at)),
                 None => err(e.message),
@@ -1371,7 +1401,7 @@ fn drive(world: &mut World, key: &ListKey, only: Option<&HashSet<String>>) {
                 if only.is_some_and(|o| !o.contains(&sys.decl.name)) {
                     continue;
                 }
-                if gate(world, systems, sys, &mut groups) {
+                if gate(world, rt, systems, sys, &mut groups) {
                     run_one(world, rt, sys, None);
                 }
                 drain_observers(world, rt, systems);
@@ -1400,14 +1430,16 @@ fn drive(world: &mut World, key: &ListKey, only: Option<&HashSet<String>>) {
 
 /// Whether a system runs now: its groups' collective conditions (each evaluated once per
 /// `drive`, the first time a member comes), then its own, every one evaluated as Bevy does so
-/// stateful conditions advance.
-fn gate(world: &mut World, systems: &mut TsSystems, sys: &mut TsSystem, groups: &mut HashMap<String, bool>) -> bool {
+/// stateful conditions advance. A TS predicate in them is one call into JS per evaluation.
+fn gate(world: &mut World, rt: &mut ScriptRuntime, systems: &mut TsSystems, sys: &mut TsSystem, groups: &mut HashMap<String, bool>) -> bool {
+    let TsSystems { groups: collective, predicates, .. } = systems;
+    let mut predicate = |world: &mut World, name: &str| run_predicate(world, rt, predicates, name);
     let mut ok = true;
     for g in &sys.decl.groups {
         let pass = match groups.get(g) {
             Some(b) => *b,
             None => {
-                let b = systems.groups.get_mut(g).is_none_or(|c| conditions::evaluate(world, c));
+                let b = collective.get_mut(g).is_none_or(|c| conditions::evaluate(world, c, &mut predicate));
                 groups.insert(g.clone(), b);
                 b
             }
@@ -1415,9 +1447,25 @@ fn gate(world: &mut World, systems: &mut TsSystems, sys: &mut TsSystem, groups: 
         ok &= pass;
     }
     if let Some(c) = &mut sys.condition {
-        ok &= conditions::evaluate(world, c);
+        ok &= conditions::evaluate(world, c, &mut predicate);
     }
     ok
+}
+
+/// Runs a TS predicate and gives its return: false when it threw, or returned something other
+/// than a boolean, which is warned once.
+fn run_predicate(world: &mut World, rt: &mut ScriptRuntime, predicates: &mut BTreeMap<String, TsSystem>, name: &str) -> bool {
+    let Some(p) = predicates.get_mut(name) else { return false };
+    match run_one(world, rt, p, None).returned {
+        Some(b) => b,
+        None => {
+            if p.last_error.is_none() {
+                let short = name.rsplit('#').next().unwrap_or(name);
+                rt.log_warn(world, format!("predicate {short} returned no boolean; a condition's function returns true or false"), p.decl.location.clone());
+            }
+            false
+        }
+    }
 }
 
 /// Runs a one-shot system by identity, with its `In<E>` bytes. The runs its commands queue run
@@ -1505,7 +1553,7 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
                 // Bevy's order: global observers, then the target's own.
                 for o in systems.observers.iter_mut() {
                     if o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger) {
-                        stop |= run_one(world, rt, o, Some((bytes, bits)));
+                        stop |= run_one(world, rt, o, Some((bytes, bits))).stop;
                     }
                 }
                 // Attachments as they stood when the trigger was queued.
@@ -1513,7 +1561,7 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
                     if let Some(o) = systems.targeted.get_mut(name)
                         && o.observes.as_ref().is_some_and(|ob| ob.0 == p.trigger)
                     {
-                        stop |= run_one(world, rt, o, Some((bytes, bits)));
+                        stop |= run_one(world, rt, o, Some((bytes, bits))).stop;
                     }
                 }
                 if stop {
@@ -1525,8 +1573,16 @@ pub(crate) fn drain_observers(world: &mut World, rt: &mut ScriptRuntime, systems
     warn!(target: "bevy_ts", "observer queue still busy after 10,000 events; the rest wait for the next stage");
 }
 
-/// Runs one system (or one observer event). Returns whether an observer stopped propagation.
-fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event: Option<(&[u8], (u64, u64))>) -> bool {
+/// What a run gives back: an observer's `propagate(false)`, and the function's return when it
+/// was a boolean (a predicate's value).
+#[derive(Clone, Copy, Debug, Default)]
+struct Ran {
+    stop: bool,
+    returned: Option<bool>,
+}
+
+/// Runs one system (or one observer event).
+fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event: Option<(&[u8], (u64, u64))>) -> Ran {
     let identity = sys.decl.name.clone();
     let dev = rt.dev;
     let tick = world.increment_change_tick();
@@ -1864,10 +1920,11 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     }
 
     if skip && failure.is_none() {
-        // Skipped like a false run condition: no call into JS, and the last run stays.
+        // Skipped like a false run condition: no call into JS, and the last run stays. A
+        // predicate skipped so is false, as a Bevy condition whose params fail validation.
         world.insert_resource(memory);
         rt.scratch = scratch;
-        return false;
+        return Ran { stop: false, returned: Some(false) };
     }
 
     let hashes: Vec<u64> = read_cols
@@ -1969,7 +2026,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     }
     let mem = memory.0.entry(identity.clone()).or_default();
     mem.last_run = tick;
-    let mut stop = false;
+    let mut ran = Ran::default();
     if result.is_ok() {
         for (name, next) in reader_cursors {
             mem.cursors.insert(name, next);
@@ -1981,7 +2038,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
     match result {
         Ok(out) => {
             sys.last_error = None;
-            stop = out.stop_propagation;
+            ran = Ran { stop: out.stop_propagation, returned: out.returned };
             let label = format!("system {}", sys.decl.name);
             rt.apply_output(world, &scratch.arena, out, &label);
             settle_ports(world, &sys.params, true);
@@ -1996,7 +2053,7 @@ fn run_one(world: &mut World, rt: &mut ScriptRuntime, sys: &mut TsSystem, event:
         }
     }
     rt.scratch = scratch;
-    stop
+    ran
 }
 
 /// After TS's own output: applies (or, for a failed run, drops) the deferred state of the
@@ -2047,6 +2104,7 @@ impl TsSystem {
             ScheduleDecl::OnTransition { .. } => "onTransition",
             ScheduleDecl::Observer => "observer",
             ScheduleDecl::OneShot => "oneShot",
+            ScheduleDecl::Predicate => "predicate",
         }
         .to_string();
         SystemInfo {

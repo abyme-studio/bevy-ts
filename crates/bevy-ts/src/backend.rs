@@ -305,6 +305,8 @@ pub struct RunOutput {
     pub write_marks: Vec<(u32, u32, u32)>,
     /// An observer called `propagate(false)`.
     pub stop_propagation: bool,
+    /// The function's return when it was a boolean: a predicate's value.
+    pub returned: Option<bool>,
 }
 
 /// A `console.*` call or other runtime message.

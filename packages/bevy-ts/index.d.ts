@@ -949,27 +949,40 @@ type AnyComponentClass = abstract new (...a: never) => unknown;
  */
 export interface Condition {
   readonly condition: true;
-  andThen(b: Condition): Condition;
-  orElse(b: Condition): Condition;
-  nandThen(b: Condition): Condition;
-  norElse(b: Condition): Condition;
-  xor(b: Condition): Condition;
-  xnor(b: Condition): Condition;
-  andEager(b: Condition): Condition;
-  orEager(b: Condition): Condition;
-  nandEager(b: Condition): Condition;
-  norEager(b: Condition): Condition;
+  andThen(b: ConditionLike): Condition;
+  orElse(b: ConditionLike): Condition;
+  nandThen(b: ConditionLike): Condition;
+  norElse(b: ConditionLike): Condition;
+  xor(b: ConditionLike): Condition;
+  xnor(b: ConditionLike): Condition;
+  andEager(b: ConditionLike): Condition;
+  orEager(b: ConditionLike): Condition;
+  nandEager(b: ConditionLike): Condition;
+  norEager(b: ConditionLike): Condition;
 }
+/**
+ * A TS predicate: an exported function whose params only read (`Res`, `Query` without `Mut`,
+ * `Local`, `MessageReader`, `State`) and which returns `boolean`, as `.runIf(bossReady)`. Each
+ * evaluation is one call into JS, about 3 µs, every frame its stage runs; a stage with no other
+ * TS system pays about 20 µs more to enter JS at all. Put Rust conditions first
+ * (`inState(Game.Playing).andThen(bossReady)`) so frames they rule out cost no call, or test the
+ * params in the system and return early instead.
+ */
+export type Predicate = (...params: never[]) => boolean;
+/** A condition or a predicate function. */
+export type ConditionLike = Condition | Predicate;
 export declare function inState<N extends string, V extends string>(v: StateValue<N, V>): Condition;
 export declare function onMessage(m: abstract new (...a: never) => unknown): Condition;
 /** Bevy's `state_changed`: the machine transitioned since this condition last ran. */
 export declare function stateChanged(s: abstract new (...a: never) => unknown): Condition;
 /** Bevy's `state_exists`: the machine has a value (`initState` gave one, or a sub state's source allows it). */
 export declare function stateExists(s: abstract new (...a: never) => unknown): Condition;
-export declare function not(c: Condition): Condition;
+export declare function not(c: ConditionLike): Condition;
 /** True the first time it is evaluated. */
 export declare function runOnce(): Condition;
 export declare function resourceExists(r: abstract new (...a: never) => unknown): Condition;
+/** `pred` gates only while the resource exists: `resourceExists(R).andThen(pred)`, `pred` taking `Res<R>` first. */
+export declare function resourceExistsAnd(r: abstract new (...a: never) => unknown, pred: Predicate): Condition;
 export declare function resourceAdded(r: ResourceClass): Condition;
 /** The resource changed since this condition last ran; false while it does not exist. */
 export declare function resourceChanged(r: ResourceClass): Condition;
@@ -994,9 +1007,9 @@ export declare function Changed(c: AnyComponentClass): FilterValue;
 /** Some entity matches every filter (`Changed`/`Added` against this condition's last run). */
 export declare function anyMatchFilter(...filters: readonly FilterValue[]): Condition;
 /** True when `c`'s value differs from its last evaluation (false before the first). */
-export declare function conditionChanged(c: Condition): Condition;
+export declare function conditionChanged(c: ConditionLike): Condition;
 /** True when `c`'s value changed to `to`. */
-export declare function conditionChangedTo(c: Condition, to: boolean): Condition;
+export declare function conditionChangedTo(c: ConditionLike, to: boolean): Condition;
 /** A condition a Rust crate exposed with `app.ts_condition(name, factory)`; ports export typed wrappers. */
 export declare function nativeCondition(name: string, args?: unknown): Condition;
 /** Bevy's `on_timer`: true each time `seconds` pass on the schedule's clock (`Time`; the fixed clock in `FixedUpdate`). */
@@ -1025,10 +1038,10 @@ type Systemish = SystemFn | System | SystemConfig;
 export interface SystemConfig {
   after(...x: readonly (Systemish | SetRef)[]): SystemConfig;
   before(...x: readonly (Systemish | SetRef)[]): SystemConfig;
-  /** Bevy's collective `run_if`: evaluated once per stage run, before the group's first member. */
-  runIf(c: Condition): SystemConfig;
-  /** Bevy's `distributive_run_if`: each member gets its own instance. */
-  distributiveRunIf(c: Condition): SystemConfig;
+  /** Bevy's collective `run_if`: evaluated once per stage run, before the group's first member. A predicate here is one call per stage run (about 3 µs; see `Predicate`). */
+  runIf(c: ConditionLike): SystemConfig;
+  /** Bevy's `distributive_run_if`: each member gets its own instance, so a predicate is one call per member. */
+  distributiveRunIf(c: ConditionLike): SystemConfig;
   inSet(s: SetRef): SystemConfig;
 }
 export declare function systems(...s: readonly Systemish[]): SystemConfig;
