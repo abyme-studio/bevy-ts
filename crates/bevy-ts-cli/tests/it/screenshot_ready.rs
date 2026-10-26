@@ -73,6 +73,8 @@ fn engine(name: &str, path: &Path, at: u64) -> (PathBuf, App) {
 fn engine_with(name: &str, path: &Path, at: u64, slow: Option<Slow>) -> (PathBuf, App) {
     let dir = project(name, &[("package.json", "{}"), ("game.ts", "import { app } from \"bevy-ts\";\n")]);
     let mut app = render_app();
+    // Armed once the render lock is held, so time queued behind other render tests does not count.
+    app.insert_non_send(Hang(hang(name)));
     if let Some(Slow { root, open, delay }) = slow {
         app.register_asset_source(
             "slow",
@@ -103,9 +105,11 @@ fn apply_script(app: &mut App) {
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
 }
 
+struct Hang(#[allow(dead_code)] Watchdog);
+
 /// Fails the run if the test is still going after `BOUND`. Every frame submits to the GPU, and a
 /// stalled Metal driver blocks inside wgpu's submit, before any ready wait can time out.
-fn hang(test: &'static str) -> Watchdog {
+fn hang(test: &str) -> Watchdog {
     let name: &'static str = Box::leak(format!("{test} (a GPU or driver stall inside wgpu submit is the suspect)").into_boxed_str());
     watchdog(name, BOUND)
 }
@@ -151,7 +155,6 @@ fn cube(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials:
 
 #[test]
 fn a_script_that_starts_late_is_in_the_shot() {
-    let _hang = hang("a_script_that_starts_late_is_in_the_shot");
     let dir = shots_dir("ready-late-script");
     let path = dir.join("late.png");
     let (_, mut app) = engine("ready-late-script", &path, 3);
@@ -175,7 +178,6 @@ fn a_script_that_starts_late_is_in_the_shot() {
 
 #[test]
 fn a_material_compiled_in_the_background_is_in_the_shot() {
-    let _hang = hang("a_material_compiled_in_the_background_is_in_the_shot");
     let dir = shots_dir("ready-late-material");
     let path = dir.join("material.png");
     let (_, mut app) = engine("ready-late-material", &path, 3);
@@ -209,7 +211,6 @@ fn turning_shot(name: &str, work: std::time::Duration) -> Vec<u8> {
 
 #[test]
 fn the_fixed_step_shot_is_the_same_at_any_load() {
-    let _hang = hang("the_fixed_step_shot_is_the_same_at_any_load");
     let quick = turning_shot("ready-fixed-quick", std::time::Duration::ZERO);
     let loaded = turning_shot("ready-fixed-loaded", std::time::Duration::from_millis(30));
     assert!(quick == loaded, "the two shots differ in {} of {} bytes", quick.iter().zip(&loaded).filter(|(a, b)| a != b).count(), quick.len());
@@ -227,7 +228,6 @@ fn png_of(rgba: [u8; 4]) -> Vec<u8> {
 
 #[test]
 fn a_texture_on_a_slow_disk_is_in_the_shot() {
-    let _hang = hang("a_texture_on_a_slow_disk_is_in_the_shot");
     let dir = shots_dir("ready-slow-texture");
     let path = dir.join("texture.png");
     let root = dir.join("assets");
@@ -281,7 +281,6 @@ fn fox_shot(name: &str, delay: Duration, work: Duration) -> Vec<u8> {
 
 #[test]
 fn a_looping_clip_on_a_slow_gltf_is_the_same_at_any_load() {
-    let _hang = hang("a_looping_clip_on_a_slow_gltf_is_the_same_at_any_load");
     let quick = fox_shot("ready-fox-quick", Duration::ZERO, Duration::ZERO);
     let loaded = fox_shot("ready-fox-loaded", Duration::from_millis(500), Duration::from_millis(30));
     let lit = quick.chunks(4).filter(|p| p[..3] != [0, 0, 0]).count();
@@ -293,7 +292,6 @@ fn a_looping_clip_on_a_slow_gltf_is_the_same_at_any_load() {
 /// answers only after the read, and its PNG shows the texture.
 #[test]
 fn the_method_waits_for_a_texture_on_a_slow_disk() {
-    let _hang = hang("the_method_waits_for_a_texture_on_a_slow_disk");
     let dir = shots_dir("ready-method-texture");
     let path = dir.join("method.png");
     let root = dir.join("assets");
