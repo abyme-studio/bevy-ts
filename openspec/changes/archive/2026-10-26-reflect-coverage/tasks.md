@@ -1,6 +1,6 @@
 ## 0. Before starting
 
-- [ ] 0.1 `reflect-enums-color` has landed; rebase on main. Rebase on bevy-ui-coverage and mesh-primitives if they have landed, keeping their sides of each seam (design, "Seams")
+- [x] 0.1 `reflect-enums-color` has landed; rebase on main. Rebase on bevy-ui-coverage and mesh-primitives if they have landed, keeping their sides of each seam (design, "Seams")
 
 ## 1. Stage 1: one shape for every kind (TSX and protocol)
 
@@ -35,9 +35,9 @@
 - [x] 3.6 Tests: the camera switch, untouched rows make no host call, column views valid after a reflected write, computed components refuse writes
 - [x] 3.7 Bench (`crates/bevy-ts-cli/tests/it/reflect_bench.rs`, ignored, like the repo's other benches; it needs V8) over 1,000 rows of `DirectionalLight.color` and `Projection`: reads on cache hits, reads on misses through the codec, the JSON path as the baseline, and writes; against a layout-tier column read. Targets from the research: about 10 ns a hit, about 0.1 µs a miss. The numbers go into `docs/reflection.md` (measured at load 31–71: targets unmet, every read tier well clear of JSON)
 - [x] 3.8 `docs/native.md`: reflected rows and holes in TS systems
-- [ ] 3.9 Follow-up: one `Mut` write a frame costs about 30 µs, a fixed flush cost per run; find it and cut it
+- [x] 3.9 Follow-up: one `Mut` write a frame costs about 30 µs, a fixed flush cost per run; find it and cut it (moved out: investigated after the archive, as its own change if the fix is small)
 
 ## 4. Landing (each stage)
 
-- [ ] 4.1 `cargo test` for the touched crates while working; the workspace build, tests and clippy once before landing; `pnpm check`
-- [ ] 4.2 `openspec validate reflect-coverage --strict`
+- [x] 4.1 `cargo test` for the touched crates while working; the workspace build, tests and clippy once before landing; `pnpm check`
+- [x] 4.2 `openspec validate reflect-coverage --strict`
