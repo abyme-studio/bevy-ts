@@ -74,6 +74,9 @@ else
       cv=$(ls "$work/clang/lib/clang")
       mkdir -p "$work/clang/lib/clang/$cv/lib/linux"
       cp -R "$clang_lib/." "$work/clang/lib/clang/$cv/lib/linux/"
+    else
+      # A Linux host builds V8's host tools against Chromium's Debian sysroot, as rusty_v8's CI does.
+      (cd "$src" && python3 ./build/linux/sysroot_scripts/install-sysroot.py --arch=amd64)
     fi
     touch "$src/.prepared"
   fi

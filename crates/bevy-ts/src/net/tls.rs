@@ -42,6 +42,7 @@ fn finish(mut config: ClientConfig) -> Arc<ClientConfig> {
 
 /// The platform's verifier: the system trust store (and its revocation checks on macOS and
 /// Windows), the system's certificate files on Linux.
+#[cfg(not(target_os = "android"))]
 fn platform() -> Result<ClientConfig, String> {
     let verifier = rustls_platform_verifier::Verifier::new(provider()).map_err(|e| format!("the system's certificates could not be loaded: {e}"))?;
     let config = ClientConfig::builder_with_provider(provider())
@@ -49,6 +50,19 @@ fn platform() -> Result<ClientConfig, String> {
         .map_err(|e| format!("no TLS version to offer: {e}"))?
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(verifier))
+        .with_no_client_auth();
+    Ok(config)
+}
+
+/// On Android, Mozilla's roots (webpki-roots): the platform verifier needs the app's `Context`,
+/// which an embedded engine is not given.
+#[cfg(target_os = "android")]
+fn platform() -> Result<ClientConfig, String> {
+    let roots = RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
+    let config = ClientConfig::builder_with_provider(provider())
+        .with_safe_default_protocol_versions()
+        .map_err(|e| format!("no TLS version to offer: {e}"))?
+        .with_root_certificates(roots)
         .with_no_client_auth();
     Ok(config)
 }
