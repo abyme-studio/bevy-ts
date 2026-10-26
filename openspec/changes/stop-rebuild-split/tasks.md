@@ -1,8 +1,8 @@
 ## 1. Split and measure (`crates/bevy-ts`, the bench)
 
-- [ ] 1.1 `apply_set`'s restart branch as steps: `reset`, `restart_engine`, `load`, `sections`, `apply`, `run_startups`; `rebuild` calls them in order; behaviour unchanged
-- [ ] 1.2 `stop_bench.rs` times each step per arm (full remount, none, 100, all touched) at 1k and 10k instances (2k and 20k entities), 3 runs, through `gate-slot`
-- [ ] 1.3 `docs/research/stop-cost.md`: the rebuild's table by step. If the time is not in the engine drop or the level check, stop here and report where it is (design decision 5)
+- [x] 1.1 `apply_set`'s restart branch as steps: `reset`, `restart_engine`, `load`, `sections`, `apply`, `run_startups`; `rebuild` calls them in order; behaviour unchanged
+- [x] 1.2 `stop_bench.rs` times each step per arm (full remount, none, 100, all touched) at 1k and 10k instances (2k and 20k entities), 3 runs, through `gate-slot`
+- [x] 1.3 `docs/research/stop-cost.md`: the rebuild's table by step. If the time is not in the engine drop or the level check, stop here and report where it is (design decision 5)
 
 ## 2. Skip the kept levels' check (`crates/bevy-ts-levels`)
 

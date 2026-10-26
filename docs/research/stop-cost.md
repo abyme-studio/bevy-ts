@@ -132,3 +132,29 @@ The restore takes a 10,000-instance Stop from 0.8 to 1.9 s to 0.1 to 0.3 s. The 
 only with nothing touched at the quietest (98 ms): the rebuild's 73 to 150 ms is most of every arm. The next cut is in the rebuild: split it,
 and if the level check is the part that grows, skip it for a Stop, which does not need it (the same module set, the level files hashed as unchanged), and
 the content-keyed expansion cache for the full path.
+
+## The rebuild by step (stop-rebuild-split, task 1)
+
+`generation::rebuild` as `Applying`'s steps, each timed by the bench (`stop_bench.rs`), release,
+rendering on, 2026-10-26, load 70 to 128 (busier than any round above: read the split, not the
+totals). Medians of 3, ms:
+
+| instances | arm | rebuild | reset | engine | load | sections | apply | startups |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | full remount | 79 | 6.6 | 16 | 4.6 | 53 | 2.9 | 0 |
+| 1,000 | none touched | 41 | 0.2 | 20 | 3.0 | 18 | 0.1 | 0 |
+| 1,000 | 100 touched | 43 | 0.2 | 18 | 4.5 | 22 | 0.1 | 0 |
+| 1,000 | all touched | 41 | 0.2 | 16 | 2.3 | 22 | 0.1 | 0 |
+| 10,000 | full remount | 173 | 48 | 20 | 2.3 | 68 | 33 | 0 |
+| 10,000 | none touched | 110 | 2.0 | 16 | 2.3 | 86 | 0.1 | 0 |
+| 10,000 | 100 touched | 91 | 2.5 | 18 | 3.1 | 68 | 0.1 | 0 |
+| 10,000 | all touched | 92 | 2.3 | 20 | 2.8 | 69 | 0.1 | 0 |
+
+- **Sections** is the part that grows: 18 to 22 ms at 2,000 entities, 68 to 86 at 20,000, with the
+  same module set. It holds the manifest check, the systems build and each plugin's section
+  check; only the levels' check (`compose::prepare` of every open level) grows with the level.
+- **Engine** (the old isolate dropped, a new one booted) is 16 to 20 ms at both sizes.
+- Reset, load and apply are under 5 ms for a kept level.
+
+So the time is where design decision 5 expects: the level check, then the engine. Skipping the
+kept level's check and taking a spare engine leave about 10 ms of rebuild.
