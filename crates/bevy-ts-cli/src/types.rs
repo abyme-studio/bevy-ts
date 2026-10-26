@@ -270,7 +270,7 @@ const HAND: &[Hand] = &[
         path: "bevy_animation::AnimationClip",
         js: include_str!("hand_ts/animation_clip.js"),
         dts: include_str!("hand_ts/animation_clip.d.ts"),
-        fields: Some("curves: [AnimationTarget, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number"),
+        fields: Some("curves: [string | { readonly names: readonly string[] }, { property: { component: string; field: string }; curve: unknown }][] | null; duration?: number"),
     },
 ];
 
