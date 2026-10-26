@@ -95,6 +95,26 @@ their system. Arms (a) and (b) were within noise at 3 runs (83.9 and 86.0 µs), 
 - A full 4 MiB update per frame from TS is about 0.2 ms of CPU on the main thread, plus the
   upload. For a texture written now and then, that is cheap.
 
+## Through `Images` (arm f, 2026-10-27)
+
+After the build, arm (f) times the real path: `images.getMut(ref).setData(bytes)` through the
+engine's `Images` (`ResMut<Assets<Image>>`), now in `bench/script-image-bytes` (its own crate,
+outside the gate). 3 runs per arm, the empty system's run 5.0 µs. The machine was quieter than
+on 2026-10-25, so every arm is faster; compare arms within one run.
+
+| arm | what | median µs | p95 µs | GB/s |
+|---|---|---|---|---|
+| a | Rust `get_mut` + `copy_from_slice`, whole image (floor) | 62.9 | 76.8 | 66.7 |
+| b | TS, one `write(bytes)` (bench-only export), whole image | 70.0 | 102.0 | 59.9 |
+| c | TS, every pixel written by a JS loop, then `write(bytes)` | 438.0 | 653.0 | 9.6 |
+| d | TS, one `writeRect`, 256×256 | 7.0 | 32.0 | 37.4 |
+| f | TS, `images.getMut(ref).setData(bytes)`, whole image | 72.0 | 112.0 | 58.3 |
+| e | Rust `Image::clone`, extraction with the main world kept | 63.4 | 78.4 | 66.2 |
+
+- (f) is 9 µs over the floor. (f) and (b) are within noise of each other: the ref and `getMut`'s
+  `contains` call add nothing this run can see. The target, (f) ≤ 1.5 × (a) + 5 µs = 99.4 µs,
+  held.
+
 ## Recommended API shape
 
 Bevy's names, as `Meshes` does:

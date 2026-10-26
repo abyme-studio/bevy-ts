@@ -8,3 +8,14 @@
 | d | TS one writeRect, 256x256 | 49.0 | 152.0 | 5.3 |
 | e | Rust Image::clone (extraction, main world kept) | 121.6 | 164.4 | 34.5 |
 19:16  up 23:18, 2 users, load averages: 62.10 56.94 50.42
+ 7:18  up 2 days, 11:20, 2 users, load averages: 68.57 59.23 70.14
+1024x1024 RGBA8 (4 MiB), 3 runs x 200 frames; µs per update, a TS system's own run (5.0 µs median) subtracted from TS arms
+| arm | what | median µs | p95 µs | GB/s |
+|---|---|---|---|---|
+| a | Rust get_mut + copy_from_slice, whole image (floor) | 62.9 | 76.8 | 66.7 |
+| b | TS one write(bytes), whole image | 70.0 | 102.0 | 59.9 |
+| c | TS every pixel written in JS, then write(bytes) | 438.0 | 653.0 | 9.6 |
+| d | TS one writeRect, 256x256 | 7.0 | 32.0 | 37.4 |
+| f | TS images.getMut(ref).setData(bytes), whole image | 72.0 | 112.0 | 58.3 |
+| e | Rust Image::clone (extraction, main world kept) | 63.4 | 78.4 | 66.2 |
+ 7:18  up 2 days, 11:20, 2 users, load averages: 68.57 59.23 70.14

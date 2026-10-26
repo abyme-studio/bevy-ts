@@ -174,16 +174,16 @@ export function paint(images: ResMut<Assets<Image>>) {
 ### Cost
 
 Bytes cross as a view of the `Uint8Array`, and Rust copies them once into the image's `Vec`. A
-1024 × 1024 RGBA image (4 MiB), median per update (Apple M5 Max; `bench/script-image-bytes`,
-docs/research/script-image-bytes.md):
+1024 × 1024 RGBA image (4 MiB), median per update (Apple M5 Max, 3 runs of 200 frames;
+`bench/script-image-bytes`, docs/research/script-image-bytes.md):
 
 | what | µs |
 |---|---|
-| Rust `get_mut` and one copy (floor) | 78.3 |
-| TS, one `setData` | 91.0 |
-| TS, a JS loop writing every pixel, then `setData` | 757.0 |
-| TS, one 256 × 256 `writeRect` | 24.0 |
-| Bevy's extraction clone of the image per `Modified` | 85.5 |
+| Rust `get_mut` and one copy (floor) | 62.9 |
+| TS, `images.getMut(ref).setData(bytes)` | 72.0 |
+| TS, a JS loop writing every pixel, then a whole write | 438.0 |
+| TS, one 256 × 256 rect write | 7.0 |
+| Bevy's extraction clone of the image per `Modified` | 63.4 |
 
 Then Bevy re-uploads the whole image to the GPU on every `Modified`: it keeps the texture, but has
 no partial upload, so a rect saves CPU only. A 2048 × 2048 image is 16 MiB per update. So keep one
