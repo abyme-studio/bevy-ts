@@ -5,7 +5,9 @@
 //! A component (not a resource) with neither `ReflectDefault` nor `ReflectFromWorld` is a `no default`
 //! gap unless `reflect_value::NO_DEFAULT` lists it: TSX, levels and the editor cannot insert it
 //! (visibility-range).
-//! A type on `reflect_value::UNCOVERED` is not checked and not walked into. `tests/it/reflect_coverage.rs`
+//! A type on `reflect_value::UNCOVERED` is not checked and not walked into; a hand-mapped asset
+//! (`app.ts_hand_map`) is checked by a round trip through `assets.add` and `assets.get` and not
+//! walked into. `tests/it/reflect_coverage.rs`
 //! runs it on the prebuilt engine, and `bevy-ts types --coverage <file>` on a project engine (the
 //! Rapier port's).
 
@@ -15,6 +17,7 @@ use bevy::ecs::reflect::{ReflectComponent, ReflectFromWorld, ReflectResource};
 use bevy::prelude::*;
 use bevy::reflect::enums::VariantInfo;
 use bevy::reflect::{PartialReflect, TypeInfo, TypeRegistry};
+use bevy_ts::reflect_asset::{self, ScriptAssets, Slots};
 use bevy_ts::reflect_value::{self, no_default, uncovered};
 use serde::Serialize;
 use serde_json::json;
@@ -52,7 +55,7 @@ pub fn walk(world: &World) -> Report {
         .map(|r| (r.type_info().type_path().to_string(), r.type_id()))
         .collect();
     roots.sort();
-    let mut w = Walk { registry: &registry, done: BTreeMap::new(), report: Report::default() };
+    let mut w = Walk { world, registry: &registry, done: BTreeMap::new(), report: Report::default() };
     for (path, id) in roots {
         w.visit(id, &path, &path, "");
         let reg = registry.get(id).expect("a root is registered");
@@ -69,6 +72,7 @@ pub fn walk(world: &World) -> Report {
 }
 
 struct Walk<'r> {
+    world: &'r World,
     registry: &'r TypeRegistry,
     /// Each type visited: whether it, or a type inside it, has a gap not on the list.
     done: BTreeMap<TypeId, bool>,
@@ -134,6 +138,17 @@ fn round_trip(registry: &TypeRegistry, id: TypeId) -> Result<(), (&'static str, 
 }
 
 /// `got` equals `want`; a type that cannot compare is taken as equal when it reads the same.
+/// A hand-mapped asset's round trip: `{}` added and read, the read added and read again, give
+/// the same JSON. Check mode, on its own `ScriptAssets`: nothing loads and `world` gains nothing.
+fn hand_round_trip(world: &World, registry: &TypeRegistry, path: &str) -> Result<(), String> {
+    let assets = ScriptAssets::default();
+    let slots = Slots { registry, server: None, assets: &assets, check: true };
+    let read = |json: &serde_json::Value| reflect_asset::get(world, &slots, &reflect_asset::add(&slots, path, json)?);
+    let json = read(&json!({}))?;
+    let again = read(&json)?;
+    if again == json { Ok(()) } else { Err(format!("{json} wrote back as {again}")) }
+}
+
 fn same(registry: &TypeRegistry, got: &dyn PartialReflect, want: &dyn PartialReflect, json: &serde_json::Value) -> Result<(), (&'static str, String)> {
     match got.reflect_partial_eq(want) {
         Some(true) => Ok(()),
@@ -163,6 +178,16 @@ impl Walk<'_> {
             self.done.insert(id, true);
             return true;
         };
+        // A hand-mapped asset is read and written by its entry, not by reflection.
+        if reflect_asset::is_hand_mapped(id) {
+            let trip = hand_round_trip(self.world, self.registry, path);
+            let bad = trip.is_err();
+            if let Err(e) = trip {
+                self.gap(path, "round trip", e, root, field);
+            }
+            self.done.insert(id, bad);
+            return bad;
+        }
         let mut inner_bad = false;
         if !leaf(path) {
             for (step, child, child_path) in children(reg.type_info()) {

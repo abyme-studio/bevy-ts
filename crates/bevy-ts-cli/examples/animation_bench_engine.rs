@@ -136,6 +136,7 @@ fn end_update(
     graphs: Query<Entity, (With<AnimationPlayer>, With<AnimationGraphHandle>)>,
     mut commands: Commands,
     roots: Query<(), With<WorldAssetRoot>>,
+    names: Query<&Name>,
     players: Query<&AnimationPlayer>,
     changed: Query<(), Changed<bevy_ts_animation::PlayAnimation>>,
 ) {
@@ -143,13 +144,21 @@ fn end_update(
     let took = bench.started.map(|s| (now - s).as_secs_f64() * 1000.0);
     bench.frame += 1;
     let frame = bench.frame;
-    if bench.spawned.is_none() && roots.iter().count() >= bench.n {
+    // The tween arms (T, S) have cubes, each with a child named `box`, not scenes.
+    let tweens = bench.arm == "T" || bench.arm == "S";
+    let spawned = if tweens { names.iter().filter(|n| n.as_str() == "box").count() } else { roots.iter().count() };
+    if bench.spawned.is_none() && spawned >= bench.n {
         bench.spawned = Some((frame, now));
     }
     if bench.spawned.is_some() && bench.ready.is_none() {
         let playing = players.iter().filter(|p| p.playing_animations().next().is_some()).count();
         // Static foxes never play: their run is ready once their players exist.
-        let ready = if bench.arm == "C" { players.iter().count() >= bench.n } else { playing >= bench.n };
+        // S's boxes move from the first frame its system runs, with no player.
+        let ready = match bench.arm.as_str() {
+            "C" => players.iter().count() >= bench.n,
+            "S" => true,
+            _ => playing >= bench.n,
+        };
         if ready {
             bench.ready = Some((frame, now));
             if bench.arm == "G" {

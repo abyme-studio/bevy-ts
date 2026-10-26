@@ -21,12 +21,16 @@ pub const SURVEY: &str = "models/Fox.glb#Animation0";
 pub const WALK: &str = "models/Fox.glb#Animation1";
 pub const RUN: &str = "models/Fox.glb#Animation2";
 
-/// An asset root holding `Fox.glb` and `still.gltf`, a scene with no animation.
+/// An asset root holding `Fox.glb`, `still.gltf` (a scene with no animation) and the graph
+/// fixtures under `tests/assets`.
 pub fn assets() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("bevy-ts-animation-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("models")).unwrap();
     let fox = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/foxes/assets/models/Fox.glb");
     std::fs::copy(fox, dir.join("models/Fox.glb")).unwrap();
+    std::fs::create_dir_all(dir.join("anims")).unwrap();
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
+    std::fs::copy(fixtures.join("anims/fox_blend.animgraph.ron"), dir.join("anims/fox_blend.animgraph.ron")).unwrap();
     std::fs::write(
         dir.join("models/still.gltf"),
         r#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"name":"still"}]}"#,
@@ -37,6 +41,11 @@ pub fn assets() -> PathBuf {
 
 /// The engine's plugins with `PlayAnimation`, and nothing loaded.
 pub fn bare_app() -> App {
+    bare_app_with(|_| {})
+}
+
+/// [`bare_app`] with more plugins, added before `finish`.
+pub fn bare_app_with(more: impl FnOnce(&mut App)) -> App {
     let mut app = App::new();
     let render = RenderPlugin { render_creation: RenderCreation::Automatic(Box::new(WgpuSettings { backends: None, ..default() })), ..default() };
     app.add_plugins(
@@ -50,6 +59,7 @@ pub fn bare_app() -> App {
     )
     .add_plugins(PlayAnimationPlugin)
     .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(DT)));
+    more(&mut app);
     // The glTF loader registers in `finish`, which `update` alone never runs.
     app.finish();
     app.cleanup();
