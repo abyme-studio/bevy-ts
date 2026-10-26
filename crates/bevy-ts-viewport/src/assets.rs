@@ -43,16 +43,24 @@ pub(crate) fn build(app: &mut App) {
 /// The render world's pipeline cache at its last frame: how many pipelines it holds, and
 /// [`COMPILING`] while any is compiling. Pipelines compile in the background, so a mesh draws only
 /// once its pipeline is ready; a thumbnail reads back only once this has held still. A pipeline
-/// retrying on a shader that has not loaded is not compiling, so one that never loads holds no
-/// thumbnail back.
+/// retrying on a shader still loading, or on a shader's import, counts as compiling: on a loaded
+/// machine shaders load slowly, and the pipeline count holds still while they do. One retrying on a
+/// shader that never loads is not, so it holds no thumbnail back.
 #[derive(Resource, Clone, Default)]
 struct Pipelines(std::sync::Arc<std::sync::atomic::AtomicU64>);
 
 const COMPILING: u64 = 1 << 63;
 
-fn note_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>, pipelines: Res<Pipelines>) {
+fn note_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>, server: Res<AssetServer>, pipelines: Res<Pipelines>) {
     use bevy::render::render_resource::CachedPipelineState;
-    let compiling = cache.pipelines().any(|p| matches!(p.state, CachedPipelineState::Creating(_)));
+    use bevy::shader::ShaderCacheError;
+    let compiling = cache.pipelines().any(|p| match &p.state {
+        CachedPipelineState::Creating(_) => true,
+        // Loaded but not yet extracted to the render world is loading too.
+        CachedPipelineState::Err(ShaderCacheError::ShaderNotLoaded(id)) => matches!(server.get_load_state(*id), Some(LoadState::Loading | LoadState::Loaded)),
+        CachedPipelineState::Err(ShaderCacheError::ShaderImportNotYetAvailable) => true,
+        _ => false,
+    });
     let held = cache.pipelines().count() as u64;
     pipelines.0.store(held | if compiling { COMPILING } else { 0 }, std::sync::atomic::Ordering::Relaxed);
 }
@@ -336,13 +344,35 @@ fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>
     }
 }
 
+/// Whether a scene under the subject has yet to spawn: a level places a model through a
+/// `WorldAssetRoot`, whose glTF loads and spawns some frames later, and nothing draws or compiles
+/// for it meanwhile. One whose file failed to load never will, so it is not pending.
+fn scenes_pending(world: &World, subject: Entity) -> bool {
+    use bevy::world_serialization::{WorldAssetRoot, WorldInstance, WorldInstanceSpawner};
+    let (spawner, server) = (world.resource::<WorldInstanceSpawner>(), world.resource::<AssetServer>());
+    let mut stack = vec![subject];
+    while let Some(e) = stack.pop() {
+        if let Some(root) = world.get::<WorldAssetRoot>(e)
+            && !world.get::<WorldInstance>(e).is_some_and(|i| spawner.instance_is_ready(**i))
+            && !matches!(server.get_load_state(root.id()), Some(LoadState::Failed(_)))
+        {
+            return true;
+        }
+        if let Some(c) = world.get::<Children>(e) {
+            stack.extend(c.iter());
+        }
+    }
+    false
+}
+
 // ---- thumbnails ----
 
 /// A thumbnail in progress, or done.
 enum Job {
     Loading { handle: UntypedHandle, size: u32, since: Instant },
     /// `seen`: the pipeline cache's state and the subject's loaded meshes at the last update;
-    /// `idle`: updates in a row they held still with nothing compiling; `since`: when it was staged.
+    /// `idle`: updates in a row they held still with nothing compiling and no scene left to spawn;
+    /// `since`: when it was staged.
     Rendering { entities: Vec<Entity>, image: Handle<Image>, frames: u32, framed: bool, seen: (u64, usize), idle: u32, since: Instant },
     Reading { entities: Vec<Entity> },
 }
@@ -494,7 +524,7 @@ fn thumbnails(world: &mut World) {
                 }
                 // Held still three updates in a row: the render world runs a frame behind, and a
                 // loaded mesh queues its pipeline a frame after it is extracted.
-                let idle = if now == seen && now.0 & COMPILING == 0 { idle + 1 } else { 0 };
+                let idle = if now == seen && now.0 & COMPILING == 0 && !scenes_pending(world, entities[0]) { idle + 1 } else { 0 };
                 if frames == SETTLE_FRAMES && !framed {
                     frame_thumbnail(world, &entities);
                     // Framed: count idle updates from here, over what the camera now shows.
