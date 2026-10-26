@@ -104,6 +104,9 @@ after the run:
 | `setParent`, `addChildren`, `withChildren((p) => p.spawn(...))`, `detachChildren`, `despawnChildren` | `ChildOf`, `add_children`, `with_children`, `detach_all_children`, `despawn_children` |
 
 A command on a gone entity logs a warning naming the method and entity; `tryInsert` stays quiet.
+`spawn` and `insert` take any component value. `spawnBatch`, `insertBatch`, `insertIfNew`,
+`tryInsert` and `insertRecursive` take layout values only: a reflected value, or one that sets
+fields the layout lacks, throws naming the method.
 `clear` and `retain` remove every game component but keep bevy-ts's own markers (what made the
 entity), and `cloneAndSpawn`'s clone is a TS spawn: a restart despawns it.
 

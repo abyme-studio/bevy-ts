@@ -131,6 +131,10 @@ The `Commands` param SHALL offer `spawn(...parts)`, `spawnBatch(list)`, `insertB
 - **WHEN** `e` has `Health` 3 and a system calls `commands.entity(e).insertIfNew(Health.of({ hp: 9 }), Shield.of())`
 - **THEN** after the run `e` has `Health` 3 and `Shield`
 
+#### Scenario: layout-only commands refuse a reflected value
+- **WHEN** a system calls `commands.entity(e).insertIfNew(DirectionalLight.of({ illuminance: 1, color }))`, whose `color` is written through reflection
+- **THEN** the call throws "insertIfNew takes layout values only", and so do `tryInsert`, `insertRecursive`, `spawnBatch` and `insertBatch`
+
 #### Scenario: retain and clear
 - **WHEN** `e` has `Health`, `Shield` and `Transform`, and a system calls `entity(e).retain(Transform)`, and on another entity `f`, `entity(f).clear()`
 - **THEN** after the run `e` has only `Transform` among those, and `f` exists with no components
