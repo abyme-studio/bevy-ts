@@ -44,6 +44,7 @@ mod native_writes;
 mod occlusion_render;
 mod packages;
 mod pcss_bench;
+mod predicate_bench;
 mod play;
 mod play_after_edit;
 mod play_stop;
