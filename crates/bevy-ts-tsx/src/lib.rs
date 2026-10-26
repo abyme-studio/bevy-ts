@@ -453,8 +453,8 @@ fn restart(world: &mut World) {
     let mut old = std::mem::take(&mut *world.resource_mut::<TsxTree>());
     let mut tree = TsxTree::default();
     for name in &keep {
-        let Some(mut state) = old.roots.remove(name) else { continue };
-        state.baseline = None;
+        // Its baseline stays for the restore's write-back; the next Play's start takes another.
+        let Some(state) = old.roots.remove(name) else { continue };
         for id in &state.nodes {
             if let Some(e) = old.entities.remove(id) {
                 tree.entities.insert(*id, e);
