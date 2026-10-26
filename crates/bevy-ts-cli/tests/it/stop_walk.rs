@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -157,7 +157,7 @@ fn pump(viewer: &Viewer, seen: &mut Seen, wait: Duration) {
 }
 
 /// The newest frame, saved as a PNG, and its RGBA bytes.
-fn shot(viewer: &Viewer, seen: &mut Seen, dir: &PathBuf, name: &str) -> Vec<u8> {
+fn shot(viewer: &Viewer, seen: &mut Seen, dir: &Path, name: &str) -> Vec<u8> {
     std::thread::sleep(Duration::from_millis(400));
     seen.last = None;
     let t0 = Instant::now();
