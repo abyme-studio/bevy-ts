@@ -19,8 +19,9 @@ use std::time::Instant;
 const FRAMES: usize = 500;
 
 /// A program with `members` systems gated off by `inState(Game.Playing)` (the game is in Menu)
-/// and `preds` predicate-shaped systems run every frame.
-fn program(members: usize, preds: usize) -> String {
+/// and `preds` predicate-shaped systems run every frame; with `busy`, one more TS system runs every
+/// frame, so the stage already enters JS and the arm measures the predicate's calls alone.
+fn program(members: usize, preds: usize, busy: bool) -> String {
     let mut s = String::from(
         r#"import { app, inState, Resource, States, systems, u32, Update } from "bevy-ts";
 import type { Res } from "bevy-ts";
@@ -34,8 +35,14 @@ export class Game extends States("Menu", "Playing") { static path = "game::Game"
     for i in 0..preds {
         s += &format!("export function pred{i}(s: Res<Score>): boolean {{ return s.value >= 100; }}\n");
     }
+    if busy {
+        s += "export function busy(s: Res<Score>) { if (s.value === 12345) console.log('never'); }\n";
+    }
     let members: Vec<String> = (0..members).map(|i| format!("member{i}")).collect();
-    let preds: Vec<String> = (0..preds).map(|i| format!("pred{i}")).collect();
+    let mut preds: Vec<String> = (0..preds).map(|i| format!("pred{i}")).collect();
+    if busy {
+        preds.push("busy".into());
+    }
     s += &format!(
         "app.initState(Game.Menu).insertResource(Score.of({{ value: 0 }})).addSystems(Update, systems({}).runIf(inState(Game.Playing)){});\n",
         members.join(", "),
@@ -94,22 +101,28 @@ fn frames(arms: &[(String, String)]) -> Vec<(f64, f64)> {
 #[test]
 #[ignore]
 fn predicate_against_a_rust_condition() {
-    // (label, gated systems, predicate calls per frame). 64 calls on 8 systems gives the slope of
-    // one evaluation over noise the small arms sit in.
+    // (label, gated systems, predicate calls per frame, busy). 64 calls on 8 systems gives the
+    // slope of one evaluation over noise the small arms sit in. A quiet stage enters JS only for
+    // the predicate; a busy one already runs a TS system, as a game's Update does.
     let arms = [
-        ("1 systems, rust", 1, 0),
-        ("1 systems, collective", 1, 1),
-        ("8 systems, rust", 8, 0),
-        ("8 systems, collective", 8, 1),
-        ("8 systems, distributive", 8, 8),
-        ("8 systems, 64 calls", 8, 64),
+        ("quiet stage, 1 systems, rust", 1, 0, false),
+        ("quiet stage, 1 systems, collective", 1, 1, false),
+        ("quiet stage, 8 systems, rust", 8, 0, false),
+        ("quiet stage, 8 systems, collective", 8, 1, false),
+        ("quiet stage, 8 systems, distributive", 8, 8, false),
+        ("quiet stage, 8 systems, 64 calls", 8, 64, false),
+        ("busy stage, 8 systems, rust", 8, 0, true),
+        ("busy stage, 8 systems, collective", 8, 1, true),
+        ("busy stage, 8 systems, distributive", 8, 8, true),
+        ("busy stage, 8 systems, 64 calls", 8, 64, true),
     ];
-    let srcs: Vec<(String, String)> = arms.iter().enumerate().map(|(i, (_, m, p))| (format!("pred-bench-{i}"), program(*m, *p))).collect();
+    let srcs: Vec<(String, String)> = arms.iter().enumerate().map(|(i, (_, m, p, b))| (format!("pred-bench-{i}"), program(*m, *p, *b))).collect();
     let got = frames(&srcs);
-    let base = |m: usize| got[arms.iter().position(|a| a.1 == m && a.2 == 0).unwrap()].0;
-    for ((label, members, _), (us, evals)) in arms.iter().zip(&got) {
-        let extra = us - base(*members);
-        let per = if *evals > 0.0 { format!(", {:.2} us per evaluation", extra / evals) } else { String::new() };
+    let base = |m: usize, b: bool| got[arms.iter().position(|a| a.1 == m && a.2 == 0 && a.3 == b).unwrap()];
+    for ((label, members, _, busy), (us, calls)) in arms.iter().zip(&got) {
+        let (base_us, base_calls) = base(*members, *busy);
+        let (extra, evals) = (us - base_us, calls - base_calls);
+        let per = if evals > 0.0 { format!(", {:.2} us per evaluation", extra / evals) } else { String::new() };
         println!("{label}: {us:.1} us per frame, {evals:.1} predicate calls, {extra:+.1} us{per}");
     }
 }
