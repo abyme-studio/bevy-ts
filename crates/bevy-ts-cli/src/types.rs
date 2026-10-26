@@ -204,7 +204,7 @@ fn glam_ts(path: &str) -> Option<String> {
 /// `ReflectAsset`, also a ref from `assets.add`, a value `T.of(...)`, and `T.load(...)` for a `T`
 /// with loader settings (reflect-assets), `T` named by [`asset_name`]; for a hand-mapped `T` with
 /// no `Reflect` (`GizmoAsset`, whose class another module declares), a ref or value of any asset
-/// with `T`'s type path.
+/// with `T`'s type path (fields `{}`, not `unknown`, which the coverage walk reads as a gap).
 fn handle_ts(registry: &TypeRegistry, path: &str) -> String {
     let id = registry.get_with_type_path(path).and_then(|r| r.data::<bevy::asset::ReflectHandle>()).map(|h| h.asset_type_id());
     let asset = id
@@ -214,7 +214,7 @@ fn handle_ts(registry: &TypeRegistry, path: &str) -> String {
     match (asset, hand) {
         (Some((name, p)), _) if bevy_ts::reflect_asset::loadable(p) => format!("string | AssetRef<{name}> | AssetValue<{name}> | AssetLoad<{name}> | null"),
         (Some((name, _)), _) => format!("string | AssetRef<{name}> | AssetValue<{name}> | null"),
-        (None, Some(t)) => format!("string | AssetRef<AssetFields<{t:?}, unknown>> | AssetValue<AssetFields<{t:?}, unknown>> | null"),
+        (None, Some(t)) => format!("string | AssetRef<AssetFields<{t:?}, {{}}>> | AssetValue<AssetFields<{t:?}, {{}}>> | null"),
         (None, None) => "string | null".into(),
     }
 }
