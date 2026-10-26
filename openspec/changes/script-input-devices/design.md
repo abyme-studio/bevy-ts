@@ -39,17 +39,17 @@ Every public Bevy 0.20 input type, its TS path and its owner. Stage 1.11 copies 
 | `ButtonInput<MouseButton>`, `MouseButton` | `MouseButtons`, `MouseButton` enum | this change |
 | `AccumulatedMouseMotion`, `AccumulatedMouseScroll`, `MouseScrollUnit` | `Res<T>` | rust-resources (path); this change, stage 2 (docs, test) |
 | `MouseScrollPixelsPerLine` | none: Bevy 0.20 reflects it without `reflect(Resource)` | Bevy |
-| `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events; this change, stage 3 (docs, test) |
+| `MouseButtonInput`, `MouseMotion`, `MouseWheel` | `MessageReader` | rust-events (its tests); stage 3 documents them |
 | `Window::cursor_position`, `physical_cursor_position` | `Cursor` | this change |
-| `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events; stage 3 |
+| `CursorMoved`, `CursorEntered`, `CursorLeft` | `MessageReader` | rust-events (its tests); stage 3 documents them |
 | `Touches`, `Touch` | `Touches`, `Touch` record (no `force`) | this change |
-| `TouchInput`, `TouchPhase`, `ForceTouch` | `MessageReader` | rust-events; stage 3 |
-| `PinchGesture`, `RotationGesture`, `DoubleTapGesture`, `PanGesture` | `MessageReader` | rust-events; stage 3 |
+| `TouchInput`, `TouchPhase`, `ForceTouch` | `MessageReader` | rust-events (its tests); stage 3 documents them |
+| `PinchGesture`, `RotationGesture`, `DoubleTapGesture`, `PanGesture` | `MessageReader` | rust-events (its tests); stage 3 documents them |
 | `Gamepad` | `With<Gamepad>` to find pads; `Gamepads` for its methods | this change |
 | `GamepadButton`, `GamepadAxis`, `GamepadInput` | enums; `GamepadInput` as either | this change |
 | `GamepadSettings`, `ButtonSettings`, `AxisSettings`, `ButtonAxisSettings` | read: reflection; write: none | follow-up (reflect-coverage / writable-native-params) |
-| `GamepadEvent`, `GamepadConnectionEvent`, `GamepadButtonChangedEvent`, `GamepadButtonStateChangedEvent`, `GamepadAxisChangedEvent`, `RawGamepadEvent` and its parts | `MessageReader` | rust-events; stage 3 |
-| `GamepadRumbleRequest`, `GamepadRumbleIntensity` | `MessageWriter` | rust-events (path); stage 3 (docs, test) |
+| `GamepadEvent`, `GamepadConnectionEvent`, `GamepadButtonChangedEvent`, `GamepadButtonStateChangedEvent`, `GamepadAxisChangedEvent`, `RawGamepadEvent` and its parts | `MessageReader` | rust-events (its tests); stage 3 documents them |
+| `GamepadRumbleRequest`, `GamepadRumbleIntensity` | `MessageWriter`, `duration` in seconds | rust-events (its test); stage 3 documents it |
 | Rumble in viewport mode | none: the viewport protocol has no rumble | follow-up |
 | `input_pressed`, `input_just_pressed`, `input_just_released`, `input_toggle_active` | `inputPressed` etc. over `KeyCode` / `MouseButton` | this change |
 | Condition combinators | `not`, `and`, `or` ... | ecs-schedules |
@@ -132,5 +132,9 @@ Additive. Stage 1 lands after text-input and ecs-schedules stage 1; stages 2 and
 
 ## Open Questions
 
-- How rust-events spells `Duration` in `GamepadRumbleRequest` (reflect-coverage's call). Stage 3
-  documents whatever it chose.
+- How rust-events spells `Duration` in `GamepadRumbleRequest`: settled. reflect-coverage reads and
+  writes a `Duration` as seconds (docs/reflection.md), so `duration: 0.5` is half a second.
+- Stage 3 adds no Rust tests: rust-events' `input_messages_reach_a_ts_reader`,
+  `window_messages_reach_a_ts_reader` and `a_ts_writer_sends_a_rumble_request_a_rust_reader_sees`
+  already cover tasks 3.1 and 3.2, and one test owns each. Stage 3 adds the docs and a type test of
+  their example.
