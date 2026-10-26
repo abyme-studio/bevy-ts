@@ -27,11 +27,11 @@
 
 ## 5. Measure
 
-- [ ] 5.1 The bench again, 3 runs per arm at 2k and 20k, through `gate-slot`; the table in `docs/research/stop-cost.md` with the step split
-- [ ] 5.2 Each arm under 100 ms at 20k, or the table says which is not and why
+- [x] 5.1 The bench again, 3 runs per arm at 2k and 20k, through `gate-slot`; the table in `docs/research/stop-cost.md` with the step split
+- [x] 5.2 Each arm under 100 ms at 20k, or the table says which is not and why
 
 ## 6. Docs
 
 - [x] 6.1 `docs/viewport.md`: a moved level entity keeps its id after Stop
 - [x] 6.2 `docs/native.md`: write-back fires replace and insert hooks for the components written; an entity with a changed component a plugin inserted is respawned
-- [ ] 6.3 Workspace gate once, last, through `gate-slot`
+- [x] 6.3 Workspace gate once, last, through `gate-slot` (build and tests green; `screenshot_ready`'s slow-disk test timed out under load and passed alone; workspace clippy fails only on main's own `host.rs`, `mesh_data.rs` and `reflect_asset.rs`, sent to lead@bevy-ts)

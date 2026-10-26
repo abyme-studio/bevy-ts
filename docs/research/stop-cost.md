@@ -158,3 +158,35 @@ totals). Medians of 3, ms:
 
 So the time is where design decision 5 expects: the level check, then the engine. Skipping the
 kept level's check and taking a spare engine leave about 10 ms of rebuild.
+
+## After the split (stop-rebuild-split, task 5)
+
+The same bench after tasks 2 to 4: the kept level's section check skipped, a spare engine taken
+from standby, and a touched entity written back in place instead of respawned. Release,
+rendering on, 2026-10-26, load 40 to 53. Medians of 3, ms:
+
+| instances | arm | Stop | plan | rebuild | sections | engine | restore | respawned |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | full remount | 142 | 0 | 22 | 15 | 0 | 0 | 2,000 |
+| 1,000 | none touched | 13 | 0.4 | 13 | 11 | 0 | 0.3 | 0 |
+| 1,000 | 100 touched | 15 | 0.4 | 15 | 13 | 0 | 0.5 | 0 |
+| 1,000 | all touched | 17 | 0.6 | 14 | 12 | 0 | 2.0 | 0 |
+| 10,000 | full remount | 2,027 | 0 | 120 | 55 | 0 | 0 | 20,000 |
+| 10,000 | none touched | 27 | 5.0 | 16 | 13 | 0 | 2.8 | 0 |
+| 10,000 | 100 touched | 26 | 4.9 | 15 | 11 | 0 | 2.7 | 0 |
+| 10,000 | all touched | 31 | 3.9 | 13 | 10 | 0 | 14 | 0 |
+
+The 10,000 runs: none touched 40, 24, 27 ms; 100 touched 26, 24, 26; all touched 31, 32, 30.
+Before the split the same arms were 98, 131 and 207 ms.
+
+- Every restore arm is under 100 ms at 20,000 entities, and the rebuild no longer grows with the
+  level (13 to 16 ms at both sizes): what is left of sections is the manifest check and the
+  systems build.
+- Engine is 0: the spare isolate is booted ahead of the Stop, off its path, and the old one is dropped a frame later.
+- A touched entity's changed components are written back, so nothing respawns; all touched costs
+  14 ms of write-back at 20,000 entities.
+- The full remount is not a goal arm. Its 2 s at 20,000 is the respawn and 608 ms of settle frames
+  under this round's load; it was 0.8 to 1.4 s in the quieter rounds above.
+- Earlier runs of this bench under heavier load (load 35 to 135) gave 148 to 229 ms for all
+  touched at 20,000. Timings inside one of those Stops put the rebuild at about 21 ms and the
+  restore under 1 ms, so those totals were the machine, not the Stop.
