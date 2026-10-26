@@ -356,10 +356,10 @@ export declare class Gizmo extends Component {
   static readonly path: "bevy_gizmos::retained::Gizmo";
   static readonly native: true;
   /** Its props as an element. */
-  static readonly __element: { handle: string | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number }; depth_bias: number };
+  static readonly __element: { handle: string | AssetRef<AssetFields<"bevy_gizmos::GizmoAsset", unknown>> | AssetValue<AssetFields<"bevy_gizmos::GizmoAsset", unknown>> | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number }; depth_bias: number };
   declare depth_bias: f32;
 }
-export interface Gizmo extends Holes<{ handle: string | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } }> {}
+export interface Gizmo extends Holes<{ handle: string | AssetRef<AssetFields<"bevy_gizmos::GizmoAsset", unknown>> | AssetValue<AssetFields<"bevy_gizmos::GizmoAsset", unknown>> | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } }> {}
 
 /** `ShowSkinnedMeshBoundsGizmo.of(...)` in commands: the value written over its default. */
 export declare const ShowSkinnedMeshBoundsGizmo: ReflectClass<{ color?: ColorValue | null }, { color: ColorValue | null }>;

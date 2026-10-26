@@ -431,10 +431,10 @@ export declare class ShowFrustumGizmo extends ReflectComponent {
 /** Holes, not columns: handle: an enum with data (bevy_asset::handle::Handle<bevy_gizmos::GizmoAsset>); line_config: not plain data (bevy_gizmos::config::GizmoLineConfig). */
 export declare class Gizmo extends Component {
   static readonly path: "bevy_gizmos::retained::Gizmo";
-  static readonly tsxProps: { handle?: string | null; line_config?: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } };
+  static readonly tsxProps: { handle?: string | AssetRef<AssetFields<"bevy_gizmos::GizmoAsset", unknown>> | AssetValue<AssetFields<"bevy_gizmos::GizmoAsset", unknown>> | null; line_config?: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } };
   declare depth_bias: f32;
 }
-export interface Gizmo extends Holes<{ handle: string | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } }> {}
+export interface Gizmo extends Holes<{ handle: string | AssetRef<AssetFields<"bevy_gizmos::GizmoAsset", unknown>> | AssetValue<AssetFields<"bevy_gizmos::GizmoAsset", unknown>> | null; line_config: { width?: number; perspective?: boolean; style?: "Solid" | "Dotted" | { Dashed: { gap_scale?: number; line_scale?: number } }; joints?: "None" | "Miter" | { Round: number } | "Bevel"; animation_offset?: number } }> {}
 
 /** Reflect tier: no field is plain data (color: an enum with data (core::option::Option<bevy_color::color::Color>)). */
 export declare class ShowSkinnedMeshBoundsGizmo extends ReflectComponent {
