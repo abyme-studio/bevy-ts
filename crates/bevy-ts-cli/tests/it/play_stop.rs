@@ -691,14 +691,16 @@ fn a_stop_after_a_play_that_changed_nothing_keeps_every_enemy() {
 #[test]
 fn a_stop_does_not_check_the_level_it_keeps() {
     let (_dir, mut app) = arena3("stop-kept-unchecked", GAME, |_| {});
+    // The first generation's check comes before the file has loaded; a reload's after.
     let checked = app.world().resource::<Levels>().checked;
-    assert!(checked > 0, "the first generation checked the arena");
+    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
+    assert_eq!(app.world().resource::<Levels>().checked, checked + 1, "a reload checks the loaded arena");
+    // The reload's re-expansion runs at the next frames.
+    updates(&mut app, 3);
     mode(&mut app, "play");
     updates(&mut app, 3);
     mode(&mut app, "edit");
-    assert_eq!(app.world().resource::<Levels>().checked, checked, "the kept arena is not prepared again");
-    assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
-    assert_eq!(app.world().resource::<Levels>().checked, checked + 1, "a reload still checks it");
+    assert_eq!(app.world().resource::<Levels>().checked, checked + 1, "the kept arena is not prepared again");
 }
 
 #[test]
