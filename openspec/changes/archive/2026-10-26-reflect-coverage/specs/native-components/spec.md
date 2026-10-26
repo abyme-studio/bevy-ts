@@ -19,6 +19,10 @@ A registered Rust component or resource with `ReflectComponent` SHALL be usable 
 - **WHEN** a scene has `<DirectionalLight illuminance={8000} color={hex("#ffd7a8")} />` and a reload changes the colour to `srgb(1, 0.9, 0.8)`
 - **THEN** the light is inserted with `illuminance` written from bytes and `color` from reflection, and the reload writes only `color`
 
+#### Scenario: A soft-shadowed sun
+- **WHEN** a scene has `<DirectionalLight shadow_maps_enabled soft_shadow_size={0.5} />` and a reload changes it to `soft_shadow_size={null}`
+- **THEN** the prebuilt engine, which has Bevy's `experimental_pbr_pcss`, writes the `Option` hole through reflection: `Some(0.5)`, then `None`, and `tsc` types the prop `number | null`
+
 #### Scenario: A script insert keeps the holes' defaults
 - **WHEN** a TS system runs `commands.entity(camera).insert(AmbientLight.of({ brightness: 400 }))`
 - **THEN** the camera's `AmbientLight` has brightness 400 and its `Default` for every field the script did not give, so its colour hole stays white and the scene is lit by 400
@@ -30,6 +34,10 @@ A registered Rust component or resource with `ReflectComponent` SHALL be usable 
 #### Scenario: An opaque hole
 - **WHEN** a scene sets a hole whose type is on the uncovered list (an opaque type with no reflected serde)
 - **THEN** the scene fails to load with an error naming the field and the list's reason; `<ScreenSpaceTransmission steps={4} />` (a `usize`) now loads
+
+#### Scenario: Two types with one short name
+- **WHEN** a project registers `game::a::Health { hp }` and `game::b::Health { regen, max }`, and one TS system queries both by type path while another queries `Health`
+- **THEN** each type has its own layout and the first system writes each under its path, and the second fails the load: `Health names more than one Rust type (game::a::Health, game::b::Health); use its type path`
 
 ### Requirement: Reflect-tier Rust components are typed but never columns
 Any registered component or resource with `ReflectComponent` or `ReflectResource` that has no plain-data leaf (or no native layout) SHALL be visible to TS as a typed value in the shape `bevy_ts::reflect_value` gives it: usable as a TSX component element, in `.of(...)` values that commands spawn and insert, as query data and `Res`/`ResMut` data in TS systems (stage 3, see ts-systems), in `With` and `Without` filters, in `NodeRef.get`, and in `bevy-ts/` protocol methods. It SHALL never be a column: its rows are read and written through reflection.
