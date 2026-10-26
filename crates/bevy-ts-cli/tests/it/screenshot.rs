@@ -32,7 +32,7 @@ struct Ran(u64);
 /// clear colour that changes once the game has run 30 frames.
 fn engine(name: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("package.json", "{}"), ("game.ts", "import { app } from \"bevy-ts\";\n")]);
-    let mut app = App::new();
+    let mut app = render_app();
     app.add_plugins(headless::default_plugins(true))
         .add_plugins(headless::HeadlessPlugin)
         .add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
@@ -192,6 +192,8 @@ fn a_dev_engine_takes_its_env_shot_once_and_answers_the_method_over_http_plainly
     let shots = shots_dir("screenshot-dev");
     let env_shot = shots.join("env.png");
     let port = free_port();
+    // The engine renders out of process: hold the render lock so this binary's render apps wait.
+    let _gpu = renderer();
     struct Kill(std::process::Child);
     impl Drop for Kill {
         fn drop(&mut self) {
@@ -228,6 +230,14 @@ fn a_dev_engine_takes_its_env_shot_once_and_answers_the_method_over_http_plainly
             panic!("no {} {why}; the engine's log:\n{}", env_shot.display(), log.lock().unwrap());
         }
         std::thread::sleep(Duration::from_millis(100));
+    }
+    // Bevy's HTTP server binds in a task of its own after startup, so on a loaded machine the env
+    // shot can come first: wait for it to listen.
+    let t0 = Instant::now();
+    while std::net::TcpStream::connect(("127.0.0.1", port)).is_err() {
+        assert!(t0.elapsed() < LAUNCH, "the engine never listened on {port}");
+        assert!(engine.0.try_wait().unwrap().is_none(), "the engine exited");
+        std::thread::sleep(Duration::from_millis(50));
     }
     let path = shots.join("http.png");
     let reply = post(port, &json!({ "jsonrpc": "2.0", "id": 7, "method": "bevy-ts/screenshot", "params": { "path": path } }));
