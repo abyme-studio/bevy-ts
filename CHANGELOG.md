@@ -40,6 +40,10 @@ Changes a user of bevy-ts must act on, newest first.
 
 - `bevy_ts::commands::apply` takes a fifth argument, `label`: what queued the ops, named in a
   delayed queue's warnings. A Rust caller passes its own context (`"my plugin"`).
+- Protocol 1.38.0: a TS component's `x-bevy-ts` may carry `relationship` (`{ role, counterpart,
+  linkedSpawn?, allowSelfReferential? }`). A relationship target's layout has no fields and
+  `get_components` reads it as an array of entities; `mutate_components` refuses a target and
+  re-inserts a source. A reader that walks every TS component's fields sees none on a target.
 - Protocol 1.36.0: `mutate_components` takes `.field[i]` and `.field[i].member` on a list field,
   writing that item in place; past the end fails naming the list's length. It used to refuse them.
 - Protocol 1.35.0: a system's `schedule.kind` (and the `Stage` enum) may be `"predicate"`, a

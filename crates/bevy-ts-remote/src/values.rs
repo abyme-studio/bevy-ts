@@ -81,7 +81,7 @@ pub(crate) fn ts_schema(c: &TsComponent) -> Value {
         }
         fields.insert(f.name.clone(), info);
     }
-    json!({
+    let mut s = json!({
         "typePath": c.decl.name,
         "shortPath": short_path(&c.decl.name),
         "kind": "Struct",
@@ -98,7 +98,11 @@ pub(crate) fn ts_schema(c: &TsComponent) -> Value {
             "fields": fields,
         },
         "x-bevy-ts-editor": crate::editor::ts(c),
-    })
+    });
+    if let Some(r) = &c.decl.relationship {
+        s["x-bevy-ts"]["relationship"] = json!(r);
+    }
+    s
 }
 
 fn matches(names: &[String], type_path: &str, short: &str) -> bool {
@@ -141,6 +145,11 @@ fn ts_component(world: &World, name: &str) -> Option<TsComponent> {
 
 fn read_ts(world: &World, entity: Entity, c: &TsComponent) -> Option<Value> {
     let p = world.get_by_id(entity, c.id)?;
+    if c.decl.is_target() {
+        // SAFETY: a relationship target's value is a `Vec<Entity>`.
+        let list = unsafe { p.deref::<Vec<Entity>>() };
+        return Some(json!(list.iter().map(|e| e.to_bits()).collect::<Vec<_>>()));
+    }
     // SAFETY: the component's column holds `layout.size` bytes for this entity.
     let bytes = unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) };
     // SAFETY: a live column value of `layout`.
@@ -328,11 +337,32 @@ pub(crate) fn get_components_watch(In(p): In<Option<Value>>, world: &mut World) 
 }
 
 fn write_ts(world: &mut World, entity: Entity, c: &TsComponent, path: &str, v: &Value) -> Result<(), BrpError> {
+    if c.decl.is_target() {
+        return Err(invalid(format!("{} is a relationship target: read-only, its list changes through its source", c.decl.name)));
+    }
     let target = resolve_path(&c.layout, path).map_err(|e| invalid(e.to_string()))?;
     let hints = c.decl.field(&target.field).map(|f| f.hints.clone()).unwrap_or_default();
     let check = FieldValue::encode(path, &target.ty, v).and_then(|fv| check_hints(path, &target.ty, &hints, v).map(|_| fv));
     let fv = check.map_err(|e| BrpError { code: error_codes::INVALID_PARAMS, message: e.to_string(), data: Some(json!({ "path": e.path, "expected": e.expected })) })?;
     let mut e = world.get_entity_mut(entity).map_err(|_| BrpError::entity_not_found(entity))?;
+    if c.decl.is_source() {
+        // A source is immutable: the write is a re-insert, so its hooks move the entity between
+        // target lists.
+        let p = e.get_by_id(c.id).map_err(|_| invalid(format!("entity {entity} has no {}", c.decl.name)))?;
+        let mut bytes = match bevy_ts::heap::HeapShape::of(&c.decl.name, &c.layout) {
+            // SAFETY: a live value of a component with this heap shape.
+            Some(shape) => unsafe { bevy_ts::heap::HeapBytes::copy_of(p.as_ptr(), shape) },
+            // SAFETY: the column holds `layout.size` plain bytes for this entity.
+            None => bevy_ts::heap::HeapBytes::plain(unsafe { std::slice::from_raw_parts(p.as_ptr(), c.layout.size) }.to_vec()),
+        };
+        match fv {
+            FieldValue::Bytes(b) => bytes.field_mut(target.offset, b.len()).copy_from_slice(&b),
+            FieldValue::Heap(h) => bytes.set(target.offset, h),
+        }
+        // SAFETY: `bytes` is a value of the component's layout, owning its heap values.
+        unsafe { bevy_ts::commands::insert_owned(&mut e, c.id, bytes) };
+        return Ok(());
+    }
     let mut m = e
         .get_mut_by_id(c.id)
         .map_err(|_| invalid(format!("entity {entity} has no {}", c.decl.name)))?;
