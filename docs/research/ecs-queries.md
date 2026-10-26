@@ -254,3 +254,27 @@ One change, in this order: B (bug fix, with the probe as its test) and the A tes
 `Discard`/`Despawn` with the value copied at trigger time; commands (`spawn(<el/>)` returns its
 root, `spawnBatch`, the pool, the `EntityCommands` methods, `Children` helpers). Required
 components and custom relationships go to the operator first.
+
+## 6. Sparse-set filter bench (stage 7)
+
+`bob_bench`, release, 8 runs per arm, before and after alternating, medians of each run's median
+(µs). Before is `ecs-queries-stage7-before` (6dab285b): 7.2's refusal lifted, so `With<SparseTag>`
+walks the whole table and gives every row, the wrong answer. After walks each matched
+archetype's row list. Every other entity is tagged. The machine was loaded (1-minute load 74 to
+115), so spreads are wide.
+
+| entities | variant | before bob run | after bob run | before app.update | after app.update |
+|---|---|---|---|---|---|
+| 1000 | accessor+tick | 24 [20–35] | 27 [20–48] | 132 | 151 |
+| 1000 | With<TableTag> | 26 [22–50] | 28 [22–39] | 154 | 156 |
+| 1000 | With<SparseTag> | 29 [21–52] | 30 [24–70] | 184 | 195 |
+| 100000 | accessor+tick | 1556 [1399–2194] | 1590 [1276–2063] | 1894 | 1996 |
+| 100000 | raw, no tick | 1216 [1096–1662] | 1267 [995–1479] | 1557 | 1713 |
+| 100000 | raw+tick | 1174 [1083–1459] | 1154 [1039–1454] | 1492 | 1474 |
+| 100000 | With<TableTag> | 882 [735–1038] | 745 [692–806] | 1374 | 970 |
+| 100000 | With<SparseTag> | 1621 [1472–2059] | 1891 [1588–2076] | 2182 | 2237 |
+
+Dense queries are unchanged within noise: every dense median moves less than its spread. A
+sparse-set filter at 100,000 costs about 17% more than the wrong whole-table walk, though it
+hands JS half the rows: the row list is built per frame and JS indexes through it. It is the
+same path `Changed` takes, and costs about what a dense query over all rows does.

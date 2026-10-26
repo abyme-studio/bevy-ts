@@ -49,8 +49,8 @@ unless a path is given; each `ecs-coverage` row's test is written with its featu
 
 ## 7. Ask-first (operator's go given 2026-10-22; each item lands on its own)
 
-- [ ] 7.1 Bench before: `bob_bench` dense numbers, plus a new sparse variant (a `With<Tag>` sparse-set filter over 1,000 and 100,000 entities) recorded with stage 1's refusal lifted behind a test flag
+- [x] 7.1 Bench before: `bob_bench` dense numbers, plus a new sparse variant (a `With<Tag>` sparse-set filter over 1,000 and 100,000 entities) recorded with stage 1's refusal lifted behind a test flag
 - [x] 7.2 Sparse-set filters: `is_dense` on `QueryParam`; per-table row lists from matched archetypes for non-dense queries; `Changed`/`Added` on a sparse-set component from per-entity sparse ticks; `Has` per archetype; lift 1.1's filter refusal (data stays refused); `probe_disabled_and_sparse_filters` asserts Bevy's lengths
-- [ ] 7.3 Bench after: dense unchanged within noise, sparse cost recorded in `docs/research/ecs-queries.md`
+- [x] 7.3 Bench after: dense unchanged within noise, sparse cost recorded in `docs/research/ecs-queries.md`
 - [ ] 7.4 Required components: `static require` in the reader and manifest; an `on_add` hook by id inserting missing parts through `DeferredWorld` commands; cycle error; `required_components_from_every_path` (commands, TSX, level, Rust insert)
 - [ ] 7.5 `Relationship` and `RelationshipTarget` are not exported; the `ecs-coverage` row names custom-relationships as their owner
