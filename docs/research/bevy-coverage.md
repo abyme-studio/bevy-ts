@@ -76,7 +76,7 @@ Bevy features with no owner. They are ranked at the end.
 | Sets and ordering, Rust anchors | idiomatic | `systems.rs` `chain_after_before_sets_and_stages_order_systems` | — |
 | Conditions `inState`, `resourceExists`, `onMessage`, `not` | idiomatic, evaluated in Rust | `surface.rs` `resource_exists_and_not_conditions`, `a_skipped_system_costs_no_js_call` | — |
 | Conditions `runOnce`, `resource*`, `anyWithComponent`, `anyComponentRemoved`, `anyMatchFilter`, `conditionChanged`/`To` | idiomatic, evaluated in Rust | `conditions.rs` `every_rust_condition_skips_with_no_call_into_js`, `resource_changed_runs_on_the_frame_rust_writes_it_and_costs_no_call_otherwise`, `run_once_survives_a_reload_and_resets_on_restart` | — |
-| A TS predicate condition, `resource_exists_and` | missing | — | ecs-schedules stage 3 (after its bench) |
+| A TS predicate condition, `resource_exists_and` | idiomatic; one JS call per evaluation (~3 µs in a stage already running TS), read-only params checked at load | `conditions.rs` `a_predicate_gates_a_system_with_one_call_per_frame`, `a_writing_predicate_fails_the_load_at_its_function`, `a_group_shares_one_predicate_call_and_distributive_is_one_each`, `resource_exists_and_calls_the_predicate_only_while_it_exists`, `rust_skipped_systems_and_predicates_make_no_call` | — |
 | Combinators and collective/distributive `runIf` | idiomatic | `conditions.rs` `short_circuit_skips_b_and_eager_spends_it`, `collective_run_if_is_one_evaluation_and_distributive_is_one_each` | — |
 | Rust conditions in TS (`ts_condition`, `nativeCondition`) | idiomatic | `conditions.rs` `a_ports_condition_runs_in_rust`, `a_factory_error_fails_the_load_with_the_call` | — |
 | One-shot systems, Rust's `RunTsSystem` | idiomatic | `schedules.rs` `run_system_runs_a_one_shot_after_the_callers_commands`, `run_system_with_passes_its_input`, `rust_runs_a_ts_one_shot_with_run_ts_system` | — |
@@ -204,7 +204,7 @@ Missing or partial, no running owner, ranked by which a game team waits on.
     commands, the `Insert` observer, `RenderTarget`, `Hdr`, `CursorIcon`, render markers.
 
 Owned by a running change, so not ranked: heap fields (ts-heap-fields-2), `iterDescendants`
-(ecs-queries 6.1), custom relationships, a TS predicate condition (ecs-schedules stage 3), clock
+(ecs-queries 6.1), custom relationships, clock
 writes (script-time stage 2), sprite-sheet animation and tilemaps (script-2d), path text
 (world-text-stage-2). heimdall-labels has
 named no ask.

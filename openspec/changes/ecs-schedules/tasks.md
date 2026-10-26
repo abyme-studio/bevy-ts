@@ -35,8 +35,8 @@
 
 ## 3. Stage 3: TS predicate conditions (operator's go needed)
 
-- [ ] 3.1 Bench first (`crates/bevy-ts-cli/tests/it/predicate_bench.rs`, the `predicate-bench` process): one predicate gating 1 and 8 systems, collective and distributive, µs per frame against a Rust condition. Report to the operator with the fallback; stop here until they say go
-- [ ] 3.2 Compile step: a predicate is an exported function returning `boolean` with read-only params; writing params fail the load
-- [ ] 3.3 Evaluate through `run_one` with the return read back; Rust nodes first where the combinator allows; `resourceExistsAnd(R, pred)`
-- [ ] 3.4 Tests: ts-conditions predicate scenarios; a group shares one call; a system gated only by Rust conditions still costs no JS call
-- [ ] 3.5 Docs and the conditions coverage row's TS predicate part
+- [x] 3.1 Bench first (`crates/bevy-ts-cli/tests/it/predicate_bench.rs`, the `predicate-bench` process): one predicate gating 1 and 8 systems, collective and distributive, µs per frame against a Rust condition. Report to the operator with the fallback; stop here until they say go
+- [x] 3.2 Compile step: a predicate is an exported function returning `boolean` with read-only params; writing params fail the load
+- [x] 3.3 Evaluate through `run_one` with the return read back; Rust nodes first where the combinator allows; `resourceExistsAnd(R, pred)`
+- [x] 3.4 Tests: ts-conditions predicate scenarios; a group shares one call; a system gated only by Rust conditions still costs no JS call
+- [x] 3.5 Docs and the conditions coverage row's TS predicate part
