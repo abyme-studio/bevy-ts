@@ -1,7 +1,7 @@
 //! Bench 3.1 (ecs-schedules, stage 3): what a TS predicate condition costs per frame, against a
-//! Rust condition. A predicate runs through `run_one` like a system, so it is measured before it
-//! exists as a TS system reading `Res<Score>` and computing a `boolean`: the call, the view setup
-//! and the param, all a predicate would pay. Its members are skipped by a Rust condition, which
+//! Rust condition. It gated building predicates, so it measures a stand-in: a TS system reading
+//! `Res<Score>` and computing a `boolean`, run through `run_one` as a predicate now is: the call,
+//! the view setup and the param. The cost `docs/scripts.md` quotes for `runIf(pred)` is this one. Its members are skipped by a Rust condition, which
 //! costs no call, so a frame's extra time over the Rust arm is the predicate's evaluations alone.
 //!
 //! Arms, for 1 and 8 gated systems: `rust` (the members behind `inState`, no call), `collective`
