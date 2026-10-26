@@ -75,7 +75,7 @@ Measured 2026-10-25 on the shared M5 Max under heavy load (load average 29 to 82
 
 A `style` binding rebuilds `Node`, so `ui_layout_system` sends each node to taffy again; `transform` writes only `UiTransform`, applied after layout. `ui_placement.rs` shows the `Node` change tick never moves and `ComputedNode` stays put.
 
-Agent town's label bench (`openspec/research/heimdall-labels/bench.mjs` at 75154d9, arm `ui`, `BENCH_N=1000`, this branch's release engine at 2c7817b3; `openspec/changes/bevy-ui-coverage/bench-town.sh` with `BENCH_RUNS=8`), 8 runs by turns:
+Agent town's label bench (`openspec/research/heimdall-labels/bench.mjs` at 75154d9, arm `ui`, `BENCH_N=1000`, this branch's release engine at 2c7817b3; `openspec/changes/archive/2026-10-27-bevy-ui-coverage/bench-town.sh` with `BENCH_RUNS=8`), 8 runs by turns:
 
 | plates placed by | frame ms | CPU % |
 |---|---|---|
@@ -88,7 +88,7 @@ Within noise: the `ui` arm shows at most 48 plates (its budget), and 48 nodes la
 
 Measured 2026-10-25 on the shared M5 Max under heavy load (load average 75 to 96), release.
 
-40 and 1,000 12-glyph labels, each moved every frame by `transform`, so Bevy extracts every label again every frame: the halo's worst case (`tsx_scale::labels_with_and_without_a_halo`, frame ms, median of 200 frames; `openspec/changes/bevy-ui-coverage/bench-halo.sh`). "Before" is 7669fe7e, the engine without the halo, with the same bench.
+40 and 1,000 12-glyph labels, each moved every frame by `transform`, so Bevy extracts every label again every frame: the halo's worst case (`tsx_scale::labels_with_and_without_a_halo`, frame ms, median of 200 frames; `openspec/changes/archive/2026-10-27-bevy-ui-coverage/bench-halo.sh`). "Before" is 7669fe7e, the engine without the halo, with the same bench.
 
 No halo, before and after, 8 runs by turns:
 
