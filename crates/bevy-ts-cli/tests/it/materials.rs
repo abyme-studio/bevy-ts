@@ -536,17 +536,26 @@ fn an_owned_instance_is_written_in_place_and_read_back() {
     assert_eq!(read["color"]["LinearRgba"]["alpha"], 1.0);
 }
 
+/// Every `Modified` of a `ScriptMaterial`, each read once: the current buffer alone can hold a
+/// frame's messages over several updates, as messages swap only after a fixed tick.
+#[derive(Resource, Default)]
+struct Modifieds(Vec<AssetId<ScriptMaterial>>);
+
+fn count_modified(mut events: bevy::ecs::message::MessageReader<AssetEvent<ScriptMaterial>>, mut seen: ResMut<Modifieds>) {
+    seen.0.extend(events.read().filter_map(|ev| if let AssetEvent::Modified { id } = ev { Some(*id) } else { None }));
+}
+
 #[test]
 fn an_equal_set_sends_no_modified() {
     let (_dir, mut app) = setup("materials-owned-equal", &owned("color: color, pulse: f32", "assets.set(g, { pulse: 2, color: \"#000000\" });"));
+    app.init_resource::<Modifieds>().add_systems(Last, count_modified);
     let (_, h) = cube(&mut app);
+    // The asset's own Added and Modified, from the load and its kind applying.
     updates(&mut app, 2);
-    for i in 0..5 {
-        app.update();
-        let events = app.world().resource::<bevy::ecs::message::Messages<AssetEvent<ScriptMaterial>>>();
-        let modified = events.iter_current_update_messages().filter(|ev| ev.is_modified(h.id())).count();
-        assert_eq!(modified, 0, "frame {i}: an equal set marks nothing changed");
-    }
+    let before = app.world().resource::<Modifieds>().0.iter().filter(|id| **id == h.id()).count();
+    updates(&mut app, 5);
+    let after = app.world().resource::<Modifieds>().0.iter().filter(|id| **id == h.id()).count();
+    assert_eq!(after, before, "an equal set every frame marks nothing changed");
 }
 
 #[test]
