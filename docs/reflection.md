@@ -223,6 +223,8 @@ and 31 at the end.
 
 A hit costs about 4 times a column read. A miss is 8 to 17 times faster than the JSON path. Writes
 cross as JSON (design decision 7), so they cost what the JSON path costs. The research's targets,
-about 10 ns a hit and 0.1 µs a miss, were not met at this load. One write a frame costs about
-30 µs, far more than a row's write; that looks like a fixed cost per run of the flush, and is a
-follow-up.
+about 10 ns a hit and 0.1 µs a miss, were not met at this load. One write a frame cost about
+30 µs at this load, far more than a row's write. It was not a flush: each write of an `Orthographic`
+projection built a `World` to get `OrthographicProjection`'s `FromWorld` default. That default is
+now made once and cloned (change from-world-default). On a quiet machine, 3 alternated rounds, the
+write a frame went from 7, 7, 6 µs to 4, 3, 3 µs.
