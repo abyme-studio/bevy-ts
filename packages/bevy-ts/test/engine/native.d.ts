@@ -30,6 +30,8 @@ declare module "bevy-ts" {
   }
   interface ResMutClaims {
     "ResMut<GizmoConfigStore>": [import("bevy-ts/gizmos").GizmoConfigStore, import("bevy-ts/gizmos").GizmoConfigStoreMut];
+    "ResMut<Time<Virtual>>": [Time<Virtual>, import("bevy-ts/time").VirtualTime];
+    "ResMut<Time<Fixed>>": [Time<Fixed>, import("bevy-ts/time").FixedTime];
     "ResMut<Assets<Mesh>>": [Assets<Mesh>, import("bevy-ts/assets").Meshes];
   }
 }
