@@ -162,7 +162,7 @@ fn bad_clock_writes_throw() {
     let tries: String = calls.iter().map(|(c, _)| format!("  try {{ {c}; console.log(\"no throw\"); }} catch (e) {{ console.log(`threw ${{(e as Error).message}}`); }}\n")).collect();
     let body = format!("export function w(time: ResMut<Time<Virtual>>, fixed: ResMut<Time<Fixed>>) {{\n{tries}}}\napp.addSystems(Update, systems(w).runIf(runOnce()));\n");
     let (_, mut app) = ts_app("time-writes-bad", &body);
-    let fixed = app.world().resource::<Time<Fixed>>().clone();
+    let fixed = *app.world().resource::<Time<Fixed>>();
     updates(&mut app, 2);
     let threw: Vec<String> = messages(&app).iter().filter_map(|m| m.strip_prefix("threw ")).map(String::from).collect();
     let want: Vec<String> = calls.iter().map(|(_, w)| w.to_string()).collect();
