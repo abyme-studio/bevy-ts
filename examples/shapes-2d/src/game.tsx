@@ -84,7 +84,10 @@ const walkers = [
 ];
 
 /** tiles.png: grass, dirt, stone and water, 16 pixels each, in a column: an array texture. */
-const tileset = Image.load("tiles.png", { array_layout: { RowCount: { rows: 4 } } });
+const tileset = Image.load("tiles.png", {
+  array_layout: { RowCount: { rows: 4 } },
+  sampler: { Descriptor: { mag_filter: "Nearest", min_filter: "Nearest" } },
+});
 /** A 6x2 floor, bottom row first: water, then a path of dirt and stone through grass. */
 const floor = [3, 3, 0, 1, 0, 3, 0, 1, 2, 1, 0, 0].map((i) => ({ tileset_index: i }));
 
