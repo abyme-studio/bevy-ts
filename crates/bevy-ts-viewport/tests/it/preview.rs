@@ -7,7 +7,7 @@ use crate::common;
 use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy_ts_viewport::mach::Viewer;
-use bevy_ts_viewport::preview::{PREVIEW_LAYERS, PreviewCamera, PreviewOnly};
+use bevy_ts_viewport::preview::{PREVIEW_LAYERS, PreviewCamera, PreviewKeepAlive, PreviewOnly};
 use common::*;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -20,6 +20,19 @@ fn run_both(app: &mut App, a: (&Viewer, &mut Seen), b: (&Viewer, &mut Seen), n: 
         app.update();
         pump(a.0, a.1, Duration::from_millis(1));
         pump(b.0, b.1, Duration::from_millis(1));
+    }
+}
+
+/// Updates until `n` previews' glTF scenes have spawned: each test model's mesh node is `cube`.
+fn until_spawned(app: &mut App, n: usize) {
+    let t0 = std::time::Instant::now();
+    loop {
+        let cubes = app.world_mut().query_filtered::<&Name, With<PreviewOnly>>().iter(app.world()).filter(|n| n.as_str() == "cube").count();
+        if cubes >= n {
+            break;
+        }
+        assert!(t0.elapsed() < LONG, "{cubes} of {n} preview scenes spawned");
+        app.update();
     }
 }
 
@@ -127,13 +140,13 @@ fn preview_entities_are_hidden_on_their_layer_and_an_eleventh_evicts_the_oldest(
         write_gltf(&dir.join(format!("models/m{i}.gltf")), &[]);
     }
     let mut app = app_at(&dir);
+    // Eviction, not the keep-alive: on a loaded machine opening ten outlasts it.
+    app.insert_resource(PreviewKeepAlive(Duration::MAX));
     let mut ids = vec![];
     for i in 0..10 {
         ids.push(open_preview(&mut app, &format!("models/m{i}.gltf"))["preview"].as_u64().unwrap());
     }
-    for _ in 0..5 {
-        app.update();
-    }
+    until_spawned(&mut app, 10);
     // Every entity under a preview is PreviewOnly (so ScriptHidden) and only on a preview layer.
     let (mut members, mut off_layer) = (0, 0);
     for layers in app.world_mut().query_filtered::<Option<&RenderLayers>, With<PreviewOnly>>().iter(app.world()) {
@@ -175,9 +188,7 @@ fn a_preview_plays_its_gltf_animations() {
     let p = open_preview(&mut app, "models/grunt.gltf");
     assert_eq!(p["animations"], json!(["idle", "walk"]));
     let id = p["preview"].as_u64().unwrap();
-    for _ in 0..5 {
-        app.update();
-    }
+    until_spawned(&mut app, 1);
     let cube_y = |app: &mut App| {
         app.world_mut()
             .query_filtered::<(&Name, &Transform), With<PreviewOnly>>()
