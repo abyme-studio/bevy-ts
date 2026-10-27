@@ -14,7 +14,7 @@ use bevy_ts_cli::compile::Compiler;
 use bevy_ts_material::wgsl::PipelineWatch;
 use bevy_ts_material::{MaterialKinds, ScriptMaterialPlugin};
 use common::*;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 // Line 12 is `return vec4<f32>(params.color.rgb * glow, params.color.a);`.
@@ -78,12 +78,13 @@ fn errors(app: &App) -> Vec<String> {
     logs(app).into_iter().filter(|e| e.level == LogLevel::Error).map(|e| format!("{} @ {:?}", e.message, e.location)).collect()
 }
 
-fn setup(name: &str) -> (PathBuf, App) {
+fn setup(name: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", &game("color: color, pulse: f32")), ("glow.wgsl", WGSL)]);
     let mut app = gpu_app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     until_drawn(&mut app);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

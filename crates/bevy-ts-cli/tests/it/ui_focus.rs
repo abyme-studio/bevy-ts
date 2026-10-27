@@ -19,7 +19,7 @@ use bevy_ts_cli::compile::Compiler;
 use bevy_ts_cli::project::Switches;
 use bevy_ts_tsx::TsxNode;
 use common::{logs, messages, project, reload, write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ fn unfinished(extra: impl Plugin, display: Display, switches: Switches, entry: &
 }
 
 /// `game` loaded headless with `switches`, a few frames run.
-fn headless(name: &str, game: &str, extra: impl Plugin, switches: Switches) -> (PathBuf, App) {
+fn headless(name: &str, game: &str, extra: impl Plugin, switches: Switches) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", game)]);
     let mut app = unfinished(extra, Display::Headless, switches, &dir.join("game.tsx"));
     app.finish();
@@ -45,6 +45,7 @@ fn headless(name: &str, game: &str, extra: impl Plugin, switches: Switches) -> (
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     common::updates(&mut app, 3);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 
@@ -252,7 +253,7 @@ mod viewport {
 
     /// `game.tsx` loaded in viewport mode with `switches`, a viewer attached; in edit mode when
     /// `edit`, as `bevy-ts dev --viewport --edit` boots.
-    fn start(name: &str, game: &str, switches: Switches, edit: bool) -> (PathBuf, App) {
+    fn start(name: &str, game: &str, switches: Switches, edit: bool) -> (crate::common::TestDir, App) {
         let dir = project(name, &[("game.tsx", game)]);
         let mut app = unfinished(bevy_ts_cli::Prebuilt, Display::Viewport, switches, &dir.join("game.tsx"));
         app.add_plugins(RemotePlugin::default());
@@ -269,6 +270,7 @@ mod viewport {
         assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
         call(&mut app, "bevy-ts/viewport_attach", json!({ "w": 400, "h": 300, "scale": 1 }));
         updates(&mut app, 4);
+        app.insert_resource(dir.clone());
         (dir, app)
     }
 

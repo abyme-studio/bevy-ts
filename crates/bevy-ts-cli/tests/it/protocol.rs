@@ -9,7 +9,7 @@ use bevy_ts::components::TsComponents;
 use common::*;
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn contract() -> Value {
     serde_json::from_str(bevy_ts_remote::OPENRPC).unwrap()
@@ -61,7 +61,7 @@ fn ok(app: &mut App, method: &str, params: Option<Value>) -> Value {
 }
 
 /// A project holding the cube example's two files.
-fn cube_project(name: &str) -> PathBuf {
+fn cube_project(name: &str) -> crate::common::TestDir {
     let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src");
     let read = |f: &str| std::fs::read_to_string(example.join(f)).unwrap();
     project(name, &[("game.ts", &read("game.ts")), ("cube.tsx", &read("cube.tsx"))])
@@ -90,6 +90,7 @@ fn cube_app_on(port: Option<u16>) -> (App, Entity) {
     let id = app.world().resource::<TsComponents>().live("game::Mover").unwrap().id;
     let world = app.world_mut();
     let cube = QueryBuilder::<Entity>::new(world).with_id(id).build().single(world).unwrap();
+    app.insert_resource(dir);
     (app, cube)
 }
 

@@ -13,11 +13,12 @@ fn session_app(dir: &std::path::Path, entry: &str) -> App {
     app
 }
 
-fn loaded(name: &str, files: &[(&str, &str)]) -> (std::path::PathBuf, App) {
+fn loaded(name: &str, files: &[(&str, &str)]) -> (crate::common::TestDir, App) {
     let dir = project(name, files);
     let mut app = session_app(&dir, files[0].0);
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

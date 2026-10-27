@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use bevy_ts::generation::ReloadStatus;
 use bevy_ts_material::{ScriptMaterial, ScriptMaterial3d, ScriptMaterialPlugin};
 use common::*;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn reflect_app(entry: &Path) -> App {
     let mut app = app(entry);
@@ -25,12 +25,13 @@ fn scene(imports: &str, body: &str) -> String {
     format!("import {{ app, hex, hsl, linear, srgb }} from \"bevy-ts\";\nimport {{ {imports} }} from \"bevy-ts/bevy\";\n\napp.scene(\"s\", () => (\n  <entity name=\"it\">\n    {body}\n  </entity>\n));\n")
 }
 
-fn setup(name: &str, src: &str) -> (PathBuf, App) {
+fn setup(name: &str, src: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", src)]);
     let mut app = reflect_app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     app.update();
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

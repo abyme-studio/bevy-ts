@@ -14,12 +14,12 @@ use bevy_ts::plugin_api;
 use bevy_ts_tsx::{TsxNode, TsxTree};
 use common::*;
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
 
 struct Walk {
     app: App,
-    dir: PathBuf,
+    dir: crate::common::TestDir,
 }
 
 impl Walk {

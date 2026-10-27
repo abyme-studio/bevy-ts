@@ -49,12 +49,69 @@ pub fn free_port() -> u16 {
     std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
 }
 
+/// A scratch folder under the temp dir, unique to one call, removed when the last handle drops
+/// (pass or fail). A helper that returns an app puts a handle in the app, so the folder outlives the
+/// helper. `BEVY_TS_KEEP_TEST_DIRS=1` keeps it and prints its path (docs/build.md, "Testing").
+#[derive(Resource, Clone)]
+pub struct TestDir(Arc<Scratch>);
+
+struct Scratch {
+    path: PathBuf,
+    keep: bool,
+}
+
+impl TestDir {
+    /// A fresh folder named for the test, the process and a process-wide counter, so parallel tests
+    /// and reruns never share one, nor does another worktree's run.
+    pub fn new(name: &str) -> TestDir {
+        TestDir::with_keep(name, std::env::var_os("BEVY_TS_KEEP_TEST_DIRS").is_some_and(|v| v == "1"))
+    }
+
+    /// As [`TestDir::new`], with the keep decision given, so a test needs no environment variable.
+    pub fn with_keep(name: &str, keep: bool) -> TestDir {
+        static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-{}-{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Canonical, as a build reports its paths (macOS /var is /private/var).
+        let path = dir.canonicalize().unwrap();
+        if keep {
+            eprintln!("kept test dir: {}", path.display());
+        }
+        TestDir(Arc::new(Scratch { path, keep }))
+    }
+}
+
+impl std::ops::Deref for TestDir {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0.path
+    }
+}
+
+impl AsRef<Path> for TestDir {
+    fn as_ref(&self) -> &Path {
+        &self.0.path
+    }
+}
+
+impl AsRef<std::ffi::OsStr> for TestDir {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.0.path.as_os_str()
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        if !self.keep {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
 /// A fresh directory of TS files under the temp dir.
-pub fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
-    // Per process: another worktree's run of the same test must not share, or delete, its files.
-    let dir = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+pub fn project(name: &str, files: &[(&str, &str)]) -> TestDir {
+    let dir = TestDir::new(name);
     for (f, src) in files {
         write(&dir, f, src);
     }
@@ -106,11 +163,12 @@ pub fn app_with_inspector(entry: &Path) -> App {
 }
 
 /// A one-module project loaded as generation 1; panics with the errors if it fails.
-pub fn load(name: &str, src: &str) -> (PathBuf, App) {
+pub fn load(name: &str, src: &str) -> (TestDir, App) {
     let dir = project(name, &[("game.ts", src)]);
     let mut app = app(&dir.join("game.ts"));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "load failed: {:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

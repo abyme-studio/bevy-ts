@@ -56,6 +56,7 @@ fn scene(name: &str) -> App {
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     common::updates(&mut app, 5);
+    app.insert_resource(dir);
     app
 }
 

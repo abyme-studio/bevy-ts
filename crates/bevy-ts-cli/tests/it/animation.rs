@@ -35,7 +35,7 @@ fn anim_app(dir: &Path, entry: &str) -> App {
     app
 }
 
-fn fox_project(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+fn fox_project(name: &str, files: &[(&str, &str)]) -> common::TestDir {
     let dir = project(name, files);
     std::fs::create_dir_all(dir.join("assets/models")).unwrap();
     std::fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/foxes/assets/models/Fox.glb"), dir.join("assets/models/Fox.glb")).unwrap();

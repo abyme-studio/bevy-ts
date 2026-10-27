@@ -9,7 +9,6 @@ use bevy_ts::generation::ReloadStatus;
 use bevy_ts_tsx::TsxNode;
 use bevy_ts_tsx::halo::TextHalo;
 use common::*;
-use std::path::PathBuf;
 
 /// A text whose halo follows `Phase`: 0 black 1.5 px, 1 red 3 px, 2 none.
 const GAME: &str = r##"import { app, Component, u8, signal, px, Update, type Query } from "bevy-ts";
@@ -72,7 +71,7 @@ fn failed(name: &str, src: &str) -> Vec<bevy_ts::backend::ScriptError> {
 
 #[test]
 fn text_halo_is_written_changed_and_removed() {
-    let dir: PathBuf = project("ui-halo-component", &[("game.tsx", GAME)]);
+    let dir = project("ui-halo-component", &[("game.tsx", GAME)]);
     let mut app = app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
@@ -130,6 +129,7 @@ mod drawn {
         let r = reload(&mut app, false);
         assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
         updates(&mut app, 10);
+        app.insert_resource(dir);
         app
     }
 

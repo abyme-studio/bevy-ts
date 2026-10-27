@@ -200,6 +200,7 @@ fn timer_app(name: &str, body: &str) -> (App, bevy_ts::generation::ReloadReport)
     let mut app = app(&dir.join("game.ts"));
     app.ts_condition("time:on-timer", on_timer_factory);
     let r = reload(&mut app, false);
+    app.insert_resource(dir);
     (app, r)
 }
 

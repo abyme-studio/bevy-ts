@@ -116,6 +116,7 @@ fn ts_app(arm: &str) -> App {
     app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap())));
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.insert_resource(dir);
     app
 }
 

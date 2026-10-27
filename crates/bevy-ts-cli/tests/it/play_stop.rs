@@ -62,7 +62,7 @@ const ROOM: &str = "#Guard
 Transform { translation: Vec3 { z: -16.0 } }
 ";
 
-fn arena(name: &str) -> std::path::PathBuf {
+fn arena(name: &str) -> common::TestDir {
     project(name, &[("src/game.tsx", GAME), ("assets/levels/arena.bsn", ARENA), ("assets/levels/room.bsn", ROOM)])
 }
 
@@ -130,7 +130,7 @@ fn named(app: &mut App, name: &str) -> Vec<(Entity, Vec3)> {
 }
 
 /// Plays a freshly loaded arena: generation applied, its level standing, a few frames run.
-fn played(name: &str) -> (std::path::PathBuf, App) {
+fn played(name: &str) -> (crate::common::TestDir, App) {
     let dir = arena(name);
     let mut app = stop_app(&dir);
     app.update();
@@ -511,17 +511,15 @@ fn the_first_stop_of_a_game_booted_in_play_keeps_its_levels() {
 }
 
 /// The arena (its HUD is game UI) in a fresh copy, booted as `bevy-ts dev --edit` boots.
-fn arena_example(name: &str) -> App {
+fn arena_example(name: &str) -> (common::TestDir, App) {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena");
-    let dir = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.parent().unwrap()).unwrap();
-    assert!(std::process::Command::new("cp").args(["-R", src.to_str().unwrap(), dir.to_str().unwrap()]).status().unwrap().success());
+    let dir = common::TestDir::new(name);
+    assert!(std::process::Command::new("cp").args(["-R".to_string(), format!("{}/.", src.display()), dir.display().to_string()]).status().unwrap().success());
     let mut app = stop_app_entry(&dir, "src/game.tsx", true);
     app.update();
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
     updates(&mut app, 30);
-    app
+    (dir, app)
 }
 
 /// Whether any game UI root targets a camera that renders.
@@ -534,7 +532,7 @@ fn ui_shows(app: &mut App) -> bool {
 
 #[test]
 fn game_ui_stays_hidden_in_edit_with_a_selection_and_after_stop() {
-    let mut app = arena_example("play-stop-hud");
+    let (_dir, mut app) = arena_example("play-stop-hud");
     assert!(!ui_shows(&mut app));
     let (b, _) = named(&mut app, "EnemyB")[0];
     call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [b.to_bits()] }));
@@ -567,7 +565,7 @@ fn mode_watch(app: &mut App, key: &Value) -> Option<Value> {
 /// the HUD draws there as in Play.
 #[test]
 fn a_level_camera_reaches_the_watch_and_the_game_view_draws_the_hud() {
-    let mut app = arena_example("game-camera-hud");
+    let (_dir, mut app) = arena_example("game-camera-hud");
     let key = json!({ "n": 1 });
     let first = mode_watch(&mut app, &key).expect("a message on open");
     assert_eq!((first["gameCameras"].as_u64(), first["cause"].as_str()), (Some(1), Some("engine")), "the arena's camera is its scene's: {first}");
@@ -637,7 +635,7 @@ fn count_added(q: Query<(), Added<bevy_ts_levels::engine::LevelInstance>>, mut s
 }
 
 /// The three-enemy arena loaded in edit, `game` its source, `extra` added to the app.
-fn arena3(name: &str, game: &str, extra: impl FnOnce(&mut App)) -> (std::path::PathBuf, App) {
+fn arena3(name: &str, game: &str, extra: impl FnOnce(&mut App)) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("src/game.tsx", game), ("assets/levels/arena.bsn", ARENA3)]);
     let mut app = stop_app(&dir);
     extra(&mut app);
@@ -651,6 +649,7 @@ fn arena3(name: &str, game: &str, extra: impl FnOnce(&mut App)) -> (std::path::P
     }
     assert_eq!(named(&mut app, "EnemyC").len(), 1, "the level never loaded");
     updates(&mut app, 3);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

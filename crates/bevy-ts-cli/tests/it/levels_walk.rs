@@ -14,14 +14,14 @@ use bevy_ts_levels::{PrefabEdits, WriteResults, route, write_from};
 use bevy_ts_tsx::TsxNode;
 use common::*;
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
 
 const LEVEL: &str = "levels/arena.bsn";
 
 struct Walk {
     app: App,
-    dir: PathBuf,
+    dir: crate::common::TestDir,
 }
 
 /// The lines that differ, as a diff hunk would show them.

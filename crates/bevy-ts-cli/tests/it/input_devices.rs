@@ -24,7 +24,7 @@ fn input_app(name: &str, src: &str, window: bool) -> App {
     app
 }
 
-fn try_load(name: &str, src: &str, window: bool) -> (std::path::PathBuf, App, bevy_ts::generation::ReloadReport) {
+fn try_load(name: &str, src: &str, window: bool) -> (crate::common::TestDir, App, bevy_ts::generation::ReloadReport) {
     let dir = common::project(name, &[("game.ts", src)]);
     let mut app = common::app(&dir.join("game.ts"));
     app.add_plugins(InputPlugin)
@@ -35,6 +35,7 @@ fn try_load(name: &str, src: &str, window: bool) -> (std::path::PathBuf, App, be
         })
         .add_plugins(bevy_ts_cli::input::ScriptInputPlugin);
     let r = common::reload(&mut app, false);
+    app.insert_resource(dir.clone());
     (dir, app, r)
 }
 

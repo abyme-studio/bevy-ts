@@ -12,7 +12,6 @@ use bevy::ui::UiTargetCamera;
 use bevy_ts::generation::ReloadStatus;
 use bevy_ts_tsx::TsxNode;
 use common::*;
-use std::path::PathBuf;
 
 const GAME: &str = r##"import { app, px, ref, sliced, tiled } from "bevy-ts";
 import { Camera3d, TextureAtlasLayout } from "bevy-ts/bevy";
@@ -47,7 +46,7 @@ fn media_app(entry: &std::path::Path) -> App {
     app
 }
 
-fn setup(name: &str, src: &str) -> (PathBuf, App) {
+fn setup(name: &str, src: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", src)]);
     let mut app = media_app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
@@ -55,6 +54,7 @@ fn setup(name: &str, src: &str) -> (PathBuf, App) {
     updates(&mut app, 3);
     let errors: Vec<_> = logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Error).map(|e| e.message).collect();
     assert!(errors.is_empty(), "{errors:?}");
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

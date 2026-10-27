@@ -311,6 +311,7 @@ fn arena_app(name: &str, extra: &str) -> App {
     bevy_ts_levels::protocol::add_methods(&mut app);
     assert!(reload(&mut app, false).errors.is_empty());
     settle_levels(&mut app);
+    app.insert_resource(dir);
     app
 }
 

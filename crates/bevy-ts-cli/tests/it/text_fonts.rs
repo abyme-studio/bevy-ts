@@ -31,6 +31,7 @@ fn text_app(name: &str) -> App {
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     set(&mut app, "ASCII");
+    app.insert_resource(dir);
     app
 }
 

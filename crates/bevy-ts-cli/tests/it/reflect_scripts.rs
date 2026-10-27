@@ -26,6 +26,7 @@ fn run(name: &str, body: &str) -> App {
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     updates(&mut app, 2);
+    app.insert_resource(dir);
     app
 }
 

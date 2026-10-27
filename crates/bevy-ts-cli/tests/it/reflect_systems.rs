@@ -36,6 +36,7 @@ fn with_types(name: &str, body: &str) -> App {
     let dir = project(name, &[("game.ts", &format!("{HEAD}{body}"))]);
     let mut app = app(&dir.join("game.ts"));
     app.register_type::<Projection>().register_type::<Badge>().register_type::<Lamp>();
+    app.insert_resource(dir);
     app
 }
 

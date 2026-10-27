@@ -51,6 +51,7 @@ fn game(name: &str, body: &str, setup: impl FnOnce(&mut App)) -> App {
     setup(&mut app);
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.insert_resource(dir);
     app
 }
 

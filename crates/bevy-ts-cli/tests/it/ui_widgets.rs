@@ -16,7 +16,7 @@ use bevy_ts_cli::compile::Compiler;
 use bevy_ts_cli::project::Switches;
 use bevy_ts_tsx::TsxNode;
 use common::{logs, messages, project, reload, write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 pub(crate) fn engine() -> Engine {
@@ -30,7 +30,7 @@ pub(crate) fn unfinished(display: Display, switches: Switches, entry: &Path) -> 
 }
 
 /// `game` loaded headless, a few frames run.
-pub(crate) fn headless(name: &str, game: &str) -> (PathBuf, App) {
+pub(crate) fn headless(name: &str, game: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", game)]);
     let mut app = unfinished(Display::Headless, Switches::default(), &dir.join("game.tsx"));
     app.finish();
@@ -38,6 +38,7 @@ pub(crate) fn headless(name: &str, game: &str) -> (PathBuf, App) {
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     common::updates(&mut app, 3);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 
@@ -249,7 +250,7 @@ app.scene("ui", () => (
 ));
 "##;
 
-    fn scene(name: &str) -> (PathBuf, App) {
+    fn scene(name: &str) -> (crate::common::TestDir, App) {
         let dir = project(name, &[("game.tsx", GAME)]);
         let mut app = unfinished(Display::Headless, Switches::default(), &dir.join("game.tsx"));
         let image = app.world().resource::<bevy_ts_cli::headless::Offscreen>().0.clone();
@@ -260,6 +261,7 @@ app.scene("ui", () => (
         let r = reload(&mut app, false);
         assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
         common::updates(&mut app, 5);
+        app.insert_resource(dir.clone());
         (dir, app)
     }
 
@@ -447,6 +449,7 @@ pub(crate) mod keys {
         assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
         call(&mut app, "bevy-ts/viewport_attach", json!({ "w": 400, "h": 300, "scale": 1 }));
         updates(&mut app, 4);
+        app.insert_resource(dir);
         app
     }
 

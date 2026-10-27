@@ -34,7 +34,7 @@ fn mesh_app_with(name: &str, body: &str, extra: impl FnOnce(&mut App)) -> App {
 }
 
 /// The project folder, with `files` beside `game.ts` (the asset root), and its loaded app.
-fn assets_app(name: &str, body: &str, files: &[(&str, &[u8])], extra: impl FnOnce(&mut App)) -> (std::path::PathBuf, App) {
+fn assets_app(name: &str, body: &str, files: &[(&str, &[u8])], extra: impl FnOnce(&mut App)) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.ts", &format!("{IMPORTS}{body}"))]);
     for (f, bytes) in files {
         std::fs::write(dir.join(f), bytes).unwrap();
@@ -53,6 +53,7 @@ fn assets_app(name: &str, body: &str, files: &[(&str, &[u8])], extra: impl FnOnc
     app.cleanup();
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "load failed: {:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

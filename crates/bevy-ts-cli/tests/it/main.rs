@@ -81,6 +81,7 @@ mod surface;
 mod systems;
 mod text_fonts;
 mod text_input;
+mod test_dir;
 mod time;
 mod tsx;
 mod tsx_expand;

@@ -37,6 +37,7 @@ fn arena(name: &str) -> App {
     app.cleanup();
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.insert_resource(dir);
     app
 }
 

@@ -25,11 +25,12 @@ fn material_app(entry: &Path) -> App {
     app
 }
 
-fn setup(name: &str, src: &str) -> (std::path::PathBuf, App) {
+fn setup(name: &str, src: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", src), ("glow.wgsl", WGSL)]);
     let mut app = material_app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

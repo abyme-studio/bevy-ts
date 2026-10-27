@@ -16,7 +16,7 @@ use bevy_ts_cli::headless::{self, SIZE};
 use common::*;
 use serde_json::{Value, json};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -30,7 +30,7 @@ struct Ran(u64);
 
 /// A headless engine as `bevy-ts dev --headless` builds it, with the core methods, a camera, and a
 /// clear colour that changes once the game has run 30 frames.
-fn engine(name: &str) -> (PathBuf, App) {
+fn engine(name: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("package.json", "{}"), ("game.ts", "import { app } from \"bevy-ts\";\n")]);
     let mut app = App::new();
     app.add_plugins(headless::default_plugins(true))
@@ -58,6 +58,7 @@ fn engine(name: &str) -> (PathBuf, App) {
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     // `RemotePlugin` makes its mailbox in `PreStartup`.
     app.update();
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 
@@ -107,11 +108,8 @@ fn near(a: Color, b: Color) -> bool {
     (a.to_srgba().to_vec4() - b.to_srgba().to_vec4()).truncate().length() < 0.02
 }
 
-fn shots_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-shots-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.canonicalize().unwrap()
+fn shots_dir(name: &str) -> common::TestDir {
+    common::TestDir::new(&format!("{name}-shots"))
 }
 
 #[test]

@@ -30,19 +30,12 @@ fn files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn tmp(name: &str) -> PathBuf {
-    // Per process: another worktree's run of the same test must not share, or delete, its files.
-    let d = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
-
 #[test]
 fn the_arena_builds_and_plays() {
     let arena = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena");
     // Canonical, as the build reports it (macOS /var is /private/var).
-    let out = tmp("build-arena").canonicalize().unwrap().join("arena");
+    let _scratch = common::TestDir::new("build-arena");
+    let out = _scratch.join("arena");
     let (code, events) = build(&[arena.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{events:#?}");
     let steps: Vec<_> = of(&events, "step").iter().map(|s| (s["index"].as_u64().unwrap(), s["total"].as_u64().unwrap())).collect();
@@ -167,7 +160,7 @@ fn a_shader_ships_as_its_file_and_plays_from_there() {
 #[cfg(unix)]
 #[test]
 fn a_linked_package_ships_and_plays_without_node_modules() {
-    let base = tmp("build-packages").canonicalize().unwrap();
+    let base = common::TestDir::new("build-packages");
     let write = |f: &str, src: &str| common::write(&base, f, src);
     write("web/packages/client/package.json", r#"{"name": "@abyme/client", "version": "0.0.0", "type": "module", "exports": {"./connect": "./src/connect.ts"}}"#);
     write(
@@ -345,7 +338,8 @@ fn a_build_imports_every_module_types_lists() {
 #[ignore = "builds the rapier project engine"]
 fn a_port_project_builds_with_its_module() {
     let rapier = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/rapier");
-    let out = tmp("build-rapier").join("rapier");
+    let scratch = common::TestDir::new("build-rapier");
+    let out = scratch.join("rapier");
     let (code, events) = build(&[rapier.to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{events:#?}");
 }

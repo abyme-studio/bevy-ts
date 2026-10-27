@@ -43,11 +43,12 @@ fn tsx_app(entry: &Path) -> App {
     app
 }
 
-fn setup(name: &str, body: &str) -> (std::path::PathBuf, App) {
+fn setup(name: &str, body: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("enemy.tsx", ENEMY), ("game.tsx", &game(body))]);
     let mut app = tsx_app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

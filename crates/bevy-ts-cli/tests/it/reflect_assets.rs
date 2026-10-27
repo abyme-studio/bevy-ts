@@ -9,7 +9,7 @@ use bevy::ecs::message::Messages;
 use bevy::prelude::*;
 use bevy_ts::generation::ReloadStatus;
 use common::*;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const HEAD: &str = "import { app, asset, assets, Startup, Update } from \"bevy-ts\";\nimport { MeshMaterial3dStandardMaterial } from \"bevy-ts/bevy\";\nconst StandardMaterial = asset(\"bevy_pbr::pbr_material::StandardMaterial\");\n";
 
@@ -21,12 +21,13 @@ fn assets_app(entry: &Path) -> App {
     app
 }
 
-fn setup(name: &str, body: &str) -> (PathBuf, App) {
+fn setup(name: &str, body: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", &format!("{HEAD}{body}"))]);
     let mut app = assets_app(&dir.join("game.tsx"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     updates(&mut app, 3);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 
@@ -268,13 +269,14 @@ setTimeout(() => {
 }
 
 /// `assets_app` with meshes, which `<material>` needs.
-fn material_setup(name: &str, body: &str) -> (PathBuf, App) {
+fn material_setup(name: &str, body: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", &format!("{HEAD}{body}"))]);
     let mut app = assets_app(&dir.join("game.tsx"));
     app.init_asset::<Mesh>();
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
     updates(&mut app, 3);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

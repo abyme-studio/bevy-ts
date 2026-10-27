@@ -71,13 +71,14 @@ fn input(app: &mut App, events: Vec<Value>) {
 }
 
 /// The app with `game.tsx` loaded and a viewer attached, so the virtual window exists.
-fn start(name: &str, game: &str) -> (std::path::PathBuf, App) {
+fn start(name: &str, game: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", game)]);
     let mut app = viewport_app(&dir.join("game.tsx"));
     let report = reload(&mut app, false);
     assert_eq!(report.status, ReloadStatus::Applied, "{:?}", messages(&app));
     call(&mut app, "bevy-ts/viewport_attach", json!({ "w": 400, "h": 300, "scale": 1 }));
     updates(&mut app, 3);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

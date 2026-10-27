@@ -115,12 +115,12 @@ impl Slow {
 /// into `path`. Pipelines compile in the background, as in a shipped engine. A render that stalls,
 /// in a frame or in the app's drop (which waits for the render thread), is the engine's stall
 /// watchdog's to report.
-fn engine(name: &str, path: &Path, at: u64) -> App {
+fn engine(name: &str, path: &Path, at: u64) -> (common::TestDir, App) {
     engine_with(name, path, at, None)
 }
 
 /// As [`engine`], with a `slow://` asset source.
-fn engine_with(name: &str, path: &Path, at: u64, slow: Option<Slow>) -> App {
+fn engine_with(name: &str, path: &Path, at: u64, slow: Option<Slow>) -> (common::TestDir, App) {
     let dir = project(name, &[("package.json", "{}"), ("game.ts", "import { app } from \"bevy-ts\";\n")]);
     let mut app = render_app();
     if let Some(Slow { root, open, delay, shaders }) = slow {
@@ -140,7 +140,8 @@ fn engine_with(name: &str, path: &Path, at: u64, slow: Option<Slow>) -> App {
             commands.spawn((DirectionalLight::default(), Transform::from_xyz(1.0, 2.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y)));
         });
     app.insert_resource(DevSource(Arc::new(Compiler::new(dir.join("game.ts"), true).unwrap())));
-    app
+    app.insert_resource(dir.clone());
+    (dir, app)
 }
 
 fn start(app: &mut App) {
@@ -175,11 +176,8 @@ fn centre(path: &Path) -> Color {
     image.get_color_at(SIZE.0 / 2, SIZE.1 / 2).unwrap()
 }
 
-fn shots_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-shots-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir.canonicalize().unwrap()
+fn shots_dir(name: &str) -> common::TestDir {
+    common::TestDir::new(&format!("{name}-shots"))
 }
 
 /// A cube filling the view, in an unlit `SCENE` colour (the camera does no tonemapping).
@@ -192,7 +190,7 @@ fn cube(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials:
 fn a_script_that_starts_late_is_in_the_shot() {
     let dir = shots_dir("ready-late-script");
     let path = dir.join("late.png");
-    let mut app = engine("ready-late-script", &path, 3);
+    let (_game, mut app) = engine("ready-late-script", &path, 3);
     // The script's scene: the cube, spawned once its first generation has applied.
     app.add_systems(Update, |info: Res<RuntimeInfo>, mut done: Local<bool>, commands: Commands, meshes: ResMut<Assets<Mesh>>, materials: ResMut<Assets<StandardMaterial>>| {
         if info.generation > 0 && !*done {
@@ -215,7 +213,7 @@ fn a_script_that_starts_late_is_in_the_shot() {
 fn a_material_compiled_in_the_background_is_in_the_shot() {
     let dir = shots_dir("ready-late-material");
     let path = dir.join("material.png");
-    let mut app = engine("ready-late-material", &path, 3);
+    let (_game, mut app) = engine("ready-late-material", &path, 3);
     app.add_systems(Startup, cube);
     start(&mut app);
     apply_script(&mut app);
@@ -229,7 +227,7 @@ fn a_material_compiled_in_the_background_is_in_the_shot() {
 fn turning_shot(name: &str, work: std::time::Duration) -> Vec<u8> {
     let dir = shots_dir(name);
     let path = dir.join("turn.png");
-    let mut app = engine(name, &path, 30);
+    let (_game, mut app) = engine(name, &path, 30);
     app.insert_resource(FixedStep)
         .add_systems(Startup, cube)
         .add_systems(Update, move |time: Res<Time>, mut cubes: Query<&mut Transform, With<Mesh3d>>| {
@@ -310,7 +308,7 @@ fn a_texture_on_a_slow_disk_is_in_the_shot() {
     std::fs::write(root.join("scene.png"), png_of([r, g, b, 255])).unwrap();
     let open = Arc::new(AtomicBool::new(false));
     let slow = Slow::open(root, open.clone(), Duration::ZERO);
-    let mut app = engine_with("ready-slow-texture", &path, 3, Some(slow));
+    let (_game, mut app) = engine_with("ready-slow-texture", &path, 3, Some(slow));
     // A white cube whose colour is its texture, added without the server, as a script's is.
     app.add_systems(Startup, |mut commands: Commands, server: Res<AssetServer>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {
         let texture = server.load("slow://scene.png");
@@ -336,7 +334,7 @@ fn fox_shot(name: &str, delay: Duration, work: Duration) -> Vec<u8> {
     let path = dir.join("fox.png");
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/foxes/assets/models").canonicalize().unwrap();
     let slow = Slow::open(root, Arc::new(AtomicBool::new(true)), delay);
-    let mut app = engine_with(name, &path, 30, Some(slow));
+    let (_game, mut app) = engine_with(name, &path, 30, Some(slow));
     app.add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .insert_resource(FixedStep)
         .add_systems(Startup, |mut commands: Commands, server: Res<AssetServer>| {
@@ -374,7 +372,7 @@ fn the_method_waits_for_a_texture_on_a_slow_disk() {
     std::fs::write(root.join("scene.png"), png_of([r, g, b, 255])).unwrap();
     let open = Arc::new(AtomicBool::new(false));
     let slow = Slow::open(root, open.clone(), Duration::ZERO);
-    let mut app = engine_with("ready-method-texture", &dir.join("unused.png"), 3, Some(slow));
+    let (_game, mut app) = engine_with("ready-method-texture", &dir.join("unused.png"), 3, Some(slow));
     app.world_mut().remove_resource::<ShotWhenReady>();
     app.add_plugins(RemotePlugin::default())
         .add_systems(Startup, |mut commands: Commands, server: Res<AssetServer>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {

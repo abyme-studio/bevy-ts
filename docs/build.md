@@ -165,3 +165,9 @@ yet`, and `--target` naming one fails with that message before anything is writt
 
 Not yet: cross builds, a macOS `.app` bundle, icons, signing and notarisation, installers, and
 minified scripts.
+
+## Testing
+
+The CLI's tests write scratch folders under `$TMPDIR/bevy-ts-cli-tests` and remove each when its test
+ends, pass or fail. `BEVY_TS_KEEP_TEST_DIRS=1` keeps them, and each prints its path, to look at what a
+failing test left.

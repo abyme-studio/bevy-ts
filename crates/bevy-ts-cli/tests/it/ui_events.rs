@@ -18,9 +18,8 @@ use bevy::ui_widgets::{ActivateOnPress, ButtonPlugin};
 use bevy_ts::generation::ReloadStatus;
 use bevy_ts_tsx::{TsxNode, TsxTree};
 use common::*;
-use std::path::PathBuf;
 
-fn setup(name: &str, src: &str) -> (PathBuf, App) {
+fn setup(name: &str, src: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.tsx", src)]);
     let mut app = app(&dir.join("game.tsx"));
     app.add_plugins(ButtonPlugin);
@@ -29,6 +28,7 @@ fn setup(name: &str, src: &str) -> (PathBuf, App) {
     updates(&mut app, 2);
     let errors: Vec<_> = logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Error).map(|e| e.message).collect();
     assert!(errors.is_empty(), "{errors:?}");
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

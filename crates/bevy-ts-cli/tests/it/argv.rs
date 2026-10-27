@@ -31,7 +31,8 @@ fn argv_of(cmd: &mut Command) -> Vec<String> {
 }
 
 /// A game folder made by hand from [`GAME`], as `bevy-ts build` makes one.
-fn argv_game(name: &str) -> PathBuf {
+/// The project (held by the caller, so it outlasts the test) and the game folder in it.
+fn argv_game(name: &str) -> (crate::common::TestDir, PathBuf) {
     let project = common::project(name, &[("tsconfig.json", "{}"), ("src/game.ts", GAME)]);
     let compiler = Compiler::for_release(project.join("src/game.ts")).unwrap();
     let set = compiler.compile_graph().unwrap();
@@ -51,7 +52,7 @@ fn argv_game(name: &str) -> PathBuf {
         env: vec![],
     };
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
-    game
+    (project, game)
 }
 
 fn ends_with(path: &str, tail: &str) -> bool {
@@ -72,7 +73,7 @@ fn arguments_under_dev_and_none() {
 
 #[test]
 fn playing_a_folder_with_arguments() {
-    let game = argv_game("argv-play");
+    let (_project, game) = argv_game("argv-play");
     let argv = argv_of(Command::new(BIN).args(["play", game.to_str().unwrap(), "--headless", "--", "--seed", "7"]));
     assert_eq!(argv[2..], ["--seed", "7"]);
     assert!(ends_with(&argv[1], "game/scripts/src/game.ts"), "{argv:?}");
@@ -84,7 +85,7 @@ fn playing_a_folder_with_arguments() {
 #[test]
 fn a_built_game_with_arguments() {
     use bevy_ts_cli::cli::{Display, Prebuilt};
-    let game = argv_game("argv-shipped");
+    let (_project, game) = argv_game("argv-shipped");
     let engine = bevy_ts_cli::cli::Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
     let args: Vec<String> = ["--server", "10.0.0.5", "dev"].map(String::from).to_vec();
     let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless, &args).unwrap();

@@ -16,7 +16,7 @@ use bevy_ts_v8::V8Options;
 use bevy_ts_viewport::edit::EditorOnly;
 use common::{BOUND, messages, project, reload, settle_levels, until};
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -27,7 +27,7 @@ app.addSystems(Update, seen);
 ";
 
 /// The arena's sources and levels, plus `extra` level files, in a project of its own.
-fn arena(name: &str, extra: &[(&str, String)]) -> PathBuf {
+fn arena(name: &str, extra: &[(&str, String)]) -> crate::common::TestDir {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena");
     let mut files: Vec<(String, String)> = ["enemy.tsx", "player.tsx", "hud.tsx", "game.tsx"]
         .iter()

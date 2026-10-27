@@ -194,7 +194,9 @@ fn named(app: &mut App, name: &str) -> Entity {
 
 fn instanced_app(name: &str, left: &str, right: &str) -> App {
     let dir = project(name, &[("game.tsx", &instanced(left, right)), ("glow.wgsl", INSTANCED_WGSL), ("plain.wgsl", WGSL)]);
-    app(&dir.join("game.tsx"))
+    let mut app = app(&dir.join("game.tsx"));
+    app.insert_resource(dir);
+    app
 }
 
 #[test]

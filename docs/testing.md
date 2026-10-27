@@ -12,8 +12,9 @@ How a new test is written here. Where tests live and what they cost to build is
 - Every module shares one process, and their tests run at once. Nothing a test does may reach
   another's:
   - an engine's port comes from `common::free_port()`, never from the process id;
-  - a scratch folder is named for the test and the process (`common::project`), so another worktree
-    running the same test has its own;
+  - a scratch folder is a `common::TestDir` (or `common::project`, which makes one): named for the
+    test, the process and a counter, so no other test or worktree shares it, and removed when it
+    drops. Never a path under the temp dir of your own;
   - a viewport test that renders starts its app from `common::render_app()`, which runs render apps
     one at a time;
   - no test sets an environment variable or the working folder.

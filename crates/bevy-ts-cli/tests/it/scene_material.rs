@@ -47,12 +47,13 @@ fn scene_app(dir: &Path) -> App {
     app
 }
 
-fn setup(name: &str, element: &str) -> (std::path::PathBuf, App) {
+fn setup(name: &str, element: &str) -> (crate::common::TestDir, App) {
     let ship = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../bevy-ts-material/tests/assets/models/ship.gltf")).unwrap();
     let dir = project(name, &[("src/game.tsx", &game(element)), ("src/glow.wgsl", WGSL), ("assets/models/ship.gltf", &ship)]);
     let mut app = scene_app(&dir);
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

@@ -54,6 +54,7 @@ fn load_game(name: &str, game: &str, plugins: impl FnOnce(&mut App)) -> (App, Re
     app.finish();
     app.cleanup();
     let r = reload(&mut app, false);
+    app.insert_resource(dir);
     (app, r)
 }
 
@@ -168,7 +169,7 @@ fn a_material2d_builds_its_color_material_and_equal_props_share_handles() {
 fn a_changed_mesh2d_or_material2d_rebuilds_and_a_dropped_color_takes_its_material() {
     let ent = |props: &str| format!("    <entity key=\"m\">{props}</entity>\n");
     let mut app = setup("2d-reload", &ent("<mesh2d shape=\"circle\" color=\"#ff0000\" />"));
-    let dir = project("2d-reload", &[]);
+    let dir = app.world().resource::<common::TestDir>().clone();
     let e = node(&mut app, "m");
     let color = |app: &App| {
         let h = &app.world().get::<MeshMaterial2d<ColorMaterial>>(e)?.0;

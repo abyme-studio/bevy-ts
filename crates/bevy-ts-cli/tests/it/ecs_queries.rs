@@ -7,7 +7,6 @@ use bevy::prelude::*;
 use bevy_ts::generation::ReloadStatus;
 use common::*;
 use serde_json::json;
-use std::path::PathBuf;
 
 /// A sparse-set marker, as Bevy advises for markers added and removed often.
 #[derive(Component, Default)]
@@ -64,7 +63,7 @@ fn test_app(dir: &std::path::Path) -> App {
 
 /// Loads `HEAD`, lets `setup` spawn entities, then loads `body` with `$0`, `$1`, ... standing for
 /// the entities `setup` returned.
-fn staged(name: &str, setup: impl FnOnce(&mut App) -> Vec<Entity>, body: &str) -> (PathBuf, App, Vec<Entity>) {
+fn staged(name: &str, setup: impl FnOnce(&mut App) -> Vec<Entity>, body: &str) -> (crate::common::TestDir, App, Vec<Entity>) {
     let dir = project(name, &[("game.tsx", &src(""))]);
     let mut app = test_app(&dir);
     let r = reload(&mut app, false);
@@ -77,6 +76,7 @@ fn staged(name: &str, setup: impl FnOnce(&mut App) -> Vec<Entity>, body: &str) -
     write(&dir, "game.tsx", &src(&body));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app, es)
 }
 

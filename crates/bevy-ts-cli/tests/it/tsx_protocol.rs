@@ -74,13 +74,14 @@ fn game(b_at: &str) -> String {
     )
 }
 
-fn setup(name: &str) -> (std::path::PathBuf, App) {
+fn setup(name: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("enemy.tsx", ENEMY), ("game.tsx", &game("[3, 0, -4]"))]);
     let mut app = app(&dir.join("game.tsx"));
     app.add_plugins(RemotePlugin::default());
     bevy_ts_tsx::protocol::add_methods(&mut app);
     assert_eq!(reload(&mut app, false).status, ReloadStatus::Applied);
     app.update();
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

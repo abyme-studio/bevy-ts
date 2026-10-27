@@ -30,7 +30,8 @@ export function report(time: Res<Time>) {
 "#;
 
 /// A game folder for the cube, written file by file as `bevy-ts build` would.
-fn cube_game(name: &str, version: &str) -> PathBuf {
+/// The project (held by the caller, so it outlasts the test) and the game folder in it.
+fn cube_game(name: &str, version: &str) -> (crate::common::TestDir, PathBuf) {
     let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/cube/src");
     let cube = std::fs::read_to_string(example.join("game.ts")).unwrap();
     let scene = std::fs::read_to_string(example.join("cube.tsx")).unwrap();
@@ -49,12 +50,12 @@ fn cube_game(name: &str, version: &str) -> PathBuf {
     std::fs::write(game.join("scripts/src/.DS_Store"), [0xff, 0xfe, 0x00, 0x01]).unwrap();
     let file = GameFile { name: "cube".into(), entry: "src/game.ts".into(), bevy_ts: version.into(), engine: "prebuilt".into(), switches: Default::default(), diagnostics: vec![], net: Default::default(), env: vec![] };
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
-    game
+    (project, game)
 }
 
 #[test]
 fn a_hand_made_cube_plays_without_dev_tooling() {
-    let game = cube_game("play-cube", env!("CARGO_PKG_VERSION"));
+    let (_project, game) = cube_game("play-cube", env!("CARGO_PKG_VERSION"));
     let (engine, rx) = play(&game);
     // Launch to ready can stall for minutes on a loaded Mac's first launch of the binary (see
     // `LAUNCH`); once the first generation applies, the game runs within seconds or it is broken.
@@ -79,7 +80,7 @@ fn a_played_game_carries_no_studio_tools_or_protocol() {
     use bevy_ts_cli::cli::{Display, Engine, Prebuilt, studio_tools};
     assert!(!studio_tools(Display::Window, false));
     assert!(studio_tools(Display::Window, true));
-    let game = cube_game("play-tools", env!("CARGO_PKG_VERSION"));
+    let (_project, game) = cube_game("play-tools", env!("CARGO_PKG_VERSION"));
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
     let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless, &[]).unwrap();
     let world = app.world();
@@ -94,7 +95,7 @@ fn a_played_game_carries_no_studio_tools_or_protocol() {
 
 #[test]
 fn a_mismatched_engine_refuses_naming_both_versions() {
-    let game = cube_game("play-mismatch", "0.0.1");
+    let (_project, game) = cube_game("play-mismatch", "0.0.1");
     let out = Command::new(BIN).args(["play", game.to_str().unwrap(), "--headless"]).output().unwrap();
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
@@ -103,7 +104,7 @@ fn a_mismatched_engine_refuses_naming_both_versions() {
 
 #[test]
 fn a_project_engine_game_refuses_the_prebuilt_engine_naming_its_executable() {
-    let game = cube_game("play-wrong-engine", env!("CARGO_PKG_VERSION"));
+    let (_project, game) = cube_game("play-wrong-engine", env!("CARGO_PKG_VERSION"));
     let mut file = bevy_ts_cli::play::read_game(&game).unwrap();
     file.engine = "0123abcd".into();
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
@@ -129,7 +130,7 @@ fn game_json_switches_mesh_picking_and_navigation() {
     use bevy_ts_cli::cli::{Display, Engine, Prebuilt};
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
     // A game.json written before the switches has none of them, as one built without them.
-    let game = cube_game("play-picking", env!("CARGO_PKG_VERSION"));
+    let (_project, game) = cube_game("play-picking", env!("CARGO_PKG_VERSION"));
     let text = std::fs::read_to_string(game.join("game.json")).unwrap();
     for key in ["meshPicking", "tabNavigation", "directionalNavigation"] {
         assert!(!text.contains(key), "{text}");
@@ -165,7 +166,7 @@ fn a_panicking_test_leaves_no_engine_behind() {
         }
         !Engine::alive(pid)
     };
-    let game = cube_game("play-panics", env!("CARGO_PKG_VERSION"));
+    let (_project, game) = cube_game("play-panics", env!("CARGO_PKG_VERSION"));
     let (tx, rx) = std::sync::mpsc::channel();
     let panicked = std::thread::spawn(move || {
         let (engine, lines) = play(&game);

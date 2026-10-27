@@ -230,6 +230,7 @@ fn try_rust_app(name: &str, body: &str, extra: impl FnOnce(&mut App)) -> (App, b
         .add_plugins(bevy_ts_cli::rust_events::RustEventsPlugin);
     extra(&mut app);
     let r = reload(&mut app, false);
+    app.insert_resource(dir);
     (app, r)
 }
 

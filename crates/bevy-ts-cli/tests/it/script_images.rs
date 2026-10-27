@@ -34,6 +34,7 @@ fn image_app(name: &str, body: &str) -> App {
     app.cleanup();
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "load failed: {:?}", r.errors);
+    app.insert_resource(dir);
     app
 }
 

@@ -13,11 +13,12 @@ fn diag_app(dir: &std::path::Path) -> App {
     app
 }
 
-fn loaded(name: &str, src: &str) -> (std::path::PathBuf, App) {
+fn loaded(name: &str, src: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.ts", src)]);
     let mut app = diag_app(&dir);
     let r = reload(&mut app, false);
     assert!(r.errors.is_empty(), "{:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 

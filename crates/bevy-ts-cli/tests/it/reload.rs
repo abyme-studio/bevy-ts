@@ -53,11 +53,12 @@ fn ys(app: &mut App) -> Vec<f32> {
     app.world_mut().query::<&Transform>().iter(app.world()).map(|t| t.translation.y).collect()
 }
 
-fn setup(name: &str, src: &str) -> (std::path::PathBuf, App) {
+fn setup(name: &str, src: &str) -> (crate::common::TestDir, App) {
     let dir = project(name, &[("game.ts", src)]);
     let mut app = app(&dir.join("game.ts"));
     let r = reload(&mut app, false);
     assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.insert_resource(dir.clone());
     (dir, app)
 }
 
