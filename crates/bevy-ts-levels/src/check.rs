@@ -1,16 +1,25 @@
 //! `bevy-ts levels check`: what a level file uses and what is wrong with it, without an engine.
 
 use crate::syntax::{self, EntityList, Fields, LineIndex, ValueKind};
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+/// Where [`check_with_assets`] looks for asset paths: the asset root, the file's path under it,
+/// and each extra source's folder by name, for `name://path`.
+pub struct AssetRoots<'a> {
+    pub root: &'a Path,
+    pub level: &'a str,
+    pub sources: &'a BTreeMap<String, PathBuf>,
+}
 
 /// The lines `levels check` prints for one file, and whether the file is free of errors.
 pub fn check_source(file: &str, src: &str, upstream: bool) -> (Vec<String>, bool) {
     check_with_assets(file, src, upstream, None)
 }
 
-/// [`check_source`], also listing asset paths that do not exist under `assets` (the asset root),
-/// with `level` the file's path under it.
-pub fn check_with_assets(file: &str, src: &str, upstream: bool, assets: Option<(&Path, &str)>) -> (Vec<String>, bool) {
+/// [`check_source`], also listing asset paths that do not exist under `assets`: the asset root, or
+/// a source's folder for `name://path`. A source not in `assets.sources` is an error.
+pub fn check_with_assets(file: &str, src: &str, upstream: bool, assets: Option<AssetRoots>) -> (Vec<String>, bool) {
     let parsed = match syntax::parse(src) {
         Ok(p) => p,
         Err(e) => return (vec![format!("{} (error)", e.render(file, src))], false),
@@ -21,6 +30,7 @@ pub fn check_with_assets(file: &str, src: &str, upstream: bool, assets: Option<(
         format!("{file}:{l}:{c}")
     };
     let mut out = Vec::new();
+    let mut ok = true;
     if upstream {
         for u in &parsed.extensions {
             out.push(format!("{}: {} {}", at(u.span.start), u.extension.code(), u.extension.describe()));
@@ -32,18 +42,29 @@ pub fn check_with_assets(file: &str, src: &str, upstream: bool, assets: Option<(
     unnamed(&parsed.entities, &mut |offset| {
         out.push(format!("{}: warning: unnamed entity; the writer names it on its first edit", at(offset)));
     });
-    if let Some((root, level)) = assets {
+    if let Some(AssetRoots { root, level, sources }) = assets {
         let mut paths = Vec::new();
         strings(&parsed.entities, &mut paths);
         for (p, offset) in paths {
             let resolved = crate::compose::resolve_path(level, &p);
             let on_disk = resolved.split('#').next().unwrap_or(&resolved);
-            if !root.join(on_disk).exists() {
+            let path = match on_disk.split_once("://") {
+                None => root.join(on_disk),
+                Some((name, rest)) => match sources.get(name) {
+                    Some(folder) => folder.join(rest),
+                    None => {
+                        out.push(format!("{}: unknown asset source \"{name}\" in {resolved}: bevy-ts.json's assetSources has no {name} (error)", at(offset)));
+                        ok = false;
+                        continue;
+                    }
+                },
+            };
+            if !path.exists() {
                 out.push(format!("{}: warning: missing asset {resolved}", at(offset)));
             }
         }
     }
-    (out, true)
+    (out, ok)
 }
 
 /// String values in component patches that look like asset paths (they have an extension).
@@ -87,8 +108,9 @@ fn unnamed(list: &EntityList, warn: &mut impl FnMut(usize)) {
 }
 
 /// `bevy-ts levels check [--upstream] [--assets <dir>] <file.bsn>…`; the process exit code.
-/// Asset paths are checked under `--assets`, default `assets`.
-pub fn run(args: &[String]) -> i32 {
+/// Asset paths are checked under `--assets`, default `assets`, and `name://` paths under the
+/// folders `sources` gives for the first file (the project's `assetSources`).
+pub fn run(args: &[String], sources: impl FnOnce(&Path) -> Result<BTreeMap<String, PathBuf>, String>) -> i32 {
     let upstream = args.iter().any(|a| a == "--upstream");
     let mut root = std::path::PathBuf::from("assets");
     let mut files: Vec<&String> = Vec::new();
@@ -110,12 +132,19 @@ pub fn run(args: &[String]) -> i32 {
         eprintln!("usage: bevy-ts levels check [--upstream] [--assets <dir>] <file.bsn>…");
         return 2;
     }
+    let sources = match sources(Path::new(files[0])) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{e}");
+            return 1;
+        }
+    };
     let mut code = 0;
     for f in files {
         match std::fs::read_to_string(f) {
             Ok(src) => {
                 let level = Path::new(f).strip_prefix(&root).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| f.to_string());
-                let (lines, ok) = check_with_assets(f, &src, upstream, Some((&root, &level)));
+                let (lines, ok) = check_with_assets(f, &src, upstream, Some(AssetRoots { root: &root, level: &level, sources: &sources }));
                 for l in lines {
                     println!("{l}");
                 }
@@ -155,10 +184,20 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("bevy-ts-levels-check-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("levels")).unwrap();
         std::fs::write(dir.join("levels/crate.glb"), "").unwrap();
-        let src = "#A Mesh3d(\"./crate.glb#Mesh0\")\n#B Mesh3d(\"gone.png\") Label { text: \"hello\" }";
-        let (lines, _) = check_with_assets("levels/a.bsn", src, false, Some((&dir, "levels/a.bsn")));
+        std::fs::create_dir_all(dir.join("art/Maps")).unwrap();
+        std::fs::write(dir.join("art/Maps/Town.png"), "").unwrap();
+        let sources = BTreeMap::from([("stardew".to_string(), dir.join("art"))]);
+        let src = "#A Mesh3d(\"./crate.glb#Mesh0\")\n#B Mesh3d(\"gone.png\") Label { text: \"hello\" }\n#C Sprite { image: \"stardew://Maps/Town.png\" }\n#D Sprite { image: \"stardew://Maps/Gone.png\" }";
+        let roots = AssetRoots { root: &dir, level: "levels/a.bsn", sources: &sources };
+        let (lines, ok) = check_with_assets("levels/a.bsn", src, false, Some(roots));
+        assert!(ok);
+        assert_eq!(lines, ["levels/a.bsn:2:11: warning: missing asset gone.png", "levels/a.bsn:4:20: warning: missing asset stardew://Maps/Gone.png"]);
+        let src = "#E Sprite { image: \"nope://a.png\" }";
+        let (lines, ok) = check_with_assets("levels/a.bsn", src, false, Some(AssetRoots { root: &dir, level: "levels/a.bsn", sources: &sources }));
         let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(lines, ["levels/a.bsn:2:11: warning: missing asset gone.png"]);
+        assert!(!ok);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("\"nope\"") && lines[0].contains("nope://a.png") && lines[0].ends_with("(error)"), "{lines:?}");
     }
 
     #[test]

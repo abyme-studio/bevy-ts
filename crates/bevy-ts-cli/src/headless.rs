@@ -68,6 +68,19 @@ fn asset_plugin_with(root: &std::path::Path, watch: bool) -> AssetPlugin {
     AssetPlugin { file_path: root.to_string_lossy().into_owned(), watch_for_changes_override: Some(watch), ..default() }
 }
 
+/// Registers each extra asset source (`name://path`, `bevy-ts.json`'s `assetSources`) on its
+/// folder, an absolute path: Bevy's file reader and, where the folder exists, its file watcher,
+/// which runs when the default root's does. No writer, so nothing writes into a source's folder.
+/// Before `AssetPlugin` builds, which drops a source registered later.
+pub fn register_sources(app: &mut App, sources: &[(String, std::path::PathBuf)]) {
+    use bevy::asset::io::{AssetSource, AssetSourceBuilder};
+    for (name, folder) in sources {
+        let path = folder.to_string_lossy().into_owned();
+        let builder = AssetSourceBuilder::new(AssetSource::get_default_reader(path.clone())).with_watcher(AssetSource::get_default_watcher(path, Duration::from_millis(300)));
+        app.register_asset_source(name.clone(), builder);
+    }
+}
+
 pub struct HeadlessPlugin;
 
 impl Plugin for HeadlessPlugin {

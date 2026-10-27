@@ -4,6 +4,9 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `bevy-ts.json` takes `assetSources`, folders outside the project loaded as `name://path`
+  (docs/assets.md). A build names them in `game.json` and copies none unless `--copy-sources`; a
+  built game whose source folder is missing exits 1 at start naming it (docs/build.md).
 - `bevy-ts.json` takes `"imageSampler": "nearest"`: every image on the default sampler samples
   nearest, in dev and in a built game (docs/assets.md). Bevy's text atlas follows it.
 - **Breaking:** `BEVY_TS_SCREENSHOT` no longer shoots anyway. When it cannot be ready after 60 s

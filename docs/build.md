@@ -4,7 +4,7 @@
 Rust toolchain is needed unless the project has Rust ([native.md](native.md)).
 
 ```sh
-bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--json]
+bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--copy-sources] [--json]
 bevy-ts build --targets [--json]
 ```
 
@@ -18,6 +18,8 @@ bevy-ts build --targets [--json]
   that holds the project, lies in its `assets/`, is a file, or is an existing folder that is not an
   earlier build (no `game/game.json`).
 - A game cannot be named `game` (any case): its executable would collide with `game/`.
+- `--copy-sources` copies each of `bevy-ts.json`'s `assetSources` into the game; without it none
+  is copied ([Asset sources](#asset-sources)).
 
 ## The folder
 
@@ -25,12 +27,13 @@ bevy-ts build --targets [--json]
 dist/aarch64-apple-darwin/
   arena                 the release engine, renamed after the game (arena.exe on Windows)
   game/
-    game.json           { "name", "entry", "bevyTs", "engine", "net", "env" }
+    game.json           { "name", "entry", "bevyTs", "engine", "net", "env", "assetSources" }
     scripts/src/…       every module of the entry's graph, compiled, at its path in the project
                         (a `.wgsl` a module imports ships as the shader file itself)
     scripts/node_modules/<name>@<version>/…
                         each npm package module the graph imports, at its path in its package
     assets/…            a copy of the project's assets/, levels included
+    sources/<name>/…    with --copy-sources only: a copy of each asset source
 ```
 
 - The engine is a copy of the prebuilt engine running the build, or, for a project with Rust, the
@@ -49,6 +52,28 @@ dist/aarch64-apple-darwin/
 - The folder is written as `<out>.partial-<pid>` beside `<out>` and renamed onto it only when
   whole. A failed build leaves an earlier `<out>` untouched and no partial folder. The exit code is
   0 only when the folder is whole.
+
+## Asset sources
+
+A source in `bevy-ts.json`'s `assetSources` ([assets.md](assets.md#asset-sources)) stays out of a
+build: its files may be under a licence that forbids sharing them, and a built folder is one copy
+from a repository or a shared drive. `game.json`'s `assetSources` names each folder instead: an
+absolute or `~/` folder as written (`~/` is the playing machine's home), a relative one made
+absolute on the build machine. A folder absent at build time is a warning in the build's log, and
+the build goes on.
+
+A built game registers each source before it starts. A folder that is not there stops it with exit
+code 1, before a window opens, and one line:
+
+```
+bevy-ts play: asset source "stardew": /Users/me/dev/assets/stardew does not exist; put the folder there, or build the game with --copy-sources
+```
+
+Pass `--copy-sources` to ship the files, for a game played on a machine that lacks them, when
+their licence allows: each source is copied to `game/sources/<name>/`, `game.json` names
+`sources/<name>`, read from the game folder, and the build's log names each source and its file
+count. The built folder then holds the files: share it as you would them. A source absent at build
+time with `--copy-sources` fails the build naming it.
 
 ## Playing it
 

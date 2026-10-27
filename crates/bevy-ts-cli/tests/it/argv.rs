@@ -50,6 +50,7 @@ fn argv_game(name: &str) -> (crate::common::TestDir, PathBuf) {
         diagnostics: vec![],
         net: Default::default(),
         env: vec![],
+        asset_sources: Default::default(),
     };
     std::fs::write(game.join("game.json"), serde_json::to_string(&file).unwrap()).unwrap();
     (project, game)

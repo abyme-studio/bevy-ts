@@ -97,6 +97,33 @@ using it.
 `assets.set` on a shared asset changes every slot that shares it, `<material>` elements included.
 To edit one entity's asset alone, give it its own with `assets.add`.
 
+## Asset sources
+
+Assets outside the project, such as a game's sprites in a folder of their own that may never enter a
+repository, are named in `bevy-ts.json`:
+
+```jsonc
+{ "assetSources": { "stardew": "~/dev/assets/stardew" } }
+```
+
+```tsx
+<Sprite image="stardew://Characters/Abigail.png" />
+```
+
+- Each is a Bevy asset source: `name://path` loads `path` under that folder in any asset slot, as
+  `Image.load`, a level, or a glTF does. A path with no prefix is the project's `assets/`.
+- A folder is absolute, starts `~/` (your home), or is relative to `bevy-ts.json`.
+- A name is lowercase letters, digits and `-`. `embedded` is Bevy's own. A bad name stops
+  `bevy-ts dev` with exit code 1, naming `assetSources` and the name.
+- `bevy-ts dev` watches each source as it watches `assets/`: an edited sheet reloads.
+- A folder that does not exist is one warning at start, naming the source and the folder, and the
+  game runs; a load from it fails as a missing file does. So one `bevy-ts.json` serves machines
+  with and without the files.
+- `bevy-ts levels check` checks a `name://` path under its folder, from the `bevy-ts.json` above
+  the first file; a name it does not have is an error.
+- A build does not copy a source unless asked ([build.md](build.md#asset-sources)).
+- The studio's asset list shows `assets/` only.
+
 ## Images and loader settings
 
 `Image` is hand-mapped by its sampler alone: its pixels and texture descriptors are opaque to

@@ -10,6 +10,7 @@ use crate::project;
 use bevy_ts::backend::ScriptError;
 use serde::Serialize;
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// The files an entry defaults to, in order (the studio's list).
@@ -127,6 +128,8 @@ struct Args {
     entry: Option<String>,
     json: bool,
     targets: bool,
+    /// `--copy-sources`: copy each extra asset source into the built game.
+    copy_sources: bool,
 }
 
 fn parse(args: &[String]) -> Result<Args, String> {
@@ -137,6 +140,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
         match arg.as_str() {
             "--json" => a.json = true,
             "--targets" => a.targets = true,
+            "--copy-sources" => a.copy_sources = true,
             "--out" => a.out = Some(value("--out")?),
             "--target" => a.target = Some(value("--target")?),
             "--entry" => a.entry = Some(value("--entry")?),
@@ -225,7 +229,7 @@ pub fn run(engine: &crate::cli::Engine, extra: impl bevy::prelude::Plugin, raw: 
         Err(e) => {
             report.failed(&e);
             if !json {
-                eprintln!("usage: bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--json]");
+                eprintln!("usage: bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--copy-sources] [--json]");
             }
             return 2;
         }
@@ -383,13 +387,17 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
     let assets = crate::headless::asset_root(&root);
     let copied = if assets.is_dir() { copy_dir(&assets, &game.join("assets"))? } else { 0 };
     report.log(&format!("copied {copied} asset files"));
+    let asset_sources = match &project {
+        Some(p) => sources(p, &game, args.copy_sources, report)?,
+        None => Default::default(),
+    };
 
     // 4. game.json and the executable, then the folder onto <out>.
     report.step(4);
     let (net, env) = project.as_ref().map(|p| (p.config.net.clone(), p.config.env.clone())).unwrap_or_default();
     let switches = project.as_ref().map(|p| p.config.switches).unwrap_or_default();
     let diagnostics = project.as_ref().map(|p| p.config.diagnostics.clone()).unwrap_or_default();
-    let file = GameFile { name: name.clone(), entry: entry_rel, bevy_ts: engine::VERSION.to_string(), engine: engine_id, switches, diagnostics, net, env };
+    let file = GameFile { name: name.clone(), entry: entry_rel, bevy_ts: engine::VERSION.to_string(), engine: engine_id, switches, diagnostics, net, env, asset_sources };
     let text = serde_json::to_string_pretty(&file).expect("game.json serialises");
     write(&game.join(GAME_FILE), format!("{text}\n").as_bytes())?;
     let exe_name = if target.contains("windows") { format!("{name}.exe") } else { name };
@@ -400,6 +408,32 @@ fn build(args: &Args, target: &str, report: &Reporter) -> Result<(), String> {
     partial.0 = None;
     report.done(&out, &out.join(&exe_name));
     Ok(())
+}
+
+/// `game.json`'s `assetSources`. By default no source file is copied (their licence may forbid it,
+/// and a built folder is one copy from a repository): each names its folder, `~/` and absolute as
+/// written, relative made absolute, and an absent one warns. With `copy`, each is copied to
+/// `sources/<name>/` and named relative to the game folder, and an absent one fails.
+fn sources(project: &project::Project, game: &Path, copy: bool, report: &Reporter) -> Result<BTreeMap<String, String>, String> {
+    let resolved = project.asset_sources();
+    let mut out = BTreeMap::new();
+    for ((name, written), (_, folder)) in project.config.asset_sources.iter().zip(&resolved) {
+        if copy {
+            if !folder.is_dir() {
+                return Err(format!("asset source \"{name}\": {} does not exist, so --copy-sources cannot copy it", folder.display()));
+            }
+            let n = copy_dir(folder, &game.join("sources").join(name))?;
+            report.log(&format!("copied asset source {name}: {n} files from {}", folder.display()));
+            out.insert(name.clone(), format!("sources/{name}"));
+        } else {
+            if !folder.is_dir() {
+                report.log(&format!("warning: asset source \"{name}\": {} does not exist; the game will need it there", folder.display()));
+            }
+            let kept = written.starts_with("~/") || Path::new(written).is_absolute();
+            out.insert(name.clone(), if kept { written.clone() } else { folder.to_string_lossy().into_owned() });
+        }
+    }
+    Ok(out)
 }
 
 fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {

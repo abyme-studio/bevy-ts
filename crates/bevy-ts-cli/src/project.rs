@@ -21,6 +21,7 @@
 //!   "directionalNavigation": true,             // Bevy's DirectionalNavigationPlugin
 //!   "diagnostics": ["FrameTimeDiagnosticsPlugin"], // Bevy's diagnostics plugins; baked into a build
 //!   "imageSampler": "nearest",                 // ImagePlugin's default sampler; baked into a build
+//!   "assetSources": { "stardew": "~/dev/assets/stardew" }, // folders loaded as `stardew://...`
 //!   "net": { "allow": ["127.0.0.1:4477", "${ABYME_URL}"] }, // hosts scripts may connect to
 //!   "env": ["ABYME_URL", "ABYME_KEY"]          // the only variables `process.env` shows
 //! }
@@ -93,6 +94,46 @@ pub struct ProjectConfig {
     /// The environment variables `process.env` shows; read when the engine starts.
     #[serde(default)]
     pub env: Vec<String>,
+    /// Extra asset folders, each a Bevy asset source loaded as `name://path` (docs/assets.md):
+    /// name to folder as written, absolute, `~/` or relative to `bevy-ts.json`.
+    #[serde(default, rename = "assetSources", deserialize_with = "asset_sources")]
+    pub asset_sources: BTreeMap<String, String>,
+}
+
+/// `assetSources`, each name checked: Bevy's prefix, so lowercase letters, digits and `-`, and not
+/// `embedded`, Bevy's own.
+fn asset_sources<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<String, String>, D::Error> {
+    let map = BTreeMap::<String, String>::deserialize(d).map_err(|e| serde::de::Error::custom(format!("assetSources must map names to folders: {e}")))?;
+    for name in map.keys() {
+        check_source_name(name).map_err(serde::de::Error::custom)?;
+    }
+    Ok(map)
+}
+
+pub fn check_source_name(name: &str) -> Result<(), String> {
+    if name == "embedded" {
+        return Err("assetSources: \"embedded\" is Bevy's own source; name it otherwise".into());
+    }
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Err(format!("assetSources: {name:?} is not a source name: lowercase letters, digits and -"));
+    }
+    Ok(())
+}
+
+/// A source folder as written, resolved: `~/` under `home`, a relative one under `base`, made
+/// canonical when it exists (Bevy's watcher reports canonical paths, as for the default root).
+pub fn resolve_source(folder: &str, base: &Path, home: Option<&Path>) -> PathBuf {
+    let path = match (folder.strip_prefix("~/"), home) {
+        (Some(rest), Some(home)) => home.join(rest),
+        _ => base.join(folder),
+    };
+    let path = std::path::absolute(&path).unwrap_or(path);
+    path.canonicalize().unwrap_or(path)
+}
+
+/// This machine's home folder, for `~/`.
+pub fn home() -> Option<PathBuf> {
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from)
 }
 
 /// Bevy plugins a project opts into, each off by default as Bevy keeps it out of
@@ -204,6 +245,12 @@ impl Project {
     /// `.bevy-ts/` under the root.
     pub fn state_dir(&self) -> PathBuf {
         self.root.join(".bevy-ts")
+    }
+
+    /// `assetSources`, each folder resolved on this machine.
+    pub fn asset_sources(&self) -> Vec<(String, PathBuf)> {
+        let home = home();
+        self.config.asset_sources.iter().map(|(name, folder)| (name.clone(), resolve_source(folder, &self.root, home.as_deref()))).collect()
     }
 }
 
@@ -349,5 +396,26 @@ mod tests {
         assert_eq!(serde_json::to_string(&Switches::default()).unwrap(), "{}");
         let on = Switches { image_sampler: DefaultSampler::Nearest, ..Default::default() };
         assert_eq!(serde_json::to_string(&on).unwrap(), r#"{"imageSampler":"nearest"}"#);
+    }
+
+    #[test]
+    fn asset_source_names_are_checked() {
+        let c = parse(r#"{ "assetSources": { "stardew": "~/dev/assets/stardew", "ui-2": "art" } }"#).unwrap();
+        assert_eq!(c.asset_sources.len(), 2);
+        for bad in ["Stardew", "embedded", "", "a_b", "a/b"] {
+            let e = parse(&format!(r#"{{ "assetSources": {{ "{bad}": "x" }} }}"#)).unwrap_err();
+            assert!(e.contains("assetSources") && e.contains(&format!("\"{bad}\"")), "{bad}: {e}");
+        }
+    }
+
+    #[test]
+    fn a_source_folder_resolves_from_home_the_project_or_as_written() {
+        let (base, home) = (Path::new("/nowhere/game"), Path::new("/nowhere/me"));
+        assert_eq!(resolve_source("~/dev/art", base, Some(home)), PathBuf::from("/nowhere/me/dev/art"));
+        assert_eq!(resolve_source("../art", base, Some(home)), PathBuf::from("/nowhere/game/../art"));
+        assert_eq!(resolve_source("/srv/art", base, Some(home)), PathBuf::from("/srv/art"));
+        // An existing folder is made canonical.
+        let here = std::env::current_dir().unwrap();
+        assert_eq!(resolve_source(".", &here, None), here.canonicalize().unwrap());
     }
 }

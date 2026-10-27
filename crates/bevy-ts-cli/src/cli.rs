@@ -25,7 +25,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage:
   bevy-ts dev <entry.ts> [--headless | --viewport [--audio]] [--edit] [--remote-port <port>] [--inspect[=<port>]] [-- <args>…]
-  bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--json]
+  bevy-ts build [<project dir>] [--out <folder>] [--target <triple>] [--entry <file>] [--copy-sources] [--json]
   bevy-ts build --targets [--json]
   bevy-ts play <game folder> [--headless] [-- <args>…]
   bevy-ts types [--out <file>]
@@ -174,7 +174,8 @@ pub fn run_engine(identity: EngineIdentity, extra: impl Plugin) {
             std::process::exit(crate::types::run(&engine, extra, &args[1..]))
         }
         Some("levels") if args.get(1).map(String::as_str) == Some("check") => {
-            std::process::exit(bevy_ts_levels::check::run(&args[2..]))
+            let sources = |first: &Path| Ok(crate::project::find(first)?.map(|p| p.asset_sources().into_iter().collect()).unwrap_or_default());
+            std::process::exit(bevy_ts_levels::check::run(&args[2..], sources))
         }
         Some("transform") => match args.get(1) {
             Some(file) => match crate::compile::transform(std::path::Path::new(file), args.iter().any(|a| a == "--dev")) {
@@ -230,7 +231,27 @@ pub enum Display {
 /// (`--audio`); a window always does, headless never (`crate::audio::plays`).
 #[allow(clippy::too_many_arguments)]
 pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: V8Options, assets: Option<&Path>, dev: bool, switches: Switches, diagnostics: &[String], audio: bool) -> App {
+    base_app_with_sources(&[], engine, extra, display, options, assets, dev, switches, diagnostics, audio)
+}
+
+/// [`base_app`] with the extra asset sources `sources` (name and absolute folder), loaded as
+/// `name://path` and watched when `dev` watches the assets. A folder that does not exist is named
+/// in one warning, and loads from it fail.
+#[allow(clippy::too_many_arguments)]
+pub fn base_app_with_sources(
+    sources: &[(String, PathBuf)],
+    engine: &Engine,
+    extra: impl Plugin,
+    display: Display,
+    options: V8Options,
+    assets: Option<&Path>,
+    dev: bool,
+    switches: Switches,
+    diagnostics: &[String],
+    audio: bool,
+) -> App {
     let mut app = App::new();
+    headless::register_sources(&mut app, sources);
     let inspect = options.inspect.is_some();
     let plugins = headless::default_plugins(display != Display::Window);
     // The compute pool runs the frame's systems: its threads are raised with the main thread's
@@ -298,6 +319,10 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
+    for (name, folder) in sources.iter().filter(|(_, f)| !f.is_dir()) {
+        let message = format!("asset source \"{name}\": {} does not exist; loads from {name}:// fail", folder.display());
+        app.world_mut().resource_mut::<bevy_ts::log::ScriptLog>().push(bevy_ts::log::LogLevel::Warn, message, None, 0);
+    }
     headless::pipeline_trace(&mut app);
     shot_from_env(&mut app);
     stall_watchdog(&mut app, display, inspect);
@@ -473,7 +498,8 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
     let switches = project.as_ref().map(|p| p.config.switches).unwrap_or_default();
     let diagnostics = project.as_ref().map(|p| p.config.diagnostics.clone()).unwrap_or_default();
     let assets = headless::asset_root(&compiler.root);
-    let mut app = base_app(engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, switches, &diagnostics, args.audio);
+    let sources = project.as_ref().map(|p| p.asset_sources()).unwrap_or_default();
+    let mut app = base_app_with_sources(&sources, engine, extra, display, V8Options { inspect: args.inspect }, Some(&assets), true, switches, &diagnostics, args.audio);
     // Compile only once the plugins have exported their params: the compile step reads them as
     // system param kinds.
     dev::spawn_watcher(compiler.clone(), tx);

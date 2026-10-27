@@ -2,13 +2,14 @@
 //! one generation, with no compiler, file watcher, remote protocol or inspector, bevy-ts in
 //! non-dev mode, and assets read from `game/assets/` unwatched.
 
-use crate::cli::{Display, Engine, base_app};
+use crate::cli::{Display, Engine, base_app_with_sources};
 use bevy::prelude::*;
 use bevy_ts::backend::{CompiledModule, ModuleSet};
 use bevy_ts::generation::{DevChannel, DevEvent};
 use bevy_ts::runtime::RuntimeInfo;
 use bevy_ts_v8::V8Options;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -40,6 +41,25 @@ pub struct GameFile {
     pub net: crate::project::NetConfig,
     #[serde(default)]
     pub env: Vec<String>,
+    /// The extra asset sources, name to folder: `~/` read on the playing machine, a relative one
+    /// from the game folder (`sources/<name>` after `--copy-sources`). Absent when none.
+    #[serde(default, rename = "assetSources", skip_serializing_if = "BTreeMap::is_empty")]
+    pub asset_sources: BTreeMap<String, String>,
+}
+
+/// `game.json`'s sources resolved on this machine; an absent folder fails naming the source, the
+/// folder and the fix, before anything starts.
+pub fn sources(game: &GameFile, folder: &Path) -> Result<Vec<(String, PathBuf)>, String> {
+    let home = crate::project::home();
+    let mut out = Vec::new();
+    for (name, written) in &game.asset_sources {
+        let dir = crate::project::resolve_source(written, folder, home.as_deref());
+        if !dir.is_dir() {
+            return Err(format!("asset source \"{name}\": {} does not exist; put the folder there, or build the game with --copy-sources", dir.display()));
+        }
+        out.push((name.clone(), dir));
+    }
+    Ok(out)
 }
 
 /// The game folder beside the running executable, when it holds a `game.json`.
@@ -142,8 +162,9 @@ pub fn app(engine: &Engine, extra: impl Plugin, folder: &Path, display: Display,
     let entry = set.entry.clone();
     let (tx, channel) = DevChannel::new();
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).expect("the channel is open");
+    let sources = sources(&game, &folder)?;
     let assets = folder.join("assets");
-    let mut app = base_app(engine, extra, display, V8Options::default(), Some(&assets), false, game.switches, &game.diagnostics, false);
+    let mut app = base_app_with_sources(&sources, engine, extra, display, V8Options::default(), Some(&assets), false, game.switches, &game.diagnostics, false);
     app.insert_resource(channel);
     if let Some(dir) = save_dir(&game.name) {
         app.insert_resource(bevy_ts::saves::SaveDir(dir));
@@ -201,6 +222,7 @@ mod tests {
             diagnostics: vec![],
             net: config.net,
             env: config.env,
+            asset_sources: Default::default(),
         };
         let text = serde_json::to_string_pretty(&file).unwrap();
         assert!(text.contains("\"${ABYME_URL}\""), "{text}");
@@ -233,6 +255,7 @@ mod tests {
             diagnostics: config.diagnostics,
             net: Default::default(),
             env: vec![],
+            asset_sources: Default::default(),
         };
         let text = serde_json::to_string(&file).unwrap();
         assert!(text.contains(r#""diagnostics":["EntityCountDiagnosticsPlugin"]"#), "{text}");
