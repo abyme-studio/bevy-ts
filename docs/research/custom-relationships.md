@@ -161,8 +161,19 @@ Under load, 2026-10-28 (load 70 to 87, Apple M5 Max, other agents building), 3 r
 | 16 | 29.4, 17.0, 25.9 | 71.5, 54.2, 69.1 | 146.5, 99.7, 143.9 | 66.1, 44.5, 75.0 |
 
 - Against the gate (proposal: about 4 ns per row plus 1 ns per entity): 1 entity is inside, 4 is
-  2 ns over with a tight spread, 16 straddles it. Ambiguous under this load: it is rerun 8 times
-  on a quiet machine before the change lands.
+  2 ns over with a tight spread, 16 straddles it. Ambiguous under this load, so it was rerun
+  8 times on a quiet machine (below).
+Quiet, 2026-10-28 (load 4 to 11 through the run, 22 after it), 8 runs, on the rebased tip:
+
+| entities per row | target over the marker (packing), ns/row | inline column over the marker | packed JS read | inline JS read |
+|---|---|---|---|---|
+| 1 | 2.3, 1.0, 1.9, 0.3, 0.8, 2.1, 3.6, -0.9 | 4.2, 3.6, 3.2, 5.3, 3.0, 4.3, 7.7, 5.4 | 4.7, 4.5, 5.1, 5.2, 4.0, 5.0, 8.6, 6.7 | -1.7, -2.3, -2.0, -1.5, -1.7, -2.2, -3.8, -1.9 |
+| 4 | 10.9, 4.4, 8.7, 10.1, 10.5, 10.1, 10.4, 10.6 | 29.7, 16.0, 27.9, 29.3, 29.6, 29.2, 29.5, 29.7 | 38.6, 29.9, 53.3, 52.2, 51.8, 51.0, 50.1, 49.3 | 17.9, 19.9, 20.8, 19.4, 18.9, 18.9, 18.6, 18.6 |
+| 16 | 42.9, 41.4, 41.8, 42.5, 42.7, 43.1, 42.8, 43.5 | 119.9, 127.5, 119.8, 119.9, 119.9, 120.2, 120.0, 120.1 | 242.7, 279.2, 251.5, 239.5, 239.8, 236.3, 241.5, 233.8 | 116.5, 151.5, 120.3, 122.7, 122.8, 122.4, 123.0, 122.4 |
+
+- Quiet, the packing's medians are 1.5, 10.3 and 42.8 ns/row against a gate of 5, 8 and 20: inside
+  at 1 entity, over at 4 and 16, with a tight spread. It costs about 2.6 ns per entity, not 1.
+  At 16 entities a row's packing is about one host call (32 to 41 ns).
 - Naming a target costs 2.5 to 3 times less than naming the same entities as an inline column.
 - The JS read through `TargetList.at` costs about 2 to 3 ns per entity more than reading inline
   fields.
