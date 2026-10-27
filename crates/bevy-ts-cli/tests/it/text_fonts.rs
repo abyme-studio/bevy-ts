@@ -51,8 +51,8 @@ fn use_symbols_font(app: &mut App) {
     let mut cx = app.world_mut().resource_mut::<FontCx>();
     let families: Vec<_> = cx.collection.register_fonts(SYMBOLS_FONT.to_vec().into(), None).into_iter().map(|(id, _)| id).collect();
     assert!(!families.is_empty(), "the fixture font registers no family");
-    for script in ["Latn", "Zyyy", "Zinh"] {
-        cx.collection.set_fallbacks(FallbackKey::new(Script::from_str_unchecked(script), None), families.iter().copied());
+    for script in [*b"Latn", *b"Zyyy", *b"Zinh"] {
+        cx.collection.set_fallbacks(FallbackKey::new(Script::from_bytes(script), None), families.iter().copied());
     }
 }
 

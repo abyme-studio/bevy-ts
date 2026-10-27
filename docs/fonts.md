@@ -19,8 +19,8 @@ Bevy 0.20 lays out text with parley, which finds fonts with fontique and asks th
 Fallback is per cluster: ASCII keeps FiraMono, so it looks as it always has. Parley picks one
 fallback family per script. A symbol inside a Latin run (→, ✓, ★) falls back to the OS's Latin
 font, and draws a box if that font lacks it. The test below holds → and ✓ between Latin
-words; it draws them from a fixture font, so a host without them cannot fail it. A character no installed font has draws a box (`.notdef`);
-the rest of the text lays out as usual.
+words; it draws them from a fixture font, so a host without them cannot fail it. A character no
+installed font has draws a box (`.notdef`); the rest of the text lays out as usual.
 
 The first text that needs a fallback makes fontique read the OS's font list, once. On macOS it
 costs nothing measurable: the first layout needing a fallback took a median 293 ms without the
