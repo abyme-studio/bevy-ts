@@ -47,6 +47,6 @@
 
 ## 6. Landing (each stage)
 
-- [ ] 6.1 Rebase the `jsx-runtime` delta on that requirement's text on main at landing (mesh-primitives and bevy-ui-coverage change it too); add only this stage's intrinsics
-- [ ] 6.2 Protocol unchanged, or the next free minor if a change shows
-- [ ] 6.3 `docs/2d.md`: no row marked working without a test that exists
+- [x] 6.1 Rebase the `jsx-runtime` delta on that requirement's text on main at landing (mesh-primitives and bevy-ui-coverage change it too); add only this stage's intrinsics
+- [x] 6.2 Protocol unchanged, or the next free minor if a change shows
+- [x] 6.3 `docs/2d.md`: no row marked working without a test that exists
