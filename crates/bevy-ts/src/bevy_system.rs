@@ -97,6 +97,11 @@ pub struct TsBevySystem {
     /// Its stage, timed for the stage diagnostics; `None` in a custom schedule or a slot.
     stage: Option<(Stage, Arc<StageTimes>)>,
     last_run: Tick,
+    /// The components its queries write, for the two-writer check (layout-bindable).
+    writes: Vec<ComponentId>,
+    /// The bound columns of `writes` before a run under dev, and the warnings given.
+    snapshot: crate::bound::Snapshot,
+    warned: crate::bound::Warned,
     /// The last run's output, applied at the sync point after it; `Err` drops its params' state;
     /// `Ok(None)`, a skipped run, applies nothing.
     output: Option<Result<Option<RunBytes>, ()>>,
@@ -107,6 +112,12 @@ impl TsBevySystem {
         let params = std::mem::take(&mut sys.params);
         let ports: Vec<usize> = params.iter().filter_map(|p| if let RunParam::Port(i) = p { Some(*i) } else { None }).collect();
         let spawns = sys.decl.params_flat().any(|p| matches!(p, ParamDecl::Commands));
+        let mut writes: Vec<ComponentId> = Vec::new();
+        for p in &params {
+            if let RunParam::Query(q) = p {
+                writes.extend(q.columns.iter().filter(|c| c.write && !writes.contains(&c.id)).map(|c| c.id).collect::<Vec<_>>());
+            }
+        }
         TsBevySystem {
             name: DebugName::owned(sys.decl.name.clone()),
             decl: sys.decl.clone(),
@@ -117,6 +128,9 @@ impl TsBevySystem {
             spawns,
             stage,
             last_run: Tick::new(0),
+            writes,
+            snapshot: Default::default(),
+            warned: Default::default(),
             output: None,
         }
     }
@@ -156,6 +170,7 @@ fn resource(id: ComponentId, write: bool) -> FilteredAccess {
 /// Every access a TS system declares but its queries: what every TS system takes
 /// (the runtime, its memory, the payloads, the frame and `Time`), then its params in order.
 fn declared(world: &mut World, params: &[RunParam]) -> Vec<FilteredAccess> {
+    let dev = world.get_resource::<crate::runtime::RuntimeInfo>().is_some_and(|r| r.dev);
     let mut out = Vec::new();
     let mut runtime = FilteredAccess::default();
     runtime.add_write(world.components_registrator().register_non_send::<ScriptRuntime>());
@@ -165,6 +180,10 @@ fn declared(world: &mut World, params: &[RunParam]) -> Vec<FilteredAccess> {
     out.push(resource(world.register_component::<ScriptFrame>(), false));
     out.push(resource(world.register_component::<Time>(), false));
     out.push(resource(world.register_component::<crate::places::RunPlace>(), true));
+    // Under dev, the bound fields a run checks its writes against (layout-bindable).
+    if dev {
+        out.push(resource(world.register_component::<crate::bound::BoundFields>(), false));
+    }
     // Written by a system taking an exported param, read by others to name a refused call.
     let ports = params.iter().any(|p| matches!(p, RunParam::Port(_)));
     out.push(resource(world.register_component::<crate::host::HostParams>(), ports));
@@ -232,9 +251,31 @@ impl System for TsBevySystem {
         let ticks = crate::host::RunTicks { last_run: self.last_run, this_run };
         // SAFETY: declared as non-send write access; the system is non-send, so on the main thread.
         let Some(mut rt) = (unsafe { world.get_non_send_mut::<ScriptRuntime>() }) else { return Ok(()) };
+        // Under dev, the bound fields it writes: a binding is their one writer (layout-bindable).
+        // SAFETY: declared as a read under dev; absent otherwise.
+        let bound = if rt.dev { unsafe { world.get_resource::<crate::bound::BoundFields>() } } else { None };
+        let watched = bound.map(|b| b.watched(&self.writes)).unwrap_or_default();
+        let bound = bound.filter(|_| !watched.is_empty());
+        if let Some(b) = bound {
+            // SAFETY: its queries write every component in `watched`.
+            unsafe { self.snapshot.take(world, b, &watched) };
+            b.start();
+        }
         // SAFETY: the caller grants the access `initialize` returned, which is everything
         // `run_body` touches: `declared`.
         let ran = unsafe { crate::systems::run_body(world, &mut rt, &mut self.params, &self.decl, &self.memory, &self.cell, ticks, None, self.spawns) };
+        if let Some(b) = bound {
+            let mut hits = b.finish();
+            // SAFETY: as above; the body's structural changes are commands, applied at sync.
+            hits.extend(unsafe { self.snapshot.changed() });
+            for hit in hits {
+                if self.warned.first(b, hit)
+                    && let Some((m, at)) = b.warning(&self.decl.name, hit)
+                {
+                    rt.log.push(Pending::Warn(m, at));
+                }
+            }
+        }
         // A skipped run keeps its last run, as a false run condition does.
         if !matches!(ran.result, Ok(None)) {
             self.last_run = this_run;

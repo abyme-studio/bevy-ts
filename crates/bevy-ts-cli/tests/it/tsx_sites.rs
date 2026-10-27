@@ -225,3 +225,179 @@ fn ten_thousand_bound_sirens_cost_within_twice_a_ts_system() {
     // machine is shared, so means are noise).
     assert!(b <= 2.0 * s, "bound frame {b:.1} µs > 2 × system frame {s:.1} µs");
 }
+
+// layout-bindable: a TS system that changes a bound field warns under dev, per field and entity.
+
+const TWO_WRITERS: &str = "a bound field has one writer";
+
+/// A headless app for sprites, `dev` as given, with `game.tsx` loaded and two frames run.
+fn sprite_app(name: &str, src: &str, dev: bool) -> App {
+    use bevy_ts::generation::DevSource;
+    let dir = project(name, &[("game.tsx", src)]);
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins).add_plugins(AssetPlugin::default());
+    app.add_plugins(bevy_ts::BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(dev)).add_plugins(bevy_ts_tsx::TsxPlugin);
+    app.init_asset::<Image>().init_asset::<TextureAtlasLayout>().register_asset_reflect::<TextureAtlasLayout>().register_type::<Sprite>();
+    app.insert_resource(DevSource(std::sync::Arc::new(bevy_ts_cli::compile::Compiler::new(dir.join("game.tsx"), true).unwrap())));
+    let r = reload(&mut app, false);
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    updates(&mut app, 2);
+    app
+}
+
+/// The two-writer warnings logged so far.
+fn two_writers(app: &App) -> Vec<String> {
+    messages(app).into_iter().filter(|m| m.contains(TWO_WRITERS)).collect()
+}
+
+/// Runs frames until `done` holds, or panics naming `what` after 100.
+fn until(app: &mut App, what: &str, done: impl Fn(&App) -> bool) {
+    for _ in 0..100 {
+        if done(app) {
+            return;
+        }
+        app.update();
+    }
+    panic!("{what} within 100 frames; log: {:?}", messages(app));
+}
+
+/// A sprite with a bound colour and an atlas, and one system that writes `body` on it each frame.
+fn painted(body: &str) -> String {
+    format!(
+        r##"import {{ app, Update }} from "bevy-ts";
+import type {{ Local, Mut, Query, u32 }} from "bevy-ts";
+import {{ Sprite, TextureAtlasLayout }} from "bevy-ts/bevy";
+
+export function paint(n: Local<{{ n: u32 }}>, q: Query<[Mut<Sprite>]>) {{
+  n.n += 1;
+  for (const [sprite] of q) {{
+    {body}
+  }}
+}}
+app.addSystems(Update, paint);
+app.scene("s", () => (
+  <entity name="it">
+    <Sprite color={{() => "#ff0000"}} texture_atlas={{{{ layout: TextureAtlasLayout.fromGrid({{ tileSize: [8, 8], columns: 8, rows: 1 }}), index: 0 }}}} />
+  </entity>
+));
+"##
+    )
+}
+
+/// The 1-based line of the `<Sprite>` element in `painted`'s source.
+fn sprite_line(src: &str) -> usize {
+    src.lines().position(|l| l.contains("<Sprite color")).unwrap() + 1
+}
+
+fn atlas_index(app: &mut App) -> usize {
+    let world = app.world_mut();
+    world.query::<&Sprite>().single(world).unwrap().texture_atlas.as_ref().expect("an atlas").index
+}
+
+#[test]
+fn writing_texture_atlas_next_to_a_bound_sprite_colour_does_not_warn() {
+    let src = painted("const atlas = sprite.texture_atlas;\n    if (atlas) atlas.index = n.n % 8;");
+    let mut app = sprite_app("bound-atlas", &src, true);
+    let first = atlas_index(&mut app);
+    updates(&mut app, 10);
+    assert_ne!(atlas_index(&mut app), first, "the system wrote texture_atlas");
+    assert_eq!(two_writers(&app), Vec::<String>::new());
+}
+
+#[test]
+fn writing_the_bound_sprite_colour_warns_once() {
+    let src = painted("sprite.color = n.n % 2 ? \"#00ff00\" : \"#0000ff\";");
+    let mut app = sprite_app("bound-colour", &src, true);
+    until(&mut app, "a two-writer warning", |app| !two_writers(app).is_empty());
+    updates(&mut app, 10);
+    let w = two_writers(&app);
+    assert_eq!(w.len(), 1, "one warning over 10 frames: {w:?}");
+    let line = format!("game.tsx:{}", sprite_line(&src));
+    for want in ["system game.tsx#paint wrote", "Sprite.color", " on it,", "<Sprite color>", line.as_str()] {
+        assert!(w[0].contains(want), "{want} in {}", w[0]);
+    }
+}
+
+#[test]
+fn a_bound_translation_warns_only_the_system_that_writes_it() {
+    let src = r##"import { app, Transform, Update } from "bevy-ts";
+import type { Local, Mut, Query, u32 } from "bevy-ts";
+
+export function grow(n: Local<{ n: u32 }>, q: Query<[Mut<Transform>]>) {
+  n.n += 1;
+  for (const [t] of q) t.scale = [n.n, n.n, n.n];
+}
+export function shift(n: Local<{ n: u32 }>, q: Query<[Mut<Transform>]>) {
+  n.n += 1;
+  for (const [t] of q) t.translation = [n.n, 0, 0];
+}
+app.addSystems(Update, grow);
+app.addSystems(Update, shift);
+app.scene("s", () => (
+  <entity name="it">
+    <Transform translation={() => [1, 2, 3]} />
+  </entity>
+));
+"##;
+    let mut app = sprite_app("bound-translation", src, true);
+    until(&mut app, "a two-writer warning", |app| !two_writers(app).is_empty());
+    updates(&mut app, 10);
+    let w = two_writers(&app);
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].contains("system game.tsx#shift") && w[0].contains("Transform.translation"), "{}", w[0]);
+}
+
+#[test]
+fn no_warning_without_dev() {
+    let src = painted("sprite.color = n.n % 2 ? \"#00ff00\" : \"#0000ff\";");
+    let mut app = sprite_app("bound-colour-release", &src, false);
+    updates(&mut app, 10);
+    let world = app.world_mut();
+    let colour = world.query::<&Sprite>().single(world).unwrap().color;
+    assert_ne!(colour, Color::srgb(1.0, 0.0, 0.0), "the system wrote the colour");
+    assert_eq!(two_writers(&app), Vec::<String>::new());
+}
+
+/// 10,000 entities with a bound `Transform.translation` and one system writing `scale` on all of
+/// them each frame: the frame's median under dev with the check against dev without it (its
+/// resource removed, as `dev(false)` has none), so only the check differs.
+#[test]
+#[ignore = "timing: run in release"]
+fn bound_field_check_costs_under_half_a_millisecond() {
+    let src = r##"import { app, Transform, Update } from "bevy-ts";
+import type { Local, Mut, Query, u32 } from "bevy-ts";
+
+export function grow(n: Local<{ n: u32 }>, q: Query<[Mut<Transform>]>) {
+  n.n += 1;
+  const s = 1 + (n.n % 2);
+  for (const [t] of q) t.scale = [s, s, s];
+}
+app.addSystems(Update, grow);
+app.scene("s", () => <>{Array.from({ length: 10000 }, (_, i) => <entity key={`e${i}`}><Transform translation={() => [i, 0, 0]} /></entity>)}</>);
+"##;
+    let frame = |check: bool| {
+        let mut app = sprite_app(if check { "bound-bench-on" } else { "bound-bench-off" }, src, true);
+        if !check {
+            app.world_mut().remove_resource::<bevy_ts::bound::BoundFields>();
+        }
+        updates(&mut app, 50);
+        if check {
+            let bound = app.world().resource::<bevy_ts::bound::BoundFields>();
+            assert_eq!(bound.components.values().map(|c| c.entities.len()).sum::<usize>(), 10_000, "every translation is bound");
+        }
+        let mut v: Vec<f64> = (0..300)
+            .map(|_| {
+                let t = Instant::now();
+                app.update();
+                t.elapsed().as_secs_f64() * 1e6
+            })
+            .collect();
+        v.sort_by(f64::total_cmp);
+        assert!(two_writers(&app).is_empty(), "scale is not bound");
+        v[v.len() / 2]
+    };
+    let off = frame(false);
+    let on = frame(true);
+    println!("10k bound translations, scale written each frame: check {on:.1} µs/frame, none {off:.1} µs/frame, check {:.1} µs", on - off);
+    assert!(on - off < 500.0, "the check costs {:.1} µs a frame", on - off);
+}

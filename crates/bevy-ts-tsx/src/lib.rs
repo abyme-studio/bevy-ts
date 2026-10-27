@@ -197,6 +197,7 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
         let mut tree = world.resource_mut::<TsxTree>();
         let r = &mut tree.reactive;
         r.targets.clear();
+        r.bound_dirty = true;
         r.refs.clear();
         r.new_refs.clear();
         r.slots.clear();
@@ -241,9 +242,7 @@ pub fn reconcile_generation(world: &mut World, generation: u64, section: &SceneS
     tree.journal.close();
     tree.last = total.clone();
     tree.reactive.sweep = !tree.reactive.slots.is_empty();
-    if world.get_resource::<bevy_ts::runtime::RuntimeInfo>().is_some_and(|r| r.dev) {
-        warn_two_writers(world, generation);
-    }
+    publish_bound(world, Some(generation));
     total
 }
 
@@ -387,30 +386,48 @@ pub fn unmount_external(world: &mut World, name: &str) -> ReconcileStats {
     stats
 }
 
-/// A bound field has one writer, its binding. Under dev, a TS system whose `write` set holds the
-/// bound component is named with the binding's site, once per site and generation.
-fn warn_two_writers(world: &mut World, generation: u64) {
+/// Publishes the bound fields to `bevy_ts::bound::BoundFields` when the binding targets changed,
+/// under `bevy-ts dev` only (the resource exists then): a TS system that changes one warns
+/// (layout-bindable). `generation` is a new generation's, which starts the warnings over.
+pub(crate) fn publish_bound(world: &mut World, generation: Option<u64>) {
+    use bevy_ts::bound::{Bound, BoundComponent, BoundFields, BoundKind};
+    if !world.contains_resource::<BoundFields>() || !std::mem::take(&mut world.resource_mut::<TsxTree>().reactive.bound_dirty) {
+        return;
+    }
     let tree = world.resource::<TsxTree>();
-    let mut sites = std::collections::BTreeMap::new();
+    let ts = world.resource::<bevy_ts::components::TsComponents>();
+    let native = world.resource::<NativeLayouts>();
+    let mut out: std::collections::HashMap<bevy::ecs::component::ComponentId, BoundComponent> = Default::default();
     for t in tree.reactive.targets.values() {
-        if ui::UiKind::from_tag(&t.component).is_some() {
+        let key = t.component.as_str();
+        if ui::UiKind::from_tag(key).is_some() || key == resolve::NAME || key == resolve::MATERIAL || resolve::asset_intrinsic(key) {
             continue;
         }
-        let Some(source) = tree.entities.get(&t.node).and_then(|e| world.get::<TsxNode>(*e)).and_then(|n| n.components.get(&t.component)).map(|c| c.source.clone()) else { continue };
-        sites.entry((t.component.clone(), t.prop.clone())).or_insert(source);
-    }
-    let mut warnings = Vec::new();
-    for s in world.resource::<bevy_ts::systems::TsSystems>().iter() {
-        for ((component, prop), source) in &sites {
-            if s.decl.access().1.iter().any(|w| w == component) {
-                warnings.push((format!("system {} writes {component}, whose {prop} is bound in TSX: a bound field has one writer, its binding", s.decl.name), source.clone()));
+        let (id, kind) = if let Some(c) = ts.live(key) {
+            let Some(f) = c.layout.field(&t.prop) else { continue };
+            (c.id, BoundKind::Column { offset: f.offset, size: f.ty.size() })
+        } else if let Some(n) = native.get(key) {
+            if n.reflect_holes.iter().any(|h| h.name == t.prop) {
+                (n.id, BoundKind::Hole)
+            } else {
+                let Some(f) = n.layout.field(&t.prop) else { continue };
+                (n.id, BoundKind::Column { offset: f.offset, size: f.ty.size() })
             }
-        }
+        } else if let Some(r) = native.reflect_tier(key) {
+            (r.id, BoundKind::Hole)
+        } else {
+            continue;
+        };
+        let Some(e) = tree.entities.get(&t.node).copied() else { continue };
+        let Some(node) = world.get::<TsxNode>(e).filter(|n| n.id == t.node) else { continue };
+        let at = node.components.get(key).and_then(|c| c.source.clone());
+        let c = out.entry(id).or_insert_with(|| BoundComponent { name: key.to_string(), ..Default::default() });
+        let (_, fields) = c.entities.entry(e).or_insert_with(|| (world.get::<Name>(e).map_or_else(|| format!("{e}"), |n| n.to_string()), Vec::new()));
+        fields.push(Bound { field: t.prop.clone(), kind, site: format!("<{key} {}>", t.prop), at });
     }
-    let mut log = world.resource_mut::<ScriptLog>();
-    for (m, at) in warnings {
-        log.push(LogLevel::Warn, m, at, generation);
-    }
+    let mut bound = world.resource_mut::<BoundFields>();
+    let generation = generation.unwrap_or(bound.generation);
+    bound.set(generation, out);
 }
 
 fn apply(world: &mut World, applied: &bevy_ts::plugin_api::AppliedSection) {

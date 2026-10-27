@@ -595,6 +595,7 @@ fn apply_node(
         for (prop, id) in &r.bound {
             tree.reactive.targets.insert(*id, BindTarget { node: n.id, component: r.key.clone(), prop: prop.clone() });
             tree.reactive.due = true;
+            tree.reactive.bound_dirty = true;
         }
     }
     if let Some(r) = n.ref_id {

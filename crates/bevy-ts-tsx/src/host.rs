@@ -204,6 +204,7 @@ pub fn frame(world: &mut World) {
     let started = std::time::Instant::now();
     world.resource_mut::<TsxTree>().reactive.last_frame_us = 0.0;
     frame_inner(world);
+    crate::publish_bound(world, None);
     let us = started.elapsed().as_secs_f64() * 1e6;
     world.resource_mut::<TsxTree>().reactive.last_frame_us = us;
 }
@@ -328,6 +329,7 @@ fn run(world: &mut World, changed: Vec<(Option<Entity>, String)>, mut rows: Vec<
         for id in &dead {
             tree.reactive.targets.remove(id);
         }
+        tree.reactive.bound_dirty |= !dead.is_empty();
         payload.drop = dead;
         world.insert_resource(tree);
     }

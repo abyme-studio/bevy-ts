@@ -176,6 +176,8 @@ pub struct Subscription {
 #[derive(Default, Debug)]
 pub struct Reactive {
     pub targets: HashMap<u32, BindTarget>,
+    /// `targets` changed since `bevy_ts::bound::BoundFields` was published (dev only).
+    pub bound_dirty: bool,
     /// Ref id to the node that fills it.
     pub refs: HashMap<u32, u64>,
     /// Refs JS has not been told about.

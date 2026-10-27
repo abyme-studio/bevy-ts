@@ -8,6 +8,7 @@
 
 pub mod backend;
 pub mod bevy_system;
+pub mod bound;
 pub mod color;
 pub mod commands;
 pub mod components;
@@ -238,6 +239,8 @@ impl Plugin for BevyTsPlugin {
         app.add_systems(Last, schedules::apply_deferred_edits);
         if self.dev {
             app.add_systems(Last, runtime::prepare_restart);
+            // TSX publishes its bound fields here, for the two-writer warning (layout-bindable).
+            app.init_resource::<bound::BoundFields>();
         }
         // `Main` holds the schedule orders while it runs: a generation's order edits wait for it.
         app.add_systems(Main, schedules::apply_pending_order.after(Main::run_main));

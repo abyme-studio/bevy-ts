@@ -172,6 +172,11 @@ TSX writes a reflected value in Bevy's own shape, through one writer (`bevy_ts::
   reflection whenever the binding's value changes, and nothing when it is unchanged; until the first
   value arrives the hole keeps the component's default, and a bad value is logged naming
   `DistanceFog.color`.
+- A bound field has one writer, its binding. Under `bevy-ts dev`, a TS system whose run changes a
+  bound field (a column or a hole) on that entity warns once per generation, naming the system,
+  `Sprite.color`, the entity and the binding's site. The check is per field and per entity:
+  writing `sprite.texture_atlas` next to a bound `color` never warns. A shipped game and
+  `dev(false)` skip it. A Rust system that writes a bound field is not caught.
 - Scripts insert the same values through commands: `Projection.of({ Orthographic: {} })`, and a
   layout-tier `.of` that sets holes (`DirectionalLight.of({ illuminance: 8000, color })`, values
   only)

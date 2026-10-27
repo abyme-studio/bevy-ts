@@ -257,14 +257,16 @@ app.scene("s", () => <text key="t">{label()}</text>);
 fn a_system_writing_a_bound_component_is_named_with_the_site() {
     let src = r##"import { app, Component, f32, Update, type Query, type Mut } from "bevy-ts";
 export class Light extends Component { static path = "game::Light"; declare intensity: f32 }
-export function dim(q: Query<[Mut<Light>]>) {} app.addSystems(Update, dim);
+export function dim(q: Query<[Mut<Light>]>) { for (const [l] of q) l.intensity = 5; } app.addSystems(Update, dim);
 app.scene("s", () => (
   <entity key="l">
     <Light intensity={() => 3} />
   </entity>
 ));
 "##;
-    let (_dir, app) = setup("rx-two-writers", src);
+    // layout-bindable: the run that changes the bound field warns, not the declaration.
+    let (_dir, mut app) = setup("rx-two-writers", src);
+    updates(&mut app, 3);
     let w = logs(&app).into_iter().find(|e| e.message.contains("one writer")).expect("warned");
     assert!(w.message.contains("system game.tsx#dim") && w.message.contains("intensity"), "{}", w.message);
     assert_eq!(w.location.as_ref().map(|l| l.line), Some(6));

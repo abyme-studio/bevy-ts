@@ -680,6 +680,11 @@ pub unsafe fn write(cell: UnsafeWorldCell, t: &Target, entity: Entity, json: &se
     // SAFETY: exclusive access to the component (the caller's contract).
     let mut value = unsafe { rc.reflect_unchecked_mut(e) }.ok_or_else(|| format!("{entity} has no {}", t.type_path))?;
     let base = reflect_value::default_of(&registry, t.slot_type);
+    // Under dev, the bound holes this write touches, to compare after it (layout-bindable).
+    let bound = world.get_resource::<crate::bound::BoundFields>();
+    let watched = bound.map(|b| b.holes(t.component, entity, t.hole.as_ref().map(|h| h.0.as_str()))).unwrap_or_default();
+    // A value that cannot be cloned is not compared.
+    let before: Vec<Option<Box<dyn PartialReflect>>> = watched.iter().map(|(_, name)| PartialReflect::to_dynamic(crate::bound::slot(value.as_partial_reflect(), name)).ok()).collect();
     {
         let whole = value.bypass_change_detection().as_partial_reflect_mut();
         let slot = match &t.hole {
@@ -699,6 +704,14 @@ pub unsafe fn write(cell: UnsafeWorldCell, t: &Target, entity: Entity, json: &se
             Some(h) => format!("{}.{}: {e}", t.type_path, h.0),
             None => e,
         })?;
+    }
+    if let Some(b) = bound {
+        for ((i, name), old) in watched.iter().zip(&before) {
+            let Some(old) = old else { continue };
+            if crate::bound::slot(value.as_partial_reflect(), name).reflect_partial_eq(old.as_ref()) != Some(true) {
+                b.hit((t.component, entity, *i));
+            }
+        }
     }
     value.set_last_changed(tick);
     Ok(())
