@@ -4,18 +4,27 @@
 use crate::common;
 
 use bevy::prelude::*;
-use bevy::text::ComputedTextBlock;
+use bevy::text::{ComputedTextBlock, FontCx};
 use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_tsx::TsxNode;
 use bevy_ts_v8::V8Options;
 use common::*;
+use parley::fontique::{FallbackKey, Script};
 use parley::PositionedLayoutItem;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// ASCII, punctuation FiraMono lacks, CJK, an emoji, and → and ✓ inside Latin runs.
-const SAMPLE: &str = "ASCII — → “quoted” · 中文 😀 ✓ done → next";
+/// DejaVu Sans cut to the symbols a host's fonts may lack: — → “ ” · ✓ (Bitstream Vera licence,
+/// `fixtures/DejaVuSans-LICENSE.txt`).
+const SYMBOLS_FONT: &[u8] = include_bytes!("fixtures/DejaVuSans-symbols-subset.ttf");
+
+/// The characters `SYMBOLS_FONT` carries: the sample's must draw from it, whatever the host has.
+const FIXTURE_CHARS: &str = "—→“”·✓";
+
+/// ASCII, punctuation FiraMono lacks, CJK, an emoji, and → and ✓ inside Latin runs. (A ✓ straight
+/// after the CJK or emoji would draw from their font, which is real too, but the host's.)
+const SAMPLE: &str = "ASCII — → “quoted” · 中文 😀 done ✓ → next";
 
 /// The engine's headless plugins and a TSX game holding one `<text>`, laid out with ASCII.
 fn text_app(name: &str) -> App {
@@ -33,6 +42,18 @@ fn text_app(name: &str) -> App {
     set(&mut app, "ASCII");
     app.insert_resource(dir);
     app
+}
+
+/// Registers `SYMBOLS_FONT` in the app's font collection (`bevy_text::FontCx`, a parley
+/// `FontContext`) as the only fallback for Latin and Common text, so the symbols never come from the
+/// host's fonts. CJK and emoji keep the host's fallback.
+fn use_symbols_font(app: &mut App) {
+    let mut cx = app.world_mut().resource_mut::<FontCx>();
+    let families: Vec<_> = cx.collection.register_fonts(SYMBOLS_FONT.to_vec().into(), None).into_iter().map(|(id, _)| id).collect();
+    assert!(!families.is_empty(), "the fixture font registers no family");
+    for script in ["Latn", "Zyyy", "Zinh"] {
+        cx.collection.set_fallbacks(FallbackKey::new(Script::from_str_unchecked(script), None), families.iter().copied());
+    }
 }
 
 /// Writes the `<text>`'s string and steps until it is laid out again: the first time a string
@@ -56,8 +77,8 @@ fn block(app: &mut App) -> Option<ComputedTextBlock> {
     world.query::<(&TsxNode, &ComputedTextBlock)>().iter(world).find(|(n, _)| n.key_path == ["t"]).map(|(_, b)| b.clone())
 }
 
-/// Each cluster's text with the font it drew from, and whether any of its glyphs is `.notdef`.
-fn clusters(app: &mut App, text: &str) -> Vec<(String, bool)> {
+/// Each cluster's text, whether any of its glyphs is `.notdef`, and whether it drew from `SYMBOLS_FONT`.
+fn clusters(app: &mut App, text: &str) -> Vec<(String, bool, bool)> {
     let block = block(app).expect("a laid-out <text>");
     let mut out = Vec::new();
     for line in block.buffer().lines() {
@@ -68,7 +89,8 @@ fn clusters(app: &mut App, text: &str) -> Vec<(String, bool)> {
                 if s.trim().is_empty() {
                     continue;
                 }
-                out.push((s, cluster.glyphs().any(|g| g.id == 0)));
+                let fixture = run.run().font().data.as_ref() == SYMBOLS_FONT;
+                out.push((s, cluster.glyphs().any(|g| g.id == 0), fixture));
             }
         }
     }
@@ -78,15 +100,19 @@ fn clusters(app: &mut App, text: &str) -> Vec<(String, bool)> {
 #[test]
 fn mixed_text_draws_without_boxes() {
     let mut app = text_app("text-fonts-mixed");
+    use_symbols_font(&mut app);
     let first = set(&mut app, SAMPLE);
     eprintln!("first layout with a fallback: {:.1} ms", first.as_secs_f64() * 1e3);
     let all = clusters(&mut app, SAMPLE);
     let again = set(&mut app, "again — 中文 😀");
     eprintln!("a later layout with a fallback: {:.1} ms", again.as_secs_f64() * 1e3);
     assert!(all.len() > 20, "{all:?}");
-    let missing: Vec<String> = all.iter().filter(|(_, notdef)| *notdef).map(|(s, _)| format!("{s:?} (U+{:04X})", s.chars().next().unwrap() as u32)).collect();
+    let missing: Vec<String> = all.iter().filter(|(_, notdef, _)| *notdef).map(|(s, _, _)| format!("{s:?} (U+{:04X})", s.chars().next().unwrap() as u32)).collect();
     let hint = if cfg!(target_os = "linux") { "; on Linux, install fonts-noto-cjk and fonts-noto-color-emoji" } else { "" };
     assert!(missing.is_empty(), "drawn as .notdef (a box): {}{hint}", missing.join(", "));
+    let elsewhere: Vec<&str> = all.iter().filter(|(s, _, fixture)| !fixture && s.chars().all(|c| FIXTURE_CHARS.contains(c))).map(|(s, _, _)| s.as_str()).collect();
+    assert!(elsewhere.is_empty(), "drawn from a host font, not the fixture: {elsewhere:?}");
+    assert!(all.iter().any(|(s, _, fixture)| s == "✓" && *fixture), "{all:?}");
 }
 
 #[test]
@@ -96,7 +122,7 @@ fn a_character_no_font_has_draws_a_box_and_the_rest_lays_out() {
     let mut app = text_app("text-fonts-none");
     set(&mut app, text);
     let all = clusters(&mut app, text);
-    let boxes: Vec<&str> = all.iter().filter(|(_, notdef)| *notdef).map(|(s, _)| s.as_str()).collect();
+    let boxes: Vec<&str> = all.iter().filter(|(_, notdef, _)| *notdef).map(|(s, _, _)| s.as_str()).collect();
     assert_eq!(boxes, ["\u{10FFFD}"], "{all:?}");
-    assert_eq!(all.iter().filter(|(s, _)| s == "o" || s == "k").count(), 4, "{all:?}");
+    assert_eq!(all.iter().filter(|(s, _, _)| s == "o" || s == "k").count(), 4, "{all:?}");
 }
