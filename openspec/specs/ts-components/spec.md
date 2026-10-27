@@ -12,11 +12,9 @@ A component SHALL be declared as a plain class extending `Component`, its fields
 export class Mover extends Component { speed: f32 = 1; amplitude: f32 = 2 }
 export class Target extends Component { declare entity: Entity }
 export class Tag extends Component { label: string = "crate"; scores: u32[] = [] }
-type Point = { x: f32; y: f32 }
-export class Path extends Component { declare points: Point[]; declare stops: Entity[] }
 ```
 
-The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A field MAY also be `string` (a heap field, Rust's `String`) or `T[]` (a heap field, Rust's `Vec<T>`) with `T` a number kind, `bool`, `string`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, a string-literal union, or an object type (a literal, an alias or an interface) whose members are all of the plain types above (a struct item). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero, `""` for a string and `[]` for a list. Nested lists, a struct item with a `string` or list member, an object field outside a list and other heap data SHALL fail the load with the file and line.
+The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, `Timer`, `Stopwatch` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A component field MAY also be `string` (a heap field, Rust's `String`) or `T[]` with `T` one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool` or `string` (a heap field, Rust's `Vec<T>`). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero, `""` for a string and `[]` for a list. Objects, nested lists, lists of vectors or entities and other heap data SHALL fail the load with the file and line.
 
 The class SHALL be the component's handle in queries (`Query<[Mover]>`), its TSX tag (`<Mover speed={2} />`) and, through `Mover.of({ speed: 2 })`, its constructor for commands. Its instance type SHALL be the component's data. A class with no fields is a marker. A class extending `SceneComponent` is a component whose `static scene(props)` builds a scene spawned with it, as Bevy's `#[derive(SceneComponent)]` (tsx, levels).
 
@@ -39,19 +37,27 @@ The component's name in Bevy, the protocol and `.bsn` files SHALL default to a R
 - **THEN** a TS system reads each item back, and a Rust system reads `points` as a `Vec<Vec3>` and `marks` as a `Vec` of a `#[repr(C)]` struct `{ x: f32, y: f32 }`
 
 #### Scenario: A refused heap type
-- **WHEN** a component declares `grid: f32[][]`, `meta: { a: f32 }` or `items: { name: string }[]`
+- **WHEN** a component declares `points: Vec3[]` or `meta: { a: f32 }`
 - **THEN** loading fails with an error naming the class, the field, the file and the line
 
 #### Scenario: A pinned name survives a rename
 - **WHEN** `class Shield extends Component { static path = "game::Shield"; strength: f32 = 0 }` is renamed to `Barrier` and reloads
 - **THEN** it keeps the `ComponentId` of `game::Shield`, and every entity keeps its value
 
+#### Scenario: A timer field
+- **WHEN** a component declares `cooldown = Timer.fromSeconds(2, "Repeating")`
+- **THEN** it loads, and a new entity's `cooldown` has `duration` 2, `mode` `"Repeating"` and `elapsed` 0
+
 ### Requirement: Native layout rules
-A TS component's layout SHALL follow C struct rules: fields in declaration order, each at an offset aligned to its own alignment, total size rounded up to the largest field alignment. `Vec2`/`Vec3`/`Vec4`/`Quat` are `f32` arrays aligned to 4; `bool` is one byte holding 0 or 1; `Entity` is a `u64` holding `Entity::to_bits`, aligned to 8; a string-literal union is the smallest unsigned integer holding its variants. Rust SHALL compute the layout and hand the offsets back to JS; JS SHALL NOT compute its own.
+A TS component's layout SHALL follow C struct rules: fields in declaration order, each at an offset aligned to its own alignment, total size rounded up to the largest field alignment. `Vec2`/`Vec3`/`Vec4`/`Quat` are `f32` arrays aligned to 4; `bool` is one byte holding 0 or 1; `Entity` is a `u64` holding `Entity::to_bits`, aligned to 8; a string-literal union is the smallest unsigned integer holding its variants. A `Timer` is 24 bytes aligned to 8: `elapsed` and `duration` (`f64` seconds), `times_finished_this_tick` (`u32`), `mode` (`u8`, `Once` 0, `Repeating` 1), `paused` and `finished` (`bool`). A `Stopwatch` is 16 bytes aligned to 8: `elapsed` (`f64` seconds) and `paused` (`bool`). Rust SHALL compute the layout and hand the offsets back to JS; JS SHALL NOT compute its own.
 
 #### Scenario: Offsets of a mixed component
 - **WHEN** a component declares `{ alive: bool, hp: f32, pos: vec3 }`
 - **THEN** its layout is size 20, align 4, with `alive` at 0, `hp` at 4 and `pos` at 8
+
+#### Scenario: Offsets around a timer
+- **WHEN** a component declares `{ hp: f32, cooldown: Timer }`
+- **THEN** its layout is size 32, align 8, with `hp` at 0 and `cooldown` at 8
 
 ### Requirement: Registration as dynamic ECS components
 Each TS component SHALL be registered with `World::register_component_with_descriptor` and `ComponentDescriptor::new_with_layout`: table storage, mutable, summary tick on. A component with no heap field SHALL have no drop function and copy its bytes when cloned. A component with a heap field SHALL have a drop function that frees each heap field and a clone function that deep-copies each one, so a clone owns its own values. Its name in Bevy SHALL be the declared name. It SHALL be queryable by Rust through its `ComponentId` and usable in `QueryBuilder`, `insert_by_id` and `get_by_id`.
@@ -181,3 +187,26 @@ This is a behaviour change: under ts-component-heap-fields such a read was route
 #### Scenario: A name read after despawn
 - **WHEN** an entity with `Tag { label: "door" }` is despawned and an observer on `On<Despawn<Tag>>` reads `label`
 - **THEN** it reads `"door"`
+
+### Requirement: Timer and Stopwatch are Bevy's, ported to TS
+`Timer`, `Stopwatch` and `TimerMode` (`"Once" | "Repeating"`) SHALL be field types of TS components, resources and `Local`s, ported from Bevy 0.20's `bevy_time` with every `Duration` as seconds. `Timer.new(duration, mode)`, `Timer.fromSeconds(seconds, mode)` and `Stopwatch.new()` SHALL make a value for an initialiser or `C.of({...})`.
+
+A field's view SHALL have Bevy's getters as snake_case properties: on a timer `elapsed`, `elapsed_secs`, `duration`, `mode`, `is_paused`, `is_finished`, `just_finished`, `times_finished_this_tick`, `remaining`, `remaining_secs`, `fraction` and `fraction_remaining`; on a stopwatch `elapsed`, `elapsed_secs` and `is_paused`. A written field (`Mut<C>`, `ResMut<R>`, `Local`) SHALL add Bevy's methods in camelCase: on a timer `tick(seconds)` (returning the view), `pause`, `unpause`, `reset`, `finish`, `almostFinish`, `setElapsed`, `setDuration` and `setMode`; on a stopwatch `tick(seconds)`, `pause`, `unpause`, `reset` and `setElapsed`. Each method SHALL follow Bevy's semantics, allocate nothing and store the row's change tick once per call. A read field SHALL be typed without the methods.
+
+Rust SHALL read and write a TS `Timer` or `Stopwatch` field through the protocol, the inspector and `.bsn` files as a struct of the fields named in its layout, `mode` by variant name. A Rust component holding Bevy's own `Timer` is unchanged by this requirement.
+
+#### Scenario: A repeating timer finishes like Bevy's
+- **WHEN** a TS system ticks a `Timer.fromSeconds(0.5, "Repeating")` field by 0.2, 0.2, 0.2 and 1.0 s, and Rust ticks Bevy's `Timer::from_seconds(0.5, TimerMode::Repeating)` by the same
+- **THEN** after each tick `just_finished`, `times_finished_this_tick` and `elapsed` match Bevy's (`elapsed` within 1e-9 s), ending with 2 finishes on the last tick
+
+#### Scenario: A once timer stays finished
+- **WHEN** a `"Once"` timer of 1 s is ticked by 1.5 s, then by 0.1 s
+- **THEN** the first tick has `just_finished` true and `elapsed` 1, the second `just_finished` false and `is_finished` true
+
+#### Scenario: A paused stopwatch
+- **WHEN** a stopwatch is ticked by 1 s, paused, ticked by 1 s, unpaused and ticked by 1 s
+- **THEN** its `elapsed` is 2
+
+#### Scenario: A read timer has no methods
+- **WHEN** a system with `Query<[Cooldown]>` calls `c.cooldown.tick(dt)`
+- **THEN** the type check fails, saying `tick` does not exist on the read-only view

@@ -36,7 +36,7 @@
 ## 5. Gate (stage 1)
 
 - [x] 5.1 `openspec validate script-time --strict`
-- [ ] 5.2 The repo's full check green; protocol version is the next free minor on `main` at landing
+- [x] 5.2 The repo's full check green; protocol version is the next free minor on `main` at landing
 
 ## 6. Time conditions (stage 3)
 

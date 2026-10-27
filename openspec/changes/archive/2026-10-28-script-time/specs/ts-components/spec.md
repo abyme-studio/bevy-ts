@@ -27,6 +27,10 @@ The component's name in Bevy, the protocol and `.bsn` files SHALL default to a R
 - **WHEN** a component declares `scores: u32[] = [1, 2]` and an entity is spawned with `scores: [7]`
 - **THEN** a TS system reads `[7]`, and another entity spawned without it reads `[1, 2]`
 
+#### Scenario: Lists of vectors, entities and structs
+- **WHEN** a component declares `points: Vec3[]`, `stops: Entity[]` and `marks: Point[]` with `type Point = { x: f32; y: f32 }`, and an entity is spawned with two of each
+- **THEN** a TS system reads each item back, and a Rust system reads `points` as a `Vec<Vec3>` and `marks` as a `Vec` of a `#[repr(C)]` struct `{ x: f32, y: f32 }`
+
 #### Scenario: A refused heap type
 - **WHEN** a component declares `points: Vec3[]` or `meta: { a: f32 }`
 - **THEN** loading fails with an error naming the class, the field, the file and the line

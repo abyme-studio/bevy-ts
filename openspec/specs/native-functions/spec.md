@@ -6,7 +6,7 @@ How TS calls Rust: Bevy system params exported with `#[export]`, read or write, 
 ## Requirements
 
 ### Requirement: Rust exports system params to TS
-A Rust crate (the project's own or a port) SHALL be able to export a Bevy `SystemParam` to TS by putting `#[bevy_ts::export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` block of the param and calling `app.ts_param::<P>()`. Every `pub fn` in that block SHALL become a method of the TS type `Name`. The macro SHALL generate the host function per method, the argument and result codecs, the TS declaration and the JS glue. Method signatures SHALL be restricted to `&self` or `&mut self` plus scalars, `bool`, `Vec2`, `Vec3`, `Quat`, `UVec2`, `UVec3`, `Entity`, `Color` (taking every form `bevy_ts::color` takes, a hex string parsed in Rust and never in JS), `Isometry2d` and `Isometry3d` (taking a vector, a rotation or `{ rotation, translation }`, as Bevy's `From` impls do), `Transform` (taking a `Transform` or a `GlobalTransform` value), `NativeLayout` records, fieldless enums (crossing as their variant names, a record that leaves one out getting its first variant), `&str` arguments and `String` results, `HostPoints<T>` of `f32`, `Vec2` or `Vec3` (an array of points or a `Float32Array`, crossing as a slice), `HostList<T>` of a tuple of these kinds (an array of arrays, crossing in the call's slots), `HostJson` values (a JSON value with a declared TS type), `&[T]` and `&mut [T]` of those numeric kinds, and `Option` of those; any other type SHALL be a compile error naming the parameter. A method MAY return its builder: the call returns the same TS object, typed as the builder's interface, whose methods are the builder's settings. The param MAY write: `ResMut`, `Query<&mut T>` and the other shapes the coverage table supports. A type that is not a `SystemParam`, such as `&mut World`, SHALL fail to compile.
+A Rust crate (the project's own or a port) SHALL be able to export a Bevy `SystemParam` to TS by putting `#[bevy_ts::export(ts = "Name", module = "bevy-ts/<module>")]` on an `impl` block of the param and calling `app.ts_param::<P>()`. Every `pub fn` in that block SHALL become a method of the TS type `Name`, its name in camelCase, except one marked `#[getter]` ("Getters are properties"). The macro SHALL generate the host function per method, the argument and result codecs, the TS declaration and the JS glue. Method signatures SHALL be restricted to `&self` or `&mut self` plus scalars, `bool`, `Vec2`, `Vec3`, `Quat`, `UVec2`, `UVec3`, `Entity`, `Color` (taking every form `bevy_ts::color` takes, a hex string parsed in Rust and never in JS), `Isometry2d` and `Isometry3d` (taking a vector, a rotation or `{ rotation, translation }`, as Bevy's `From` impls do), `Transform` (taking a `Transform` or a `GlobalTransform` value), `NativeLayout` records, fieldless enums (crossing as their variant names, a record that leaves one out getting its first variant), `&str` arguments and `String` results, `HostPoints<T>` of `f32`, `Vec2` or `Vec3` (an array of points or a `Float32Array`, crossing as a slice), `HostList<T>` of a tuple of these kinds (an array of arrays, crossing in the call's slots), `HostJson` values (a JSON value with a declared TS type), `&[T]` and `&mut [T]` of those numeric kinds, and `Option` of those; any other type SHALL be a compile error naming the parameter. A method MAY return its builder: the call returns the same TS object, typed as the builder's interface, whose methods are the builder's settings. The param MAY write: `ResMut`, `Query<&mut T>` and the other shapes the coverage table supports. A type that is not a `SystemParam`, such as `&mut World`, SHALL fail to compile.
 
 #### Scenario: Rapier's raycast
 - **WHEN** the Rapier port exports `impl ReadRapierContext { pub fn cast_ray(&self, origin: Vec3, dir: Vec3, max_toi: f32, solid: bool, f: RayFilter) -> Option<RayHit> }`
@@ -171,7 +171,7 @@ Each Bevy writing param shape SHALL be supported, refused with the reason given,
 | `FilteredEntityMut`, `FilteredResourcesMut` | Inert | Their access comes from a builder, which an export never has: they register none, and every read or write through them fails |
 | `DeferredWorld` | Refused at registration | World-wide write; its hooks and observers run synchronously inside the call |
 | `&mut World`, exclusive system params | Refused at compile time | Not a `SystemParam`; can move column memory under JS |
-| `ResMut<Time<Virtual>>`, `ResMut<Time<Fixed>>` as `VirtualTime`, `FixedTime` | Later | script-time, on this change's `stands_for` |
+| `ResMut<Time<Virtual>>`, `ResMut<Time<Fixed>>` as `VirtualTime`, `FixedTime` | Supported | Writes in place through `stands_for` (script-time, ts-systems "Writing the game and fixed clocks") |
 | Reflected component and resource writes from a host call | Later | reflect-coverage stage 3, on this change's host call and run ticks |
 
 #### Scenario: Every row tested
@@ -279,3 +279,14 @@ A slice argument `&[T]` or `&mut [T]` SHALL be given as the typed array its decl
 #### Scenario: A wrong out array
 - **WHEN** the same call passes a `Float32Array` as `points` and a `Float64Array` as `out`
 - **THEN** it throws naming `out`, and nothing is written
+
+### Requirement: Getters are properties
+A `pub fn` in an `#[export]` block marked `#[getter]` SHALL take `&self` and no other argument, and SHALL become a read-only property of the TS type under its Rust name, unchanged (`is_paused`), as Bevy's getters are named on the read views (ts-systems). Each read SHALL be one synchronous host call, under "Method calls are synchronous", at the TS system's ticks. A `#[getter]` taking arguments or `&mut self` SHALL be a compile error naming it. The declaration SHALL be `readonly <name>: <type>`. The handshake's `ExportedParam` SHALL list them as `properties`, beside `methods`, an addition in the next free protocol minor.
+
+#### Scenario: Reading a clock after a write
+- **WHEN** an export has `pub fn pause(&mut self)` and `#[getter] pub fn is_paused(&self) -> bool`, and a TS system calls `time.pause()` then reads `time.is_paused`
+- **THEN** it reads `true`, and `tsc` rejects `time.is_paused = false`
+
+#### Scenario: A getter with an argument
+- **WHEN** an export marks `pub fn speed(&self, scale: f32) -> f32` with `#[getter]`
+- **THEN** the crate fails to compile, naming `speed`
