@@ -61,6 +61,7 @@ mod reflect_assets;
 mod reflect_render;
 mod reflect_scripts;
 mod reflect_systems;
+mod ready_hold;
 mod reflect_values;
 mod reload;
 mod rust_events;

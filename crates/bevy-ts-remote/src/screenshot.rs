@@ -2,11 +2,14 @@
 //! `bevy-ts/screenshot` and `BEVY_TS_SCREENSHOT` both take theirs with [`capture`], which spawns
 //! Bevy's `Screenshot` observed by [`save_atomically`]: a temp file, renamed onto the path. A shot
 //! waits for a ready run: the script started, Bevy's pipeline cache with nothing waiting, and no
-//! asset load in flight ([`ReadyPlugin`], [`loads`]). It waits as long as the run makes progress
-//! ([`Clock`], [`ReadyTimeout`]), then fails: the method answers an error, the env shot exits 1.
+//! asset load in flight ([`ReadyPlugin`], [`loads`]), and nothing the script holds ([`ReadyHold`],
+//! bevy-ts's own: Bevy has no such hold). It waits as long as the run makes progress ([`Clock`],
+//! [`ReadyTimeout`]), then fails: the method answers an error, the env shot exits 1. What a shot
+//! waits on goes to the stall watchdog's [`StallNote`] each frame, so a stall names it too.
 //! Under [`FixedStep`] time advances 1/60 s a ready frame and not at all otherwise, and every
 //! camera draws without Bevy's GPU culling, in entity order, so a shot is the same at any load.
 
+use crate::stall::StallNote;
 use crate::{frame, internal, invalid, protocol, required};
 use bevy::asset::{RecursiveDependencyLoadState, ReflectAsset, ReflectHandle, UntypedAssetId, UntypedHandle};
 use bevy::camera::RenderTarget;
@@ -26,7 +29,7 @@ use bevy::world_serialization::{DynamicWorldRoot, WorldAssetRoot, WorldInstance,
 use bevy_ts::runtime::RuntimeInfo;
 use serde_json::Value;
 use std::any::TypeId;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -155,8 +158,47 @@ impl Default for Clock {
     }
 }
 
-/// Ready frames in a row: frames on which the script had started, no pipeline was waiting and no
-/// asset load was in flight. Counted in `First` while a shot or [`FixedStep`] needs it.
+/// Names a script holds the run's ready frames by: bevy-ts's own, Bevy has no such hold. While any
+/// is held no frame is ready, so no shot is counted and [`FixedStep`] time does not step. For data a
+/// game waits on that Bevy cannot see (a reply over a socket): held in `Startup`, released where
+/// the data is applied. A hold is no progress: one never released fails the shot after
+/// [`ReadyTimeout`], naming it. TS reaches it as `ReadyHold` from `bevy-ts/ready`.
+#[derive(Resource, Default, Debug, Clone)]
+pub struct ReadyHold(BTreeSet<String>);
+
+impl ReadyHold {
+    /// Holds `name`; holding a held name changes nothing.
+    pub fn hold(&mut self, name: &str) {
+        self.0.insert(name.to_string());
+    }
+
+    /// Releases `name`; whether it was held.
+    pub fn release(&mut self, name: &str) -> bool {
+        self.0.remove(name)
+    }
+
+    pub fn is_held(&self, name: &str) -> bool {
+        self.0.contains(name)
+    }
+
+    /// The names held, sorted.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().map(String::as_str)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// The names held, joined by `, `, if any.
+fn held(world: &World) -> Option<String> {
+    let hold = world.get_resource::<ReadyHold>().filter(|h| !h.is_empty())?;
+    Some(hold.names().collect::<Vec<_>>().join(", "))
+}
+
+/// Ready frames in a row: frames on which the script had started, no pipeline was waiting, no
+/// asset load was in flight and nothing was held ([`ReadyHold`]). Counted in `First` while a shot or [`FixedStep`] needs it.
 #[derive(Resource, Default, Debug)]
 pub struct Ready {
     pub frames: u64,
@@ -217,6 +259,7 @@ impl Plugin for ReadyPlugin {
             .init_resource::<HandleTypes>()
             .init_resource::<UpdateFrame>()
             .init_resource::<ReadyTimeout>()
+            .init_resource::<ReadyHold>()
             .add_observer(|add: On<Add<Camera>>, fixed: Option<Res<FixedStep>>, mut commands: Commands| {
                 if fixed.is_some() {
                     commands.entity(add.entity).insert(NoIndirectDrawing);
@@ -265,9 +308,12 @@ pub fn pipelines_idle(world: &World) -> bool {
     !world.contains_resource::<PipelinesWaiting>() || pipelines_waiting(world) == Some(0)
 }
 
-/// Why a run is not ready, for a warning or an error: pipelines, loads, failed assets.
+/// Why a run is not ready, for a warning or an error: the hold, pipelines, loads.
 fn not_ready(world: &World, loads: &Loads) -> String {
     let mut why = Vec::new();
+    if let Some(names) = held(world) {
+        why.push(format!("held by the script: {names}"));
+    }
     match pipelines_waiting(world) {
         None if world.contains_resource::<PipelinesWaiting>() => why.push("no frame rendered".to_string()),
         Some(n) if n > 0 => why.push(format!("{n} pipelines still waiting")),
@@ -277,6 +323,26 @@ fn not_ready(world: &World, loads: &Loads) -> String {
         why.push(format!("{} assets still loading", loads.loading));
     }
     why.join(", ")
+}
+
+/// Everything a shot waits on, for a stall's line and a shot that gives up: whether the script
+/// started, [`not_ready`]'s reasons, and the ready frames counted (of the `at` it needs).
+fn waiting_on(world: &World, loads: &Loads, frames: u64, at: Option<u64>) -> String {
+    let started = world.get_resource::<RuntimeInfo>().is_none_or(|i| i.generation > 0);
+    let mut why = vec![if started { "the script started" } else { "the script has not started" }.to_string()];
+    why.extend(Some(not_ready(world, loads)).filter(|w| !w.is_empty()));
+    why.push(match at {
+        Some(at) => format!("ready frame {frames} of {at}"),
+        None => format!("{frames} ready frames in a row"),
+    });
+    why.join("; ")
+}
+
+/// Notes `what` for the stall watchdog's line, when the app has the watchdog; an empty note clears it.
+fn note_stall(world: &World, what: impl FnOnce() -> String) {
+    if let Some(note) = world.get_resource::<StallNote>() {
+        note.set(Some(what()).filter(|w| !w.is_empty()));
+    }
 }
 
 /// Warns once a shot is taken of each asset that failed to load.
@@ -294,10 +360,16 @@ fn count_ready(world: &mut World) {
     let started = world.get_resource::<RuntimeInfo>().is_none_or(|i| i.generation > 0);
     let idle = pipelines_idle(world);
     let loads = loads(world);
-    let now = started && idle && loads.loading == 0;
+    let now = started && idle && loads.loading == 0 && held(world).is_none();
     let cap = world.get_resource::<ShotWhenReady>().map_or(u64::MAX, |s| s.at);
+    let frames = if now { world.resource::<Ready>().frames + 1 } else { 0 };
+    let shot = world.get_resource::<ShotWhenReady>().map(|s| s.at);
+    note_stall(world, || match shot {
+        Some(at) => format!("the env shot waits on: {}", waiting_on(world, &loads, frames, Some(at))),
+        None => format!("the fixed step: {}", waiting_on(world, &loads, frames, None)),
+    });
     let mut ready = world.resource_mut::<Ready>();
-    ready.frames = if now { ready.frames + 1 } else { 0 };
+    ready.frames = frames;
     ready.loads = loads;
     let step = fixed && now && ready.steps < cap;
     ready.steps += u64::from(step);
@@ -482,15 +554,15 @@ pub fn shoot_when_ready(world: &mut World) {
         let e = capture(world, path);
         world.resource_mut::<ShotWhenReady>().taken = Some(e);
     } else if stalled {
-        let started = world.get_resource::<RuntimeInfo>().is_none_or(|i| i.generation > 0);
-        let why = if started { not_ready(world, &loads) } else { "the script has not started".to_string() };
+        let why = waiting_on(world, &loads, frames, Some(at));
         give_up(world, &format!("{}: not ready after {} s with no progress ({why}); no shot saved", path.display(), window.as_secs_f64()));
     }
 }
 
-/// Ends [`ShotWhenReady`] with `error`, and the app with code 1.
+/// Ends [`ShotWhenReady`] with `error`, and the app with code 1. Logged as `shot error: …`: Bevy
+/// writes the level as `ERROR`, which a filter on `rror` misses.
 fn give_up(world: &mut World, error: &str) {
-    error!("{error}");
+    error!("shot error: {error}");
     world.remove_resource::<ShotWhenReady>();
     world.write_message(AppExit::from_code(1));
 }
@@ -618,15 +690,16 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
     let state = match state {
         Progress::Waiting { path, since, mut clock, ready, at } => {
             let idle = pipelines_idle(world);
-            let loads = if idle { loads(world) } else { Loads { loading: 1, failed: Vec::new() } };
             // Loads are only counted once the pipelines are idle.
+            let loads = if idle { loads(world) } else { Loads::default() };
             clock.note(pipelines_done(world), idle.then_some(loads.loading));
-            let ready = match (pipelines_idle(world) && loads.loading == 0, at == update) {
+            let ready = match (pipelines_idle(world) && loads.loading == 0 && held(world).is_none(), at == update) {
                 (false, _) => 0,
                 (true, true) => ready,
                 (true, false) => ready + 1,
             };
             if ready >= METHOD_FRAME {
+                note_stall(world, || "bevy-ts/screenshot is capturing".to_string());
                 warn_failed(&path, &loads);
                 Progress::Pending(capture(world, path))
             } else if world.contains_resource::<PipelinesWaiting>() && pipelines_waiting(world).is_none() && since.elapsed() > TIMEOUT {
@@ -637,6 +710,7 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
                 let answer = Err(internal(format!("{}: {} after {window} s with no progress", path.display(), not_ready(world, &loads))));
                 Progress::Done { answer, at: update, owed: 1 }
             } else {
+                note_stall(world, || format!("bevy-ts/screenshot {} waits on: {}", path.display(), waiting_on(world, &loads, ready.into(), Some(METHOD_FRAME.into()))));
                 Progress::Waiting { path, since, clock, ready, at: update }
             }
         }
@@ -645,6 +719,7 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
     let state = match state {
         Progress::Pending(e) => match result(world, e) {
             Some(r) => {
+                note_stall(world, String::new);
                 if r.is_err() {
                     abandon(world, e);
                 }
@@ -777,6 +852,110 @@ mod tests {
             }
         }
         assert_eq!(elapsed, Some(STEP * 5), "the shot's clock");
+    }
+
+    /// An app counting ready frames under [`FixedStep`], no pipeline ever waiting.
+    fn fixed_app() -> (App, PipelinesWaiting) {
+        let mut app = App::new();
+        app.add_plugins((bevy::time::TimePlugin, FrameCountPlugin, ReadyPlugin))
+            .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
+            .insert_resource(FixedStep);
+        app.finish();
+        app.cleanup();
+        let renders = app.world().resource::<PipelinesWaiting>().clone();
+        (app, renders)
+    }
+
+    /// One update, its render then recorded with nothing waiting.
+    fn update(app: &mut App, renders: &PipelinesWaiting) {
+        let drawing = app.world().resource::<FrameCount>().0;
+        app.update();
+        renders.0.lock().unwrap().push_back((drawing, 0, 0));
+    }
+
+    /// Held frames with nothing pending count no ready frame and step no time; the first after the
+    /// release steps one `STEP`.
+    #[test]
+    fn a_held_frame_is_not_ready_and_steps_no_time() {
+        let (mut app, renders) = fixed_app();
+        app.world_mut().resource_mut::<ReadyHold>().hold("data");
+        for _ in 0..20 {
+            update(&mut app, &renders);
+            let ready = app.world().resource::<Ready>();
+            assert_eq!((ready.frames, ready.steps), (0, 0), "a held frame");
+            assert_eq!(app.world().resource::<Time<Virtual>>().elapsed(), Duration::ZERO);
+            assert!(matches!(app.world().resource::<TimeUpdateStrategy>(), TimeUpdateStrategy::ManualDuration(d) if d.is_zero()));
+        }
+        assert!(app.world_mut().resource_mut::<ReadyHold>().release("data"));
+        update(&mut app, &renders);
+        assert_eq!(app.world().resource::<Ready>().steps, 1);
+        assert_eq!(app.world().resource::<Time<Virtual>>().elapsed(), STEP);
+    }
+
+    /// agent town's learn labels wait 45 Update calls (`LABELS_FROM`). Held until data that comes
+    /// after a load-dependent number of updates, the steps run by update 45 still differ by those
+    /// updates: a hold fixes when the first step comes, not what an update count means. Counted in
+    /// steps (frames with `Time` advancing), the gate opens at the same step in every run.
+    #[test]
+    fn an_update_count_is_not_a_step_count_under_a_hold() {
+        let gate = |held_for: u32| {
+            let (mut app, renders) = fixed_app();
+            app.world_mut().resource_mut::<ReadyHold>().hold("data");
+            let (mut at_update_45, mut steps_at_open) = (None, None);
+            for n in 1..=200u32 {
+                if n == held_for {
+                    app.world_mut().resource_mut::<ReadyHold>().release("data");
+                }
+                update(&mut app, &renders);
+                let steps = app.world().resource::<Ready>().steps;
+                if n == 45 {
+                    at_update_45 = Some(steps);
+                }
+                if steps_at_open.is_none() && app.world().resource::<Time<Virtual>>().elapsed() >= STEP * 45 {
+                    steps_at_open = Some(steps);
+                }
+            }
+            (at_update_45.unwrap(), steps_at_open.unwrap())
+        };
+        let (quiet, loaded) = (gate(5), gate(12));
+        assert_ne!(quiet.0, loaded.0, "steps by update 45");
+        assert_eq!(quiet.1, loaded.1, "steps when 45 steps have run");
+    }
+
+    /// Without a shot or the fixed step, a hold leaves Bevy's time alone.
+    #[test]
+    fn a_hold_without_a_shot_or_the_fixed_step_changes_nothing() {
+        let mut app = App::new();
+        app.add_plugins((bevy::time::TimePlugin, FrameCountPlugin, ReadyPlugin)).insert_resource(TimeUpdateStrategy::ManualDuration(STEP));
+        app.finish();
+        app.cleanup();
+        app.world_mut().resource_mut::<ReadyHold>().hold("data");
+        for _ in 0..3 {
+            app.update();
+        }
+        assert!(matches!(app.world().resource::<TimeUpdateStrategy>(), TimeUpdateStrategy::ManualDuration(d) if *d == STEP));
+        assert!(app.world().resource::<Time<Virtual>>().elapsed() > Duration::ZERO, "time ran");
+    }
+
+    /// A hold never released: the shot gives up after its window, naming the hold, and the stall
+    /// watchdog's note says what it waited on.
+    #[test]
+    fn a_hold_never_released_fails_the_shot_naming_it() {
+        let path = std::env::temp_dir().join(format!("bevy-ts-remote-held-{}.png", std::process::id()));
+        let (mut app, renders) = fixed_app();
+        let note = crate::stall::StallNote::default();
+        app.insert_resource(ReadyTimeout(Duration::from_millis(200))).insert_resource(ShotWhenReady::new(&path)).insert_resource(note.clone());
+        app.world_mut().resource_mut::<ReadyHold>().hold("abymed");
+        let start = Instant::now();
+        while app.world().contains_resource::<ShotWhenReady>() {
+            assert!(start.elapsed() < Duration::from_secs(30), "still waiting");
+            update(&mut app, &renders);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
+        assert!(!path.exists(), "a shot was saved");
+        let note = note.get().expect("a note");
+        assert!(note.contains("the env shot waits on: the script started; held by the script: abymed; ready frame 0 of 60"), "{note}");
     }
 
     /// A shot waiting on pipelines: done rising every half `ReadyTimeout` keeps it waiting past the

@@ -17,6 +17,7 @@ pub mod input;
 pub mod play;
 pub mod project;
 pub mod reader;
+pub mod ready;
 pub mod rust_events;
 pub mod session;
 pub mod supervise;

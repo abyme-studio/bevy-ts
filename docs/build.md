@@ -113,12 +113,38 @@ another's, in a few pixels). Without it, a batch draws its instances in the orde
 which changes with load, so the render world also gets `StableBinOrder` (vendor/bevy_render/PATCH.md):
 each batch draws in entity order, the same on every run. So the shot is the same picture, byte for byte, at any machine load.
 `BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the same clock and drawing; a
-`bevy-ts/screenshot` without it can differ in such pixels. `BEVY_TS_PIPELINE_TRACE=1` prints when the pipelines are ready
+`bevy-ts/screenshot` without it can differ in such pixels.
+
+Bevy cannot see data a game waits for that is not an asset: a reply over a WebSocket, say. Its
+frames look ready, so time steps before the data comes, and how many steps depends on the load. A
+script says "not yet" with `ReadyHold`, from `bevy-ts/ready`. It is bevy-ts's own: Bevy has no
+such hold. While any name is held, no frame is ready: neither shot counts it, and the fixed step
+keeps `TimeUpdateStrategy::ManualDuration(Duration::ZERO)`. Hold in a `Startup` system, which runs
+before the first frame the script counts as started, and release where the data is applied:
+
+```ts
+import { app, Startup } from "bevy-ts";
+import type { ReadyHold } from "bevy-ts/ready";
+
+export function wait(ready: ReadyHold) { ready.hold("abymed"); }
+export function apply(ready: ReadyHold /*, the data */) { /* first records applied */ ready.release("abymed"); }
+app.addSystems(Startup, wait);
+```
+
+`hold`, `release` and `isHeld` take a name; two parts of a game hold apart. A hold is no progress:
+one never released fails either shot after 60 s, naming it (`held by the script: abymed`). With
+no shot and no fixed step it changes nothing. A shot that gives up says everything it waited on:
+whether the script started, the hold, pipelines waiting, assets loading, and the ready frames
+counted (`ready frame 12 of 60`). `BEVY_TS_PIPELINE_TRACE=1` prints when the pipelines are ready
 ([native.md](native.md#project-engines)). Every bound above runs inside Update, so a frame that never
 finishes (a GPU driver that stops taking the engine's work, a script that never returns) would hang
 the run. The stall watchdog bounds it: a frame open for 30 s of wall time prints one line to
 stderr, starting `Update stopped:`, with the frame, how long ago it started and where it is stuck
-(the frame's systems, waiting for the render world, or the render). Every protocol request still
+(the frame's systems, waiting for the render world, or the render), and, while a shot or the fixed
+step waits, what it waits on, as a shot that gives up says it. The same line is then logged through
+Bevy's log at error level, as `stall error: Update stopped: …`, and a shot that gives up logs
+`shot error: …`: Bevy writes the level as `ERROR`, so the word in the text is what a filter on
+`error` or `rror` keeps. Every protocol request still
 open, a waiting `bevy-ts/screenshot` included, is answered with that line as a `-32603` error.
 Then a headless run (so every `BEVY_TS_SCREENSHOT` run) exits with code 75 (`EX_TEMPFAIL`: it may
 pass if run again); a window or `--viewport` only warns, and says when Update resumed; `--inspect`

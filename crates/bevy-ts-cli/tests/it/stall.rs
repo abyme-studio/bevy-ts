@@ -116,6 +116,30 @@ fn a_system_that_never_returns_is_reported_in_the_frames_systems() {
     assert!(stall.line().contains("the frame's systems have not finished"), "{}", stall.line());
 }
 
+/// A stall while a shot waits on a hold: the line names the hold, the script and the ready frames,
+/// so an exit 75 says what the shot was waiting on (change `ready-hold`).
+#[test]
+fn a_stall_names_what_the_shot_waits_on() {
+    use bevy_ts_remote::screenshot::{FixedStep, ReadyHold, ReadyPlugin, ShotWhenReady};
+    let gate = Arc::new(Gate::default());
+    let (action, rx) = report(&gate);
+    let dir = TestDir::new("stall-shot-note");
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins).add_plugins(bevy_ts_remote::stall::StallPlugin { limit: LIMIT, action }).add_plugins(ReadyPlugin);
+    app.insert_resource(FixedStep).insert_resource(ShotWhenReady::new(dir.join("never.png")));
+    app.world_mut().resource_mut::<ReadyHold>().hold("abymed");
+    let g = gate.clone();
+    app.add_systems(Update, move |frame: Res<FrameCount>| g.hold(frame.0 + 1));
+    app.finish();
+    app.cleanup();
+    updates(&mut app, 3);
+    gate.at.store(4, Ordering::SeqCst);
+    app.update();
+    let line = rx.recv_timeout(BOUND).expect("a stall report").line();
+    assert!(line.starts_with("Update stopped: frame 4 "), "{line}");
+    assert!(line.ends_with("; the env shot waits on: the script started; held by the script: abymed, no frame rendered; ready frame 0 of 60"), "{line}");
+}
+
 /// Posts one JSON-RPC request and returns the response's JSON, waiting for the server to come up.
 fn post(port: u16, method: &str, params: Value) -> Value {
     let body = serde_json::json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();

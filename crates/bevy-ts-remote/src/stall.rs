@@ -6,9 +6,11 @@
 //! - the render part, from that extract until the render world's `Render` has finished.
 //!
 //! A part open for the limit, in wall time, is a stall. Time between frames is not: a test may
-//! hold its app idle. On a stall it writes one `Update stopped:` line on stderr, answers every
-//! protocol request still open with that line, then exits, warns or calls the test's function
-//! ([`StallAction`]).
+//! hold its app idle. On a stall it writes one `Update stopped:` line on stderr, then logs the same
+//! line through Bevy's log at error level (when the app has a log, so a reader keeping only errors
+//! keeps it), answers every protocol request still open with that line, then exits, warns or calls
+//! the test's function ([`StallAction`]). The line ends with what a waiting shot was waiting on, from
+//! [`StallNote`].
 
 use bevy::app::MainScheduleOrder;
 use bevy::ecs::schedule::ScheduleLabel;
@@ -58,6 +60,21 @@ pub struct StallSettings {
     pub action: StallAction,
 }
 
+/// What a waiting shot last said it waits on (the script, a hold, pipelines, loads, ready frames),
+/// set each frame by the shot's owner (`screenshot`) and read by the watchdog's thread on a stall.
+#[derive(Resource, Clone, Default)]
+pub struct StallNote(Arc<Mutex<Option<String>>>);
+
+impl StallNote {
+    pub fn set(&self, note: Option<String>) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = note;
+    }
+
+    pub fn get(&self) -> Option<String> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+}
+
 /// Where a stalled frame is stuck.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stuck {
@@ -80,6 +97,8 @@ pub struct Stall {
     pub stuck: Stuck,
     /// The thread that built the app, when it has a name (a test's under `cargo test`).
     pub thread: Option<String>,
+    /// [`StallNote`] at the stall: what a waiting shot waits on.
+    pub note: Option<String>,
 }
 
 impl Stall {
@@ -91,13 +110,24 @@ impl Stall {
             Stuck::Render => "its render has not finished: the GPU is not taking this engine's work",
         };
         let thread = self.thread.as_ref().map(|t| format!(" (thread {t})")).unwrap_or_default();
+        let note = self.note.as_ref().map(|n| format!("; {n}")).unwrap_or_default();
         format!(
-            "Update stopped: frame {} started {:.1} s ago (limit {} s) and {place}{thread}",
+            "Update stopped: frame {} started {:.1} s ago (limit {} s) and {place}{thread}{note}",
             self.frame,
             self.open.as_secs_f64(),
             self.limit.as_secs_f64(),
         )
     }
+}
+
+/// Reports a stall's line: raw on stderr first, for tools that match `Update stopped:` at a line's
+/// start, then as an error through Bevy's log, for readers that keep only errors. Bevy writes the
+/// level as `ERROR`, so the record also says `stall error` for a filter on `error` or `rror`.
+fn report(line: &str) {
+    // Straight to the stream: `eprintln!` here inherits a test's output capture, and the exit
+    // after it would drop the line with it.
+    let _ = writeln!(std::io::stderr(), "{line}");
+    error!("stall error: {line}");
 }
 
 /// The main schedule's first label: the main part opens.
@@ -256,6 +286,7 @@ struct Shared {
     renders: bool,
     /// Whether the app serves the protocol: then its mailbox must be there to take.
     remote: bool,
+    note: StallNote,
 }
 
 impl Plugin for StallPlugin {
@@ -269,8 +300,10 @@ impl Plugin for StallPlugin {
             render_frame: AtomicU64::new(0),
             render: AtomicU64::new(0),
         };
+        let note = StallNote::default();
         app.insert_resource(StallSettings { limit: self.limit, action: self.action.clone() })
-            .insert_resource(Shared { beats: Arc::new(beats), mailbox: Arc::default(), thread, renders: false, remote: false });
+            .insert_resource(note.clone())
+            .insert_resource(Shared { beats: Arc::new(beats), mailbox: Arc::default(), thread, renders: false, remote: false, note });
         app.init_schedule(StallFirst).init_schedule(StallLast).init_schedule(StallStartup);
         let mut order = app.world_mut().resource_mut::<MainScheduleOrder>();
         order.insert_before(First, StallFirst);
@@ -304,8 +337,8 @@ fn open_main(shared: Res<Shared>, settings: Res<StallSettings>, mut started: Loc
     if !*started {
         *started = true;
         if !settings.limit.is_zero() {
-            let (beats, mailbox, thread, settings) = (Arc::downgrade(&shared.beats), shared.mailbox.clone(), shared.thread.clone(), settings.clone());
-            std::thread::Builder::new().name("bevy-ts stall watchdog".into()).spawn(move || watch(beats, mailbox, thread, settings)).unwrap();
+            let (beats, mailbox, thread, settings, note) = (Arc::downgrade(&shared.beats), shared.mailbox.clone(), shared.thread.clone(), settings.clone(), shared.note.clone());
+            std::thread::Builder::new().name("bevy-ts stall watchdog".into()).spawn(move || watch(beats, mailbox, thread, settings, note)).unwrap();
         }
     }
 }
@@ -344,7 +377,7 @@ fn take_mailbox(shared: Res<Shared>, sender: Option<ResMut<BrpSender>>) {
 }
 
 /// The watchdog's thread, until the app drops its beats.
-fn watch(beats: Weak<Beats>, mailbox: Arc<Mailbox>, thread: Option<String>, settings: StallSettings) {
+fn watch(beats: Weak<Beats>, mailbox: Arc<Mailbox>, thread: Option<String>, settings: StallSettings, note: StallNote) {
     let tick = (settings.limit / 10).max(Duration::from_millis(100));
     let mut current: Option<Open> = None;
     loop {
@@ -364,11 +397,9 @@ fn watch(beats: Weak<Beats>, mailbox: Arc<Mailbox>, thread: Option<String>, sett
         }
         let Some(open) = stalled(&snapshot, now, settings.limit) else { continue };
         current = Some(open);
-        let stall = Stall { frame: open.frame, open: now.saturating_sub(open.since), limit: settings.limit, stuck: open.stuck, thread: thread.clone() };
+        let stall = Stall { frame: open.frame, open: now.saturating_sub(open.since), limit: settings.limit, stuck: open.stuck, thread: thread.clone(), note: note.get() };
         let line = stall.line();
-        // Straight to the stream: `eprintln!` here inherits a test's output capture, and the exit
-        // below would drop the line with it.
-        let _ = writeln!(std::io::stderr(), "{line}");
+        report(&line);
         mailbox.stall(&line);
         match &settings.action {
             StallAction::Exit(code) => {
@@ -429,9 +460,35 @@ mod tests {
 
     #[test]
     fn the_line_names_the_frame_and_the_place() {
-        let stall = Stall { frame: 812, open: Duration::from_secs(30), limit: LIMIT, stuck: Stuck::Render, thread: Some("it::a_test".into()) };
+        let stall = Stall { frame: 812, open: Duration::from_secs(30), limit: LIMIT, stuck: Stuck::Render, thread: Some("it::a_test".into()), note: None };
         let line = stall.line();
         assert!(line.starts_with("Update stopped: frame 812 "), "{line}");
         assert!(line.contains("render has not finished") && line.contains("it::a_test"), "{line}");
+        let noted = Stall { note: Some("the env shot waits on: held by the script: abymed".into()), ..stall }.line();
+        assert!(noted.starts_with(&line) && noted.ends_with("; the env shot waits on: held by the script: abymed"), "{noted}");
+    }
+
+    /// The line goes to Bevy's log as an error too, so a filter on `rror` keeps it.
+    #[test]
+    fn the_line_is_logged_as_an_error() {
+        use bevy::log::tracing_subscriber::{self, util::SubscriberInitExt};
+        #[derive(Clone, Default)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf::default();
+        let writer = buf.clone();
+        let _guard = tracing_subscriber::fmt().with_ansi(false).with_writer(move || writer.clone()).finish().set_default();
+        report("Update stopped: frame 7 started 30.0 s ago (limit 30 s) and the frame's systems have not finished");
+        let out = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
+        let kept: Vec<_> = out.lines().filter(|l| l.contains("rror")).collect();
+        assert!(kept.len() == 1 && kept[0].contains("ERROR") && kept[0].contains("stall error: Update stopped: frame 7"), "{out}");
     }
 }

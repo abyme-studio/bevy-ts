@@ -316,6 +316,7 @@ pub fn base_app_with_sources(
         .add_plugins(crate::rust_events::RustEventsPlugin)
         .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
         .add_plugins(crate::session::ScriptSessionPlugin)
+        .add_plugins(crate::ready::ScriptReadyPlugin)
         .add_plugins(bevy_ts_remote::screenshot::ReadyPlugin)
         .add_plugins(crate::assets::ScriptAssetsPlugin)
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))

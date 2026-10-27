@@ -8,7 +8,7 @@ Every engine SHALL have Bevy resource `ReadyHold`, a set of names, empty at star
 
 While any name is held, no frame SHALL be ready, whatever its pipelines and loads, and a frame held SHALL start the ready count again. Under `BEVY_TS_SCREENSHOT` and `BEVY_TS_FIXED_STEP=1`, time SHALL NOT step on a held frame: `TimeUpdateStrategy` stays `ManualDuration(Duration::ZERO)`. Once the last name is released in a frame, the next frame SHALL be ready by the usual rules. A hold set by a `Startup` system of the first generation SHALL hold from the first frame on which the script counts as started, so no step comes before it. Without `BEVY_TS_SCREENSHOT`, `BEVY_TS_FIXED_STEP=1` or a waiting `bevy-ts/screenshot`, a hold SHALL change nothing.
 
-A hold SHALL NOT be progress. When the env shot fails after 60 s with no progress while a name is held, its error SHALL say `held by the script: ` and the held names, joined by `, `, beside anything else not ready.
+A hold SHALL NOT be progress. When the env shot fails after 60 s with no progress while a name is held, its error SHALL say `held by the script: ` and the held names, joined by `, `, beside anything else not ready. The env shot's error SHALL say everything it waited on: whether the script started, the hold, pipelines waiting, assets loading, and `ready frame <n> of <at>`.
 
 #### Scenario: Data that arrives after the engine starts
 - **WHEN** a script holds `"data"` in `Startup`, and releases it in the system that spawns a looping glTF clip once a reply comes, the reply coming after a wall delay of 0 ms in one run and 400 ms with 30 ms of extra work a frame in two more
