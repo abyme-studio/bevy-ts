@@ -6,7 +6,7 @@ What a run with no window renders into: one offscreen image for every camera and
 ## Requirements
 
 ### Requirement: A headless run renders into one offscreen image
-A headless run (`bevy-ts dev --headless`, `bevy-ts play --headless`, `bevy-ts skeleton --headless`) SHALL open no window and SHALL render every camera into one 960x540 offscreen image. `bevy-ts/screenshot` SHALL capture that image when asked. `BEVY_TS_SCREENSHOT=<path>` SHALL save it once as `<path>`, through the same capture code as `bevy-ts/screenshot`; it is for runs that serve no protocol, such as `bevy-ts play --headless`.
+A headless run (`bevy-ts dev --headless`, `bevy-ts play --headless`, `bevy-ts skeleton --headless`) SHALL open no window and SHALL render every camera into one offscreen image, 960x540 unless `BEVY_TS_SIZE` sets its size. `bevy-ts/screenshot` SHALL capture that image when asked. `BEVY_TS_SCREENSHOT=<path>` SHALL save it once as `<path>`, through the same capture code as `bevy-ts/screenshot`; it is for runs that serve no protocol, such as `bevy-ts play --headless`.
 
 It SHALL save at the 60th ready frame in a row. A frame is ready when:
 - the script has applied its first generation;
@@ -86,3 +86,30 @@ A headless run SHALL give `IsDefaultUiCamera` to the highest-order camera render
 #### Scenario: A game's own default UI camera
 - **WHEN** a headless game spawns a camera with `IsDefaultUiCamera`
 - **THEN** UI targets that camera, and headless holds no `IsDefaultUiCamera` of its own until the game's is removed
+
+### Requirement: BEVY_TS_SIZE sets the headless image's size
+`BEVY_TS_SIZE=<W>x<H>` SHALL set the headless image to `W` by `H` pixels, at start-up. `W` and `H` SHALL be whole numbers of at least 1, joined by a lowercase `x`; surrounding space SHALL be ignored. Only a headless run SHALL read it; a window or `--viewport` SHALL ignore it.
+
+The size SHALL belong to the image: every camera, game UI laid out by the default UI camera, the window-less primary window that headless input moves over, `BEVY_TS_SCREENSHOT`'s PNG, and `bevy-ts/screenshot`'s PNG and its `width` and `height` SHALL follow it.
+
+A value that is not `<W>x<H>`, has a side of 0, or has a side larger than the GPU's largest 2D texture SHALL stop the start before the first frame, with exit code 2 and one line on stderr that starts `bevy-ts: BEVY_TS_SIZE=<value>:` and says what is wrong.
+
+#### Scenario: A shot at a larger size
+- **WHEN** `bevy-ts play --headless` runs with `BEVY_TS_SIZE=2880x1620` and `BEVY_TS_SCREENSHOT=shot.png`
+- **THEN** `shot.png` is 2880x1620
+
+#### Scenario: The protocol's shot at a set size
+- **WHEN** a headless engine sized 640x480 is asked for `bevy-ts/screenshot`
+- **THEN** the answer's `width` and `height` are 640 and 480, and so is the PNG
+
+#### Scenario: UI fills a set size
+- **WHEN** a headless engine sized 640x480 lays out a UI root 100% wide and 100% high
+- **THEN** the root's target is 640x480 and the root covers the image from its top-left
+
+#### Scenario: A bad value
+- **WHEN** a headless run starts with `BEVY_TS_SIZE=2880` or `BEVY_TS_SIZE=0x540`
+- **THEN** it exits with code 2 and a stderr line starting `bevy-ts: BEVY_TS_SIZE=`, and renders no frame
+
+#### Scenario: Unset
+- **WHEN** a headless run starts without `BEVY_TS_SIZE`
+- **THEN** its image is 960x540
