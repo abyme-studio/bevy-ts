@@ -2,7 +2,7 @@
 //! ephemeral port (std `TcpListener`, hand-written answers), in clear and over TLS with the test
 //! authority. One exchange each; redirects are core's (`net.rs`).
 
-use crate::socket::{accept_tls, test_tls};
+use crate::socket::{accept_tls, refused_addr, test_tls};
 use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy_ts::net::{FetchId, HttpRequest, HttpResponse, NetEvent, NetTls, SocketTransport, Transport};
 use std::io::{Read, Write};
@@ -150,9 +150,7 @@ fn chunked_and_close_delimited_bodies() {
 
 #[test]
 fn nothing_listening() {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}/", listener.local_addr().unwrap());
-    drop(listener);
+    let url = format!("http://{}/", refused_addr());
     let mut t = transport();
     t.fetch(ID, &request("GET", &url, &[], b""));
     let e = outcome(&mut t).unwrap_err();

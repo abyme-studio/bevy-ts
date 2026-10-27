@@ -74,6 +74,13 @@ pub fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/it/fixtures/tls").join(name)
 }
 
+/// A loopback address nothing listens on. Its port is below every platform's ephemeral range, so
+/// no test's `bind(0)` is given it: an ephemeral port freed instead can go straight to another
+/// test's one-exchange server, whose exchange this test's connection then takes.
+pub fn refused_addr() -> std::net::SocketAddr {
+    (20000..30000).find_map(|port| TcpListener::bind(("127.0.0.1", port)).ok()).expect("a free port below the ephemeral range").local_addr().unwrap()
+}
+
 /// The transport's TLS trusting only the test authority.
 pub fn test_tls() -> NetTls {
     NetTls::with_roots(&std::fs::read(fixture("ca.pem")).unwrap()).unwrap()
@@ -219,9 +226,7 @@ fn a_dropped_connection_is_1006() {
 
 #[test]
 fn a_refused_connection_is_1006() {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("ws://{}/", listener.local_addr().unwrap());
-    drop(listener);
+    let url = format!("ws://{}/", refused_addr());
     let mut t = transport();
     let mut events = Vec::new();
     open(&mut t, &url, &[]);
