@@ -159,6 +159,9 @@ fn stopping_the_arena_puts_it_back_as_the_source_describes_it() {
     app.world_mut().entity_mut(a).despawn();
     let (b, b_at) = named(&mut app, "EnemyB")[0];
     call(&mut app, "bevy-ts/viewport_select", json!({ "entities": [b.to_bits()] }));
+    // The play adds a component to B, so the Stop respawns it, whether it keeps the arena or
+    // remounts it.
+    app.world_mut().entity_mut(b).insert(Stunned);
     let r = call(&mut app, "bevy-ts/level_open", json!({ "file": "levels/room.bsn" }));
     assert_eq!(r["status"], "opened");
     assert_eq!(named(&mut app, "Guard").len(), 1);
@@ -174,6 +177,7 @@ fn stopping_the_arena_puts_it_back_as_the_source_describes_it() {
     assert_eq!(named(&mut app, "EnemyA")[0].1, Vec3::new(-3.0, 0.0, -4.0));
     let (b2, b2_at) = named(&mut app, "EnemyB")[0];
     assert_eq!(b2_at, b_at);
+    assert_ne!(b2, b, "B respawned");
     assert_eq!(read_res(&app, "game::Score").unwrap()["value"], 0.0, "Score at its insertResource value");
     assert_eq!(bullets(&mut app), 0, "what TS spawned is gone");
     // Only the arena, with its opener; the room's close was streamed.

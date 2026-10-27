@@ -328,3 +328,52 @@ fn an_inherited_visibility_change_is_not_written_back() {
     let c = restore::changes(app.world(), ROOT).unwrap();
     assert_eq!(restore::write_back(app.world_mut(), ROOT, &c.write), [p("arena/b")]);
 }
+
+/// Mounted with a mesh on `b`, with Bevy's transforms and bounds as a game runs them, its `Aabb`
+/// computed one frame in.
+fn meshed() -> (App, Entity) {
+    let mut app = app();
+    app.add_plugins(bevy::transform::TransformPlugin).add_systems(PostUpdate, bevy::camera::visibility::calculate_bounds);
+    let mut desc = serde_json::to_value(level(0.0)).unwrap();
+    desc[0]["children"][1]["components"].as_array_mut().unwrap().push(json!({ "type": "mesh", "kind": "intrinsic", "props": { "shape": "cuboid" } }));
+    bevy_ts_tsx::reconcile_external(app.world_mut(), ROOT, None, &serde_json::from_value::<Vec<NodeDesc>>(desc).unwrap()).unwrap();
+    app.update();
+    let b = entity(&app, "arena/b").unwrap();
+    assert!(app.world().get::<bevy::camera::primitives::Aabb>(b).is_some(), "Bevy computed the bounds");
+    (app, b)
+}
+
+#[test]
+fn bounds_bevy_computes_again_from_the_mesh_are_no_change() {
+    use bevy::camera::primitives::Aabb;
+    let (mut app, b) = meshed();
+    restore::take_baselines(app.world_mut());
+    let start = app.world().read_change_tick();
+    // As the mesh asset's load lands after the start: Bevy writes the `Aabb` again.
+    let mesh = app.world().get::<Mesh3d>(b).unwrap().id();
+    app.world_mut().resource_mut::<Assets<Mesh>>().get_mut(mesh).unwrap();
+    app.update();
+    let t = app.world().entity(b).get_change_ticks::<Aabb>().unwrap();
+    assert!(t.is_changed(start, app.world().read_change_tick()), "Bevy wrote the Aabb after the start");
+    let c = restore::changes(app.world(), ROOT).unwrap();
+    assert!(c.respawn.is_empty() && c.write.is_empty(), "{c:?}");
+}
+
+#[test]
+fn bevy_computes_a_written_back_meshs_bounds_again() {
+    use bevy::camera::primitives::Aabb;
+    let (mut app, b) = meshed();
+    let bounds = *app.world().get::<Aabb>(b).unwrap();
+    restore::take_baselines(app.world_mut());
+    // The play swaps the mesh: Bevy bounds the new one.
+    let big = app.world_mut().resource_mut::<Assets<Mesh>>().add(Cuboid::new(4.0, 4.0, 4.0));
+    app.world_mut().entity_mut(b).insert(Mesh3d(big));
+    app.update();
+    assert_ne!(*app.world().get::<Aabb>(b).unwrap(), bounds);
+    let c = restore::changes(app.world(), ROOT).unwrap();
+    assert_eq!(c.write, [p("arena/b")]);
+    assert!(restore::write_back(app.world_mut(), ROOT, &c.write).is_empty(), "the mesh is tsx's");
+    app.update();
+    // Recomputed: `Aabb`, which `calculate_bounds` writes where `Mesh3d` changed.
+    assert_eq!(*app.world().get::<Aabb>(b).unwrap(), bounds, "Bevy bounds the level's mesh again");
+}

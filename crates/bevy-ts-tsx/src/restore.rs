@@ -173,6 +173,9 @@ pub fn recomputed(world: &World) -> Vec<ComponentId> {
         c.component_id::<GlobalTransform>(),
         // `mark_dirty_trees`, set where `Transform` changed and on each ancestor.
         c.component_id::<bevy::transform::components::TransformTreeChanged>(),
+        // `calculate_bounds`, from `Mesh3d` and its mesh asset: it changes when the asset loads
+        // after the start, with nothing of the game touched.
+        c.component_id::<bevy::camera::primitives::Aabb>(),
     ]
     .into_iter()
     .flatten()
