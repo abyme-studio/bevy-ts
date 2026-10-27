@@ -31,6 +31,10 @@ const processes = {
     cmd: "cd bench/dx/rust && cargo check 2>&1 | tee ../results/rust-check.txt",
   },
   build: { cmd: "cargo build --workspace --all-targets" },
+  // Change material-image-sampler: the script material render, materials, scene, reflect-asset and world-text tests, and clippy, in the gate slot.
+  "material-image-sampler-test": {
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:material-image-sampler -- bash -c \"cargo test -p bevy-ts-material --lib && cargo test -p bevy-ts-material --no-fail-fast --test it -- world_text_render:: scene:: alpha_render:: && cargo test -p bevy-ts-cli --no-fail-fast --test it -- material_params_render:: materials:: scene_material:: reflect_assets:: && cargo clippy -p bevy-ts-material -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/material-image-sampler-test.log | grep -E -A5 \"^error|^warning|-->|test result|FAILED|panicked\" | tail -150'",
+  },
   // Change screenshot-cold-and-atomic: the ready-shot tests, full log in target/screenshot-cold-test.log, in a check slot.
   "screenshot-cold-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; NO_COLOR=1 ~/dev/abyme/scripts/gate-slot run bevy-ts:screenshot-cold-and-atomic -- bash -c \"cargo test -p bevy-ts-remote --lib screenshot && cargo test -p bevy-ts-cli --no-fail-fast --test it -- screenshot_ready:: screenshot::\" > target/screenshot-cold-test.log 2>&1; s=$?; grep -E \"^test |test result|panicked\" target/screenshot-cold-test.log; exit $s'" },
   // Change mesh-picking: its crates built, then the headless click and the switch's tests.

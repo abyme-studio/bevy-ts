@@ -21,20 +21,22 @@ use bevy::pbr::{
 use bevy::platform::collections::hash_map::Entry;
 use bevy::prelude::*;
 use bevy::render::camera::{DirtySpecializationSystems, DirtySpecializations};
-use bevy::render::erased_render_asset::{ErasedRenderAsset, ErasedRenderAssetPlugin, PrepareAssetError};
+use bevy::image::ImageSampler;
+use bevy::platform::collections::HashMap;
+use bevy::render::erased_render_asset::{ErasedRenderAsset, ErasedRenderAssetDependency, ErasedRenderAssetPlugin, PrepareAssetError};
 use bevy::render::material_bind_groups::{MaterialBindGroupAllocator, MaterialBindGroupAllocators, RenderMaterialBindings};
-use bevy::render::render_asset::RenderAssets;
+use bevy::render::render_asset::{RenderAssets, prepare_assets};
 use bevy::render::render_phase::DrawFunctions;
 use bevy::render::render_resource::binding_types::{sampler, storage_buffer_read_only_sized, texture_2d, uniform_buffer_sized};
 use bevy::render::render_resource::{
     BindGroupBuilder, BindGroupLayoutDescriptor, BlendComponent, BlendFactor, BlendOperation, BlendState,
-    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages, TextureSampleType, TextureViewDimension, UnpreparedBindingResource, UnpreparedBindingResources,
+    RenderPipelineDescriptor, SamplerBindingType, ShaderStages, TextureSampleType, TextureViewDimension, UnpreparedBindingResource, UnpreparedBindingResources,
 };
 use bevy::render::renderer::RenderDevice;
 use bevy::render::storage::{GpuShaderBuffer, ShaderBuffer};
 use bevy::render::sync_world::MainEntity;
 use bevy::render::texture::{FallbackImage, GpuImage};
-use bevy::render::{Extract, RenderApp, RenderStartup};
+use bevy::render::{Extract, Render, RenderApp, RenderStartup};
 use std::any::TypeId;
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -104,9 +106,10 @@ pub struct ScriptMaterialRenderPlugin;
 impl Plugin for ScriptMaterialRenderPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<ScriptMaterial>()
-            .add_plugins(ErasedRenderAssetPlugin::<ScriptMaterial>::default())
+            .add_plugins(ErasedRenderAssetPlugin::<ScriptMaterial, AfterImages>::default())
             .init_resource::<EntitiesNeedingSpecialization<ScriptMaterial>>()
-            .add_systems(PostUpdate, check_entities_needing_specialization.after(AssetEventSystems));
+            .init_resource::<ImageSamplers>()
+            .add_systems(PostUpdate, (check_entities_needing_specialization, rebind_samplers).after(AssetEventSystems));
         crate::scene::plugin(app);
         crate::alpha::plugin(app);
         crate::instance::plugin(app);
@@ -119,7 +122,7 @@ impl Plugin for ScriptMaterialRenderPlugin {
         }
         render_app
             .insert_resource(watch)
-            .add_systems(bevy::render::Render, crate::wgsl::watch_pipelines.in_set(bevy::render::RenderSystems::Cleanup))
+            .add_systems(Render, crate::wgsl::watch_pipelines.in_set(bevy::render::RenderSystems::Cleanup))
             .add_systems(ExtractSchedule, crate::wgsl::extract_versions)
             .add_systems(RenderStartup, init_render_resources)
             .add_systems(
@@ -133,23 +136,65 @@ impl Plugin for ScriptMaterialRenderPlugin {
     }
 }
 
-#[derive(Resource)]
-pub struct ScriptMaterialSampler(Sampler);
+/// Script materials prepare after the frame's images, so a material and its image changed in one
+/// frame bind the image's new sampler. Bevy's own dependencies only name erased assets.
+struct AfterImages;
+
+impl ErasedRenderAssetDependency for AfterImages {
+    fn register_system(render_app: &mut SubApp, system: bevy::ecs::schedule::ScheduleConfigs<bevy::ecs::system::ScheduleSystem>) {
+        render_app.add_systems(Render, system.after(prepare_assets::<GpuImage>));
+    }
+}
+
+/// The sampler last seen for each image a script material holds.
+#[derive(Resource, Default)]
+struct ImageSamplers(HashMap<AssetId<Image>, ImageSampler>);
+
+/// A material binds its images' samplers when it is prepared, and it is prepared only on its own
+/// asset event. A re-prepared `GpuImage` makes a new sampler every time, so a changed sampler
+/// (`assets.set(img, { sampler })`) touches every material holding the image, which re-prepares
+/// it as the same instance. A rewrite that keeps the sampler (`setData`) touches none.
+fn rebind_samplers(
+    mut events: MessageReader<AssetEvent<Image>>,
+    images: Res<Assets<Image>>,
+    mut materials: ResMut<Assets<ScriptMaterial>>,
+    mut seen: ResMut<ImageSamplers>,
+) {
+    for ev in events.read() {
+        match *ev {
+            AssetEvent::Modified { id } => {
+                let Some(image) = images.get(id) else { continue };
+                if seen.0.get(&id) == Some(&image.sampler) {
+                    continue;
+                }
+                let holders: Vec<_> = materials
+                    .iter()
+                    .filter(|(_, m)| m.textures.iter().flatten().any(|h| h.id() == id))
+                    .map(|(m, _)| m)
+                    .collect();
+                if holders.is_empty() {
+                    continue;
+                }
+                seen.0.insert(id, image.sampler.clone());
+                for m in holders {
+                    // `into_inner` marks it modified; a bare `get_mut` does not.
+                    materials.get_mut(m).map(|m| m.into_inner());
+                }
+            }
+            AssetEvent::Removed { id } | AssetEvent::Unused { id } => {
+                seen.0.remove(&id);
+            }
+            _ => {}
+        }
+    }
+}
 
 /// Render world: the storage buffer of every entity's `ScriptInstance`, bound by each kind with
 /// instance params.
 #[derive(Resource)]
 pub struct InstanceBuffer(pub Handle<ShaderBuffer>);
 
-fn init_render_resources(mut commands: Commands, device: Res<RenderDevice>, mut allocators: ResMut<MaterialBindGroupAllocators>) {
-    let linear = SamplerDescriptor {
-        mag_filter: bevy::render::render_resource::FilterMode::Linear,
-        min_filter: bevy::render::render_resource::FilterMode::Linear,
-        address_mode_u: bevy::render::render_resource::AddressMode::Repeat,
-        address_mode_v: bevy::render::render_resource::AddressMode::Repeat,
-        ..default()
-    };
-    commands.insert_resource(ScriptMaterialSampler(device.create_sampler(&linear)));
+fn init_render_resources(device: Res<RenderDevice>, mut allocators: ResMut<MaterialBindGroupAllocators>) {
     // Non-bindless: the layout given here is unused; each allocation brings its kind's.
     allocators.insert(
         TypeId::of::<ScriptMaterial>(),
@@ -167,7 +212,6 @@ impl ErasedRenderAsset for ScriptMaterial {
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
         SRes<RenderAssets<GpuImage>>,
-        SRes<ScriptMaterialSampler>,
         SRes<FallbackImage>,
         Option<SRes<InstanceBuffer>>,
         SRes<RenderAssets<GpuShaderBuffer>>,
@@ -176,7 +220,7 @@ impl ErasedRenderAsset for ScriptMaterial {
     fn prepare_asset(
         source: ScriptMaterial,
         asset_id: AssetId<ScriptMaterial>,
-        (opaque, alpha_mask, transparent, allocators, bindings, images, linear, fallback, instances, buffers): &mut SystemParamItem<Self::Param>,
+        (opaque, alpha_mask, transparent, allocators, bindings, images, fallback, instances, buffers): &mut SystemParamItem<Self::Param>,
     ) -> Result<PreparedMaterial, PrepareAssetError<ScriptMaterial>> {
         let kind = source.kind.clone();
         let mut resources = Vec::new();
@@ -186,16 +230,17 @@ impl ErasedRenderAsset for ScriptMaterial {
             resources.push((b, UnpreparedBindingResource::Data(0..data_buffer.len() as u32)));
         }
         for i in 0..kind.bindings.textures().len() {
-            let view = match source.textures.get(i).and_then(Option::as_ref) {
+            // The image's own sampler, as Bevy's `AsBindGroup` binds `#[sampler]`.
+            let (view, sampler) = match source.textures.get(i).and_then(Option::as_ref) {
                 Some(h) => match images.get(h) {
-                    Some(img) => img.texture_view.clone(),
+                    Some(img) => (img.texture_view.clone(), img.sampler.clone()),
                     None => return Err(PrepareAssetError::RetryNextUpdate(source)),
                 },
-                None => fallback.d2.texture_view.clone(),
+                None => (fallback.d2.texture_view.clone(), fallback.d2.sampler.clone()),
             };
             let b = kind.bindings.texture_binding(i);
             resources.push((b, UnpreparedBindingResource::TextureView(TextureViewDimension::D2, view)));
-            resources.push((b + 1, UnpreparedBindingResource::Sampler(SamplerBindingType::Filtering, linear.0.clone())));
+            resources.push((b + 1, UnpreparedBindingResource::Sampler(SamplerBindingType::Filtering, sampler)));
         }
         if let Some(b) = kind.bindings.instance_binding() {
             // Bound once Bevy has made the buffer; it rebinds when the buffer grows.
@@ -244,7 +289,7 @@ impl ErasedRenderAsset for ScriptMaterial {
         Ok(PreparedMaterial { binding, properties: Arc::new(properties) })
     }
 
-    fn unload_asset(source: AssetId<ScriptMaterial>, (.., allocators, bindings, _, _, _, _, _): &mut SystemParamItem<Self::Param>) {
+    fn unload_asset(source: AssetId<ScriptMaterial>, (.., allocators, bindings, _, _, _, _): &mut SystemParamItem<Self::Param>) {
         if let Some(b) = bindings.remove(&source.untyped())
             && let Some(a) = allocators.get_mut(&TypeId::of::<ScriptMaterial>())
         {

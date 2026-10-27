@@ -1,7 +1,8 @@
 //! Script material params as a picture (material-params): `assets.set` on a `Kind.add` instance
 //! redraws the same asset in the new colour, and writing it every frame builds no new pipeline;
 //! per-entity instance params draw two colours from one asset; an image made from TS bytes is
-//! sampled by a `StandardMaterial` and a script material, and redrawn after `setData`. Drawn to an
+//! sampled by a `StandardMaterial` and a script material, and redrawn after `setData`; a script
+//! material's texture samples with its image's own sampler, and follows a change of it. Drawn to an
 //! offscreen image, no window shown.
 #![cfg(target_os = "macos")]
 
@@ -276,4 +277,93 @@ fn an_image_from_bytes_is_sampled_and_redrawn_after_set_data() {
     // Frame 120 rewrites the image blue: both quads sample it the next rendered frame.
     pixels(&mut app, &[LEFT, RIGHT], |p| blue(p[0]) && blue(p[1]));
     assert_eq!(app.world().resource::<Assets<ScriptMaterial>>().len(), assets, "the instance is unchanged: {px:?}");
+}
+
+/// Change material-image-sampler: a 2x1 image (left texel red, right blue) sampled at `u = 1.01`,
+/// past its right edge. A clamping sampler draws the right texel; a repeating one blends it with
+/// the left. `{sampler}` is `Image.new`'s options; `{change}` runs at frame 120.
+fn edge_game(sampler: &str, change: &str) -> String {
+    format!(
+        r##"import {{ app, assets, signal, Show, Startup, Update }} from "bevy-ts";
+import type {{ Assets, AssetRef, ResMut }} from "bevy-ts";
+import {{ Camera3d, Image, TextureFormat, Tonemapping, Transform }} from "bevy-ts/bevy";
+import {{ material, texture2d }} from "bevy-ts/material";
+import edge from "./edge.wgsl";
+
+export const Edge = material("game::Edge", {{ textures: {{ tex: texture2d }}, fragment: edge }});
+export const [tex, setTex] = signal<AssetRef<Image> | undefined>(undefined);
+export function make(images: ResMut<Assets<Image>>) {{
+  setTex(images.add(Image.new([2, 1], TextureFormat.Rgba8UnormSrgb, new Uint8Array([255, 0, 0, 255, 0, 0, 255, 255]){sampler})));
+}}
+let frame = 0;
+export function change() {{
+  if (++frame === 120) {{ {change} }}
+}}
+app.addSystems(Startup, make).addSystems(Update, change);
+
+app.scene("s", () => (
+  <>
+    <entity name="cam"><Camera3d /><Tonemapping value="None" /><Transform translation={{[0, 0, 6]}} /></entity>
+    <Show when={{tex}}>
+      {{() => <entity name="cube"><mesh shape="cuboid" size={{[3, 3, 3]}} /><material kind={{Edge}} tex={{tex()}} /></entity>}}
+    </Show>
+  </>
+));
+"##
+    )
+}
+
+const EDGE_WGSL: &str = "import bevy_pbr::render::forward_io::VertexOutput;\n\n@fragment\nfn fragment(in: VertexOutput) -> @location(0) vec4<f32> {\n    return textureSample(tex, tex_sampler, vec2<f32>(1.01, 0.5));\n}\n";
+
+const CLAMP: &str = r#"{ Descriptor: { address_mode_u: "ClampToEdge", address_mode_v: "ClampToEdge", mag_filter: "Linear", min_filter: "Linear" } }"#;
+const REPEAT: &str = r#"{ Descriptor: { address_mode_u: "Repeat", address_mode_v: "Repeat", mag_filter: "Linear", min_filter: "Linear" } }"#;
+
+fn edge_app(name: &str, sampler: Option<&str>, change: &str) -> App {
+    let options = sampler.map(|s| format!(", {{ sampler: {s} }}")).unwrap_or_default();
+    let dir = project(name, &[("game.tsx", &edge_game(&options, change)), ("edge.wgsl", EDGE_WGSL)]);
+    let mut app = app(&dir.join("game.tsx"));
+    let m = common::messages(&app);
+    assert!(!m.iter().any(|l| l.contains("threw") || l.contains("error")), "{m:?}");
+    app.insert_resource(dir);
+    app
+}
+
+/// The right texel's blue alone, as `ClampToEdge` draws past the edge.
+fn edge_texel([r, g, b]: [u8; 3]) -> bool {
+    b > 200 && r < 20 && g < 30
+}
+
+/// Both texels blended, as `Repeat` draws past the edge.
+fn blended([r, _, b]: [u8; 3]) -> bool {
+    r > 80 && b > 80
+}
+
+#[test]
+fn a_clamping_image_draws_its_edge_texel() {
+    let mut app = edge_app("material-sampler-clamp", Some(CLAMP), "");
+    middle(&mut app, edge_texel);
+}
+
+#[test]
+fn a_repeating_image_blends_with_its_far_edge() {
+    let mut app = edge_app("material-sampler-repeat", Some(REPEAT), "");
+    middle(&mut app, blended);
+}
+
+#[test]
+fn an_image_with_no_sampler_takes_the_image_plugins() {
+    let mut app = edge_app("material-sampler-default", None, "");
+    middle(&mut app, edge_texel);
+}
+
+#[test]
+fn a_changed_sampler_rebinds_the_same_instance() {
+    let mut app = edge_app("material-sampler-change", Some(REPEAT), &format!("assets.set(tex()!, {{ sampler: {CLAMP} }});"));
+    let before = middle(&mut app, blended);
+    let id = held(&mut app);
+    let assets = app.world().resource::<Assets<ScriptMaterial>>().len();
+    // Frame 120 makes the sampler clamp: the same instance draws the edge texel.
+    let after = middle(&mut app, edge_texel);
+    assert_eq!(held(&mut app), id, "the same AssetId draws: {before:?} then {after:?}");
+    assert_eq!(app.world().resource::<Assets<ScriptMaterial>>().len(), assets, "no new asset");
 }
