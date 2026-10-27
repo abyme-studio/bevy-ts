@@ -1,10 +1,12 @@
 //! 1,000 world-text labels from Rust (distinct names, two colours, one outline style) under a
-//! `Camera3d` at 1280×720 offscreen, the engine's renderer, pipelining off so a frame is one
+//! `Camera3d` at 1280×720 offscreen (`WT_SIZE=960x540` another size), the engine's renderer, pipelining off so a frame is one
 //! `update`. Arms: `empty` (the scene, no labels), `still` (1,000 labels, nothing changes),
-//! `churn` (1,000 labels, 100 of them given new text each frame). Prints one line: first mount
+//! `churn` (1,000 labels, 100 of them given new text each frame), `fresh` (as `churn`, and two
+//! glyphs never seen before each frame, CJK from macOS's Arial Unicode). Prints one line: first mount
 //! (from spawn until every label has its mesh, atlas growth included), frame time median and p95
-//! over 600 frames after 240 warm-up, the median with each frame waited out on the GPU, labels
-//! laid out per frame, and the material and atlas sizes.
+//! over 600 frames after 240 warm-up, the median with each frame waited out on the GPU, the world
+//! text system's median time over the 600 frames (PostUpdate run on one thread, so nothing else
+//! runs inside the span), labels laid out per frame, and the material and atlas sizes.
 
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::asset::RenderAssetUsages;
@@ -15,11 +17,11 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::render::renderer::RenderDevice;
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
-use bevy_ts_material::world_text::{WorldTextAtlas, WorldTextMaterials};
+use bevy::ecs::schedule::SingleThreadedExecutor;
+use bevy_ts_material::world_text::{WorldTextAtlas, WorldTextMaterials, WorldTextSystems};
 use bevy_ts_material::{LaidOut, WorldText, WorldTextPlugin, WorldTextStyle};
 use std::time::{Duration, Instant};
 
-const SIZE: (u32, u32) = (1280, 720);
 const LABELS: usize = 1000;
 const CHURN: usize = 100;
 const WARMUP: usize = 240;
@@ -38,8 +40,13 @@ fn name(i: usize) -> String {
 #[derive(Resource, Default)]
 struct Churn {
     on: bool,
+    /// Two new glyphs a frame, in the first changed label.
+    fresh: bool,
     frame: usize,
 }
+
+/// The first CJK ideograph; `fresh` takes two a frame from here on.
+const CJK: u32 = 0x4E00;
 
 /// `churn`: 100 labels, a different hundred each frame, get new text.
 fn churn(mut c: ResMut<Churn>, mut q: Query<&mut WorldText>) {
@@ -48,8 +55,30 @@ fn churn(mut c: ResMut<Churn>, mut q: Query<&mut WorldText>) {
     }
     c.frame += 1;
     let start = (c.frame * CHURN) % LABELS;
-    for (i, mut t) in q.iter_mut().enumerate().skip(start).take(CHURN) {
+    for (k, (i, mut t)) in q.iter_mut().enumerate().skip(start).take(CHURN).enumerate() {
         t.0 = format!("{} {}", name(i), c.frame % 100);
+        if c.fresh && k == 0 {
+            let new = |n: usize| char::from_u32(CJK + (2 * c.frame + n) as u32).unwrap();
+            t.0.push(new(0));
+            t.0.push(new(1));
+        }
+    }
+}
+
+/// When the world text system last started, and how long it took each frame.
+#[derive(Resource, Default)]
+struct Span {
+    start: Option<Instant>,
+    us: Vec<f64>,
+}
+
+fn span_start(mut s: ResMut<Span>) {
+    s.start = Some(Instant::now());
+}
+
+fn span_end(mut s: ResMut<Span>) {
+    if let Some(t) = s.start.take() {
+        s.us.push(t.elapsed().as_secs_f64() * 1e6);
     }
 }
 
@@ -57,8 +86,8 @@ fn main() {
     let arm = std::env::args().nth(1).unwrap_or_else(|| "still".into());
     let labels = match arm.as_str() {
         "empty" => 0,
-        "still" | "churn" => LABELS,
-        a => panic!("arm {a:?}: empty, still or churn"),
+        "still" | "churn" | "fresh" => LABELS,
+        a => panic!("arm {a:?}: empty, still, churn or fresh"),
     };
     let mut app = App::new();
     app.add_plugins(
@@ -71,7 +100,12 @@ fn main() {
     .add_plugins(ScheduleRunnerPlugin::run_loop(Duration::ZERO))
     .add_plugins(WorldTextPlugin)
     .init_resource::<Churn>()
-    .add_systems(Update, churn);
+    .init_resource::<Span>()
+    .add_systems(Update, churn)
+    .add_systems(PostUpdate, (span_start.before(WorldTextSystems), span_end.after(WorldTextSystems)));
+    app.edit_schedule(PostUpdate, |s| {
+        s.set_executor(SingleThreadedExecutor::default());
+    });
     app.finish();
     app.cleanup();
     scene(app.world_mut());
@@ -94,18 +128,33 @@ fn main() {
         assert!(frames < 600, "{drawn} of {labels} labels drawn after {frames} frames");
     }
     let mount_ms = t.elapsed().as_secs_f64() * 1e3;
-    app.world_mut().resource_mut::<Churn>().on = arm == "churn";
+    app.world_mut().resource_mut::<Churn>().on = arm == "churn" || arm == "fresh";
+    app.world_mut().resource_mut::<Churn>().fresh = arm == "fresh";
+    if arm == "fresh" {
+        let bytes = std::fs::read("/System/Library/Fonts/Supplemental/Arial Unicode.ttf").expect("macOS's Arial Unicode");
+        let font = app.world_mut().resource_mut::<Assets<Font>>().add(Font::from_bytes(bytes));
+        let world = app.world_mut();
+        for mut f in world.query_filtered::<&mut TextFont, With<WorldText>>().iter_mut(world) {
+            f.font = font.clone().into();
+        }
+        // The labels again in the new font, before the warm-up.
+        for _ in 0..10 {
+            app.update();
+        }
+    }
 
     for _ in 0..WARMUP {
         app.update();
     }
     let (mut free, mut laid) = (Vec::with_capacity(FRAMES), 0u64);
+    app.world_mut().resource_mut::<Span>().us.clear();
     for _ in 0..FRAMES {
         let t = Instant::now();
         app.update();
         free.push(t.elapsed().as_secs_f64() * 1e3);
         laid += app.world().resource::<LaidOut>().0 as u64;
     }
+    let mut layout = std::mem::take(&mut app.world_mut().resource_mut::<Span>().us);
     let device = app.world().resource::<RenderDevice>().clone();
     let mut synced = Vec::with_capacity(FRAMES);
     for _ in 0..FRAMES {
@@ -118,11 +167,13 @@ fn main() {
         v.sort_by(f64::total_cmp);
         v[v.len() * p / 100]
     };
-    let (median, p95, synced_median) = (at(&mut free, 50), at(&mut free, 95), at(&mut synced, 50));
+    let (median, p95, synced_median, layout_median) = (at(&mut free, 50), at(&mut free, 95), at(&mut synced, 50), at(&mut layout, 50));
     let world = app.world();
     let atlas = world.resource::<WorldTextAtlas>();
     println!(
-        "arm={arm} labels={labels} mount_ms={mount_ms:.1} mount_frames={frames} frame_median_ms={median:.3} frame_p95_ms={p95:.3} gpu_synced_median_ms={synced_median:.3} laid_out_per_frame={:.1} materials={} atlas={}x{} glyphs={}",
+        "arm={arm} size={}x{} labels={labels} mount_ms={mount_ms:.1} mount_frames={frames} frame_median_ms={median:.3} frame_p95_ms={p95:.3} gpu_synced_median_ms={synced_median:.3} layout_median_us={layout_median:.1} laid_out_per_frame={:.1} materials={} atlas={}x{} glyphs={}",
+        size().0,
+        size().1,
         laid as f64 / FRAMES as f64,
         world.resource::<WorldTextMaterials>().len(),
         atlas.packer.width,
@@ -131,9 +182,17 @@ fn main() {
     );
 }
 
+/// The target's size: `WT_SIZE` as `<width>x<height>`, else 1280×720.
+fn size() -> (u32, u32) {
+    let Ok(s) = std::env::var("WT_SIZE") else { return (1280, 720) };
+    let (w, h) = s.split_once('x').unwrap_or_else(|| panic!("WT_SIZE={s}: <width>x<height>"));
+    (w.parse().expect("WT_SIZE's width"), h.parse().expect("WT_SIZE's height"))
+}
+
 /// A ground, a sun and the camera over it, as a map is seen.
 fn scene(world: &mut World) {
-    let mut target = Image::new_target_texture(SIZE.0, SIZE.1, TextureFormat::Rgba8UnormSrgb, None);
+    let (w, h) = size();
+    let mut target = Image::new_target_texture(w, h, TextureFormat::Rgba8UnormSrgb, None);
     target.asset_usage = RenderAssetUsages::default();
     let target = world.resource_mut::<Assets<Image>>().add(target);
     world.spawn((Camera3d::default(), RenderTarget::Image(target.into()), Transform::from_xyz(0.0, 30.0, 32.0).looking_at(Vec3::new(0.0, 0.0, 2.0), Vec3::Y)));
