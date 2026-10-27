@@ -2,10 +2,11 @@
 // and a row of sprites: plain, tinted, flipped; click one to tint it. Beside them, a sprite sheet
 // a `<SpriteClip>` animates (Bevy's sprite_animation example), a `<text2d>` counting the clicks, and three
 // y-sorted walkers pacing past each other at the right edge, the first with a screen-size marker
-// over its head. The camera is a pixel camera: keys 1, 2 and 4 zoom it. A title in a bitmap font
+// over its head (click it). The camera is a pixel camera: keys 1, 2 and 4 zoom it, and zoomed in it
+// follows that walker, so the marker and moving texels stay in view. A title in a bitmap font
 // counts the clicks too. One world unit is one pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
-import { app, Component, signal, sliced, Time, Update, type f32, type Mut, type Query, type Res } from "bevy-ts";
+import { app, Component, signal, sliced, Time, Update, type f32, type Mut, type Query, type Res, type With, type Without } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
 import { KeyCode, type Keys } from "bevy-ts/input";
 import { Camera2d, PixelCamera, ScreenSize, Sprite, SpriteClip, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
@@ -49,6 +50,23 @@ export function pace(time: Res<Time>, walkers: Query<[Mut<Transform>, Walker]>) 
   for (const [t, w] of walkers) t.translation.y = Math.sin(time.elapsed_secs * 0.8 + w.phase) * 200;
 }
 app.addSystems(Update, pace);
+
+/** The walker the camera follows when zoomed in. */
+export class Followed extends Component {}
+
+/** Zoomed in, the camera follows the followed walker; at zoom 1 it shows the whole scene. */
+export function follow(
+  cameras: Query<[Mut<Transform>, PixelCamera], Without<Followed>>,
+  followed: Query<[Transform], With<Followed>>,
+) {
+  for (const [walker] of followed) {
+    for (const [t, camera] of cameras) {
+      t.translation.x = camera.zoom > 1 ? walker.translation.x : 0;
+      t.translation.y = camera.zoom > 1 ? walker.translation.y : 0;
+    }
+  }
+}
+app.addSystems(Update, follow);
 
 /** Keys 1, 2 and 4 zoom the pixel camera, easing there. */
 export function zoomKeys(keys: Keys, cameras: Query<[Mut<PixelCamera>]>) {
@@ -110,10 +128,11 @@ export const Shapes = () => (
         <Sprite image="arrow.png" custom_size={[40, 40]} color={color} />
         <YSort layer={1} offset={-20} />
         <Walker phase={phase} />
+        {i === 0 && <Followed />}
         {i === 0 && (
-          <entity key="marker" name="marker">
+          <entity key="marker" name="marker" onPointerClick={() => click("marker")}>
             <Transform translation={[0, 32, 0.5]} />
-            <Sprite image="arrow.png" custom_size={[16, 16]} color="#ff4" flip_y />
+            <Sprite image="arrow.png" custom_size={[16, 16]} color={() => (clicked() === "marker" ? "#f44" : "#ff4")} flip_y />
             <ScreenSize />
           </entity>
         )}
