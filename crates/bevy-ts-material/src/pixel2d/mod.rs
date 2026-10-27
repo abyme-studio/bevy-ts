@@ -1,5 +1,6 @@
 //! Pixel-art 2D (openspec change `pixel-art-2d`). [`YSort`] draws an entity by its base y within a
-//! layer. It owns `Transform` z: the pass in [`Pixel2dSystems`] writes it before Bevy's transform
+//! layer and owns `Transform` z; [`ScreenSize`] keeps it one size on screen at every zoom and owns
+//! `Transform` scale. The pass in [`Pixel2dSystems`] writes them before Bevy's transform
 //! propagation, so `GlobalTransform` stays Bevy's own and every reader of it (picking, visibility,
 //! extraction) sees one value. Nothing here writes `GlobalTransform`.
 
@@ -37,7 +38,25 @@ pub fn y_sort_z(layer: f32, y: f32, offset: f32) -> f32 {
     (layer as f64 - base as f64 * Z_PER_PX) as f32
 }
 
-/// The pass that writes what [`YSort`] owns, in `PostUpdate` after the TSX reconcile and before
+/// Keeps the entity one size on screen at every zoom: its `Transform` scale x and y are `scale`
+/// times the ruling camera's orthographic scale (the first `Camera2d` by `Camera.order`, then by
+/// entity), so one image pixel is `scale` screen pixels. Its descendants scale with it. It owns
+/// `Transform` scale x and y: a write to them is overwritten the same frame; write `scale`.
+#[derive(Component, Reflect, Clone, Copy, Debug, PartialEq)]
+#[reflect(Component, Default)]
+#[require(Transform)]
+pub struct ScreenSize {
+    /// Screen pixels per image pixel.
+    pub scale: f32,
+}
+
+impl Default for ScreenSize {
+    fn default() -> Self {
+        Self { scale: 1.0 }
+    }
+}
+
+/// The pass that writes what [`YSort`] and [`ScreenSize`] own, in `PostUpdate` after the TSX reconcile and before
 /// `TransformSystems::Propagate`. It writes a field only when its value changes, so a still entity
 /// is not propagated again.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -49,8 +68,12 @@ pub struct Pixel2dPlugin;
 impl Plugin for Pixel2dPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<YSort>()
+            .register_type::<ScreenSize>()
             .configure_sets(PostUpdate, Pixel2dSystems.before(TransformSystems::Propagate))
-            .add_systems(PostUpdate, y_sort.in_set(Pixel2dSystems).run_if(any_with_component::<YSort>));
+            .add_systems(
+                PostUpdate,
+                (screen_size.run_if(any_with_component::<ScreenSize>), y_sort.run_if(any_with_component::<YSort>)).chain().in_set(Pixel2dSystems),
+            );
     }
 }
 
@@ -100,6 +123,29 @@ fn y_sort(
         let z = y_sort_z(y.layer, t.translation.y, y.offset);
         if t.translation.z != z {
             t.translation.z = z;
+        }
+    }
+}
+
+/// The orthographic scale of the camera that rules screen size: the first `Camera2d` by
+/// `Camera.order`, then by entity.
+pub fn ruling_scale<'a>(cameras: impl Iterator<Item = (Entity, &'a Camera, &'a Projection)>) -> Option<f32> {
+    cameras
+        .filter_map(|(e, c, p)| match p {
+            Projection::Orthographic(o) => Some(((c.order, e), o.scale)),
+            _ => None,
+        })
+        .min_by_key(|(k, _)| *k)
+        .map(|(_, s)| s)
+}
+
+fn screen_size(cameras: Query<(Entity, &Camera, &Projection), With<Camera2d>>, mut sized: Query<(&ScreenSize, &mut Transform)>) {
+    let Some(camera) = ruling_scale(cameras.iter()) else { return };
+    for (s, mut t) in &mut sized {
+        let scale = s.scale * camera;
+        if t.scale.x != scale || t.scale.y != scale {
+            t.scale.x = scale;
+            t.scale.y = scale;
         }
     }
 }

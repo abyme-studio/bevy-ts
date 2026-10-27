@@ -1,11 +1,12 @@
 // Every 2D shape as a `<mesh2d>`, in a grid seen by a `Camera2d` (Bevy's 2d_shapes example),
 // and a row of sprites: plain, tinted, flipped; click one to tint it. Beside them, a sprite sheet
 // a TS system animates (Bevy's sprite_sheet example), a `<text2d>` counting the clicks, and three
-// y-sorted walkers pacing past each other at the right edge. One world unit is one pixel. docs/2d.md
+// y-sorted walkers pacing past each other at the right edge, the first with a screen-size marker
+// over its head. One world unit is one pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
 import { app, Component, FixedUpdate, signal, sliced, Time, Timer, Update, type f32, type Mut, type Query, type Res, type u32 } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
-import { Camera2d, Sprite, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
+import { Camera2d, ScreenSize, Sprite, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
 
 const shapes: Mesh2dProps[] = [
   { shape: "circle", radius: 50 },
@@ -115,6 +116,13 @@ export const Shapes = () => (
         <Sprite image="arrow.png" custom_size={[40, 40]} color={color} />
         <YSort layer={1} offset={-20} />
         <Walker phase={phase} />
+        {i === 0 && (
+          <entity key="marker" name="marker">
+            <Transform translation={[0, 32, 0.5]} />
+            <Sprite image="arrow.png" custom_size={[16, 16]} color="#ff4" flip_y />
+            <ScreenSize />
+          </entity>
+        )}
       </entity>
     ))}
     <entity key="clicks" name="clicks">

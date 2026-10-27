@@ -55,10 +55,10 @@
 
 ## 7. Stage 7: screen-size sprites (needs the operator's go: per-frame work)
 
-- [ ] 7.1 `pixel2d/`: reflected `ScreenSize { scale }`; in `Pixel2dSystems`, after the camera's scale, `Transform` scale = `scale` × the ruling camera's scale, with `set_if_neq` (design 2)
-- [ ] 7.2 `pixel2d.rs` tests: a 16 px marker covers 16 screen pixels at zoom 1 and 4, `Transform` scale 0.25 at zoom 4; a script's scale overwritten; picking a click inside its drawn area at zoom 4 runs its handler (picking test as script-2d's, `two_d.rs`)
-- [ ] 7.3 Bench: a tenth of `all-moving` with `ScreenSize`
-- [ ] 7.4 `examples/shapes-2d`: a marker over a sprite; `docs/2d.md`: "Screen-size sprites" section and row
+- [x] 7.1 `pixel2d/`: reflected `ScreenSize { scale }`; in `Pixel2dSystems`, after the camera's scale, `Transform` scale = `scale` × the ruling camera's scale, with `set_if_neq` (design 2)
+- [x] 7.2 `pixel2d.rs` tests: a 16 px marker covers 16 screen pixels at zoom 1 and 4, `Transform` scale 0.25 at zoom 4; a script's scale overwritten; picking a click inside its drawn area at zoom 4 runs its handler (picking test as script-2d's, `two_d.rs`)
+- [x] 7.3 Bench: a tenth of `all-moving` with `ScreenSize`
+- [x] 7.4 `examples/shapes-2d`: a marker over a sprite; `docs/2d.md`: "Screen-size sprites" section and row
 
 ## 8. Landing (each stage)
 

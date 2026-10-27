@@ -539,3 +539,38 @@ fn a_ysort_from_tsx_draws_a_bound_y_at_its_z_the_same_frame() {
     assert_eq!(drawn.y, 40.0, "the binding moved the hero this frame");
     assert_eq!(drawn.z, bevy_ts_material::pixel2d::y_sort_z(1.0, 40.0, -8.0), "and its z follows the same frame");
 }
+
+// Change pixel-art-2d, stage 7: a `<ScreenSize>` marker at zoom 4 is picked over its drawn size.
+
+/// A primary click at `at` on the offscreen view.
+fn click(app: &mut App, at: Vec2) {
+    pointer(app, at, PointerAction::Move { delta: Vec2::ZERO });
+    pointer(app, at, PointerAction::Press(PointerButton::Primary));
+    pointer(app, at, PointerAction::Release(PointerButton::Primary));
+    updates(app, 2);
+}
+
+#[test]
+fn a_screen_size_marker_at_zoom_4_is_clicked_over_its_drawn_area() {
+    let body = concat!(
+        "    <entity key=\"cam\"><Camera2d /><Projection value={{ Orthographic: { scale: 0.25 } }} /></entity>\n",
+        "    <entity key=\"s\" onPointerClick={({ entity }) => console.log(`clicked ${entity}`)}><Sprite custom_size={[16, 16]} /><ScreenSize /></entity>\n",
+    );
+    let game = scene(body).replace("import { Anchor, Camera2d,", "import { Anchor, ScreenSize, Camera2d,");
+    let (mut app, r) = load_game("2d-pick-screen-size", &game, |app| {
+        app.add_plugins(bevy_ts_material::Pixel2dPlugin);
+    });
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.world_mut().resource_mut::<SpritePickingSettings>().picking_mode = SpritePickingMode::BoundingBox;
+    bevy_ts_viewport::spawn_windowless_primary(app.world_mut(), "two_d", (SIZE.0, SIZE.1, 1.0), ());
+    let e = node(&mut app, "s");
+    updates(&mut app, 3);
+    assert_eq!(app.world().get::<Transform>(e).unwrap().scale.truncate(), Vec2::splat(0.25));
+    let centre = Vec2::new(SIZE.0 as f32 / 2.0, SIZE.1 as f32 / 2.0);
+    // 12 px from the centre is outside its 16 drawn pixels, though inside the 64 an unscaled sprite would cover.
+    click(&mut app, centre + Vec2::new(12.0, 0.0));
+    let clicks = |app: &App| messages(app).into_iter().filter(|m| m.starts_with("clicked")).collect::<Vec<_>>();
+    assert!(clicks(&app).is_empty(), "{:?}", clicks(&app));
+    click(&mut app, centre + Vec2::new(6.0, 0.0));
+    assert_eq!(clicks(&app), vec![format!("clicked {}", e.to_bits())]);
+}

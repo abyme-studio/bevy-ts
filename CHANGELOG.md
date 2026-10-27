@@ -4,6 +4,9 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `<YSort layer offset />` draws a 2D entity by its base y within a layer, and `<ScreenSize />`
+  keeps one size on screen at every zoom. Each owns what it writes, `Transform` z and scale: a
+  script's write is overwritten (docs/2d.md).
 - `bevy-ts.json` takes `assetSources`, folders outside the project loaded as `name://path`
   (docs/assets.md). A build names them in `game.json` and copies none unless `--copy-sources`; a
   built game whose source folder is missing exits 1 at start naming it (docs/build.md).

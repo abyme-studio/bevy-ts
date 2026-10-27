@@ -118,3 +118,34 @@ fn a_moved_entitys_global_transform_is_bevys_propagation() {
         assert_eq!(t.translation.z, y_sort_z(2.0, y, -4.0));
     }
 }
+
+fn camera(app: &mut App, scale: f32) -> Entity {
+    let projection = Projection::Orthographic(OrthographicProjection { scale, ..OrthographicProjection::default_2d() });
+    app.world_mut().spawn((Camera2d, projection)).id()
+}
+
+fn scale(app: &App, e: Entity) -> Vec3 {
+    app.world().get::<Transform>(e).unwrap().scale
+}
+
+#[test]
+fn screen_size_scales_by_the_ruling_cameras_scale_and_owns_it() {
+    let mut app = app();
+    let cam = camera(&mut app, 0.25);
+    let marker = app.world_mut().spawn(bevy_ts_material::ScreenSize::default()).id();
+    let double = app.world_mut().spawn(bevy_ts_material::ScreenSize { scale: 2.0 }).id();
+    app.update();
+    assert_eq!(scale(&app, marker), Vec3::new(0.25, 0.25, 1.0), "at zoom 4 a texel is a quarter of a world unit");
+    assert_eq!(scale(&app, double), Vec3::new(0.5, 0.5, 1.0));
+    app.world_mut().get_mut::<Transform>(marker).unwrap().scale = Vec3::splat(3.0);
+    app.update();
+    assert_eq!(scale(&app, marker), Vec3::new(0.25, 0.25, 3.0), "a script's x and y are overwritten; z is its own");
+    let Projection::Orthographic(o) = &mut *app.world_mut().get_mut::<Projection>(cam).unwrap() else { unreachable!() };
+    o.scale = 1.0;
+    app.update();
+    assert_eq!(scale(&app, double).truncate(), Vec2::splat(2.0), "follows the camera's zoom");
+    // A camera of a later order does not rule.
+    app.world_mut().spawn((Camera2d, Camera { order: 1, ..default() }, Projection::Orthographic(OrthographicProjection { scale: 0.5, ..OrthographicProjection::default_2d() })));
+    app.update();
+    assert_eq!(scale(&app, double).truncate(), Vec2::splat(2.0));
+}

@@ -43,3 +43,29 @@ fn the_lower_of_two_y_sorted_sprites_draws_in_front() {
         if is(c, Srgba::BLUE) { Ok(()) } else { Err(format!("the overlap is {c:?}, not blue; red z {}, blue z {}", z(red), z(blue))) }
     });
 }
+
+/// How many pixels of the view's middle row are red.
+fn red_run(image: &Image) -> u32 {
+    (0..W).filter(|x| is(image.get_color_at(*x, H / 2).unwrap().to_srgba(), Srgba::RED)).count() as u32
+}
+
+#[test]
+fn a_screen_size_marker_covers_16_pixels_at_zoom_1_and_4() {
+    let _gpu = GPU.lock().unwrap_or_else(|e| e.into_inner());
+    let mut app = app_with(|p| p.add(Pixel2dPlugin));
+    let world = app.world_mut();
+    let mut target = Image::new_target_texture(W, H, TextureFormat::Rgba8UnormSrgb, None);
+    target.asset_usage = bevy::asset::RenderAssetUsages::default();
+    let target = world.resource_mut::<Assets<Image>>().add(target);
+    let cam = world.spawn((Camera2d, Camera { clear_color: ClearColorConfig::Custom(Color::WHITE), ..default() }, Tonemapping::None, RenderTarget::Image(target.clone().into()))).id();
+    // At the origin of an even-sized view, so its edges fall on whole pixels at every zoom.
+    world.spawn((Sprite::from_color(Srgba::RED, Vec2::splat(16.0)), bevy_ts_material::ScreenSize::default()));
+    for zoom in [1.0, 4.0] {
+        let Projection::Orthographic(o) = &mut *app.world_mut().get_mut::<Projection>(cam).unwrap() else { unreachable!() };
+        o.scale = 1.0 / zoom;
+        until_drawn(&mut app, &target, |_| Ok(()), |_, img| {
+            let n = red_run(img);
+            if n == 16 { Ok(()) } else { Err(format!("zoom {zoom}: {n} red pixels, not 16")) }
+        });
+    }
+}

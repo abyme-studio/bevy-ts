@@ -9,7 +9,7 @@ runs=${1:-3}
 cargo build --release
 uptime
 for i in $(seq "$runs"); do
-  for arm in off ysort-still ysort-moving; do
+  for arm in off ysort-still ysort-moving all-moving; do
     ./target/release/pixel-2d-bench "$arm"
   done
 done
