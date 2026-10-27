@@ -46,13 +46,13 @@ pub(crate) fn post(port: u16, method: &str, params: Value) -> Result<Value, Stri
 }
 
 /// `bevy-ts dev --headless` on the cube project, its stderr lines on a channel, once it answers.
-fn dev(name: &str, config: &str) -> (Engine, Receiver<String>, u16) {
+fn dev(name: &str, config: &str) -> (common::TestDir, Engine, Receiver<String>, u16) {
     dev_game(name, config, GAME)
 }
 
 /// `bevy-ts dev --headless` on a project of one `game`, its stderr lines on a channel, once it
-/// answers.
-pub(crate) fn dev_game(name: &str, config: &str, game: &str) -> (Engine, Receiver<String>, u16) {
+/// answers. The folder comes first, so a test drops the engine before it.
+pub(crate) fn dev_game(name: &str, config: &str, game: &str) -> (common::TestDir, Engine, Receiver<String>, u16) {
     let dir = common::project(name, &[("bevy-ts.json", config), ("tsconfig.json", "{}"), ("src/game.tsx", game)]);
     let port = common::free_port();
     let mut engine = Engine::spawn(
@@ -74,7 +74,7 @@ pub(crate) fn dev_game(name: &str, config: &str, game: &str) -> (Engine, Receive
         assert!(t0.elapsed() < LAUNCH, "the engine never answered");
         std::thread::sleep(Duration::from_millis(50));
     }
-    (engine, rx, port)
+    (dir, engine, rx, port)
 }
 
 pub(crate) fn pointer(kind: &str, x: f64, y: f64) -> Value {
@@ -83,7 +83,7 @@ pub(crate) fn pointer(kind: &str, x: f64, y: f64) -> Value {
 
 #[test]
 fn a_test_clicks_a_mesh_headless() {
-    let (_engine, rx, port) = dev("headless-pointer-click", r#"{ "meshPicking": true }"#);
+    let (_dir, _engine, rx, port) = dev("headless-pointer-click", r#"{ "meshPicking": true }"#);
     common::wait_for(&rx, &["generation 1 applied"], LAUNCH);
     // A few frames for the camera and the cube's bounds: each request is answered on a frame after
     // the one before it, however slow the machine.

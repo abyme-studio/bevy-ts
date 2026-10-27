@@ -160,8 +160,8 @@ fn open_requests_are_answered_when_update_stops() {
     let at = app.world().resource::<FrameCount>().0 + 1;
     gate.at.store(at, Ordering::SeqCst);
     app.update();
-    let shot = std::env::temp_dir().join(format!("bevy-ts-stall-{}.png", std::process::id()));
-    let _ = std::fs::remove_file(&shot);
+    let shots = crate::common::TestDir::new("stall-shot");
+    let shot = shots.join("stall.png");
     let params = serde_json::json!({ "path": shot.to_str().unwrap() });
     let client = std::thread::spawn(move || post(port, "bevy-ts/screenshot", params));
     let start = Instant::now();

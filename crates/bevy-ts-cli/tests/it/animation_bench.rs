@@ -215,8 +215,7 @@ fn animation_cost() {
     let arm = std::env::var("ARM").unwrap_or_else(|_| "B".into());
     let n: usize = std::env::var("N").ok().and_then(|s| s.parse().ok()).unwrap_or(100);
     let engine = std::env::var("ANIMATION_BENCH_ENGINE").expect("ANIMATION_BENCH_ENGINE: the built animation_bench_engine example");
-    let dir = std::env::temp_dir().join(format!("bevy-ts-animation-bench-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = crate::common::TestDir::new("animation-bench");
     std::fs::create_dir_all(dir.join("assets/models")).unwrap();
     std::fs::create_dir_all(dir.join("src")).unwrap();
     std::fs::copy(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/foxes/assets/models/Fox.glb"), dir.join("assets/models/Fox.glb")).unwrap();
@@ -271,5 +270,4 @@ fn animation_cost() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/animation-bench.md");
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
     writeln!(file, "{row}").unwrap();
-    let _ = std::fs::remove_dir_all(&dir);
 }

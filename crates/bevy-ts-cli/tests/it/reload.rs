@@ -179,6 +179,9 @@ fn a_save_applies() -> Duration {
     let statuses: Vec<_> = app.world().resource::<ReloadLog>().since(0).map(|r| r.status).collect();
     assert_eq!(statuses, vec![ReloadStatus::Compiling, ReloadStatus::Applied, ReloadStatus::Compiling, ReloadStatus::Applied]);
     eprintln!("save to applied: {took:?}");
+    // The watcher thread ends when the app drops its channel; the folder goes after the app, so the
+    // watcher sees no removal first (it has no handle to join).
+    drop(app);
     took
 }
 

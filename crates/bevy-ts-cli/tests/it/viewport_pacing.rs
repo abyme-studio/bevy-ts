@@ -115,8 +115,8 @@ fn phase(viewer: &Viewer, port: u16, pid: u32, name: &str, secs: f64, mut f: imp
 #[test]
 #[ignore = "timing: spawns the engine and needs a release build and a quiet machine"]
 fn the_arena_in_edit_mode_at_120_hz() {
-    let dir = std::env::temp_dir().join(format!("bevy-ts-viewport-pacing-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let scratch = crate::common::TestDir::new("viewport-pacing");
+    let dir = scratch.join("arena");
     let arena = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena");
     assert!(Command::new("cp").args(["-R", arena.to_str().unwrap(), dir.to_str().unwrap()]).status().unwrap().success());
     let bin = std::env::var("BEVY_TS_BINARY").unwrap_or_else(|_| env!("CARGO_BIN_EXE_bevy-ts").to_string());
@@ -206,5 +206,4 @@ fn the_arena_in_edit_mode_at_120_hz() {
     println!("stats: {}", post(port, "bevy-ts/viewport_stats", Value::Null).unwrap());
     ticking.store(false, Ordering::Relaxed);
     ticker.join().unwrap();
-    let _ = std::fs::remove_dir_all(&dir);
 }

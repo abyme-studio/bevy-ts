@@ -338,6 +338,7 @@ fn bare_engine(identity: bevy_ts::engine::EngineIdentity) -> App {
     app.cleanup();
     reload(&mut app, false);
     app.update();
+    app.insert_resource(dir);
     app
 }
 

@@ -64,7 +64,7 @@ fn settle(port: u16) {
 
 #[test]
 fn a_test_types_and_submits_headless() {
-    let (_engine, rx, port) = dev_game("headless-keys-submit", "{}", &game("autoFocus"));
+    let (_dir, _engine, rx, port) = dev_game("headless-keys-submit", "{}", &game("autoFocus"));
     common::wait_for(&rx, &["generation 1 applied"], LAUNCH);
     settle(port);
     let r = post(port, "bevy-ts/viewport_input", json!({ "events": press(&[("KeyH", "h"), ("KeyI", "i"), ("Enter", "Enter")]) })).unwrap();
@@ -78,7 +78,7 @@ fn a_test_types_and_submits_headless() {
 
 #[test]
 fn clicking_a_field_then_typing_headless() {
-    let (_engine, rx, port) = dev_game("headless-keys-click", "{}", &game(""));
+    let (_dir, _engine, rx, port) = dev_game("headless-keys-click", "{}", &game(""));
     common::wait_for(&rx, &["generation 1 applied"], LAUNCH);
     settle(port);
     // The click and the key in one request: the queue keeps their order, so the key lands after
@@ -93,7 +93,7 @@ fn clicking_a_field_then_typing_headless() {
 
 #[test]
 fn typing_guards_a_shortcut_headless() {
-    let (_engine, rx, port) = dev_game("headless-keys-typing", "{}", &game(""));
+    let (_dir, _engine, rx, port) = dev_game("headless-keys-typing", "{}", &game(""));
     common::wait_for(&rx, &["generation 1 applied"], LAUNCH);
     settle(port);
     // Bevy focuses the primary window at start: N counts.

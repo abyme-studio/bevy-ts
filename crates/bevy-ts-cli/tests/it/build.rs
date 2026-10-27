@@ -234,8 +234,8 @@ fn switches_are_baked_into_game_json_and_played() {
 #[ignore = "builds the thrusters project engine in release"]
 fn thrusters_plays_on_its_own_engine() {
     let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/thrusters").canonicalize().unwrap();
-    let out = std::env::temp_dir().join(format!("bevy-ts-thrusters-dist-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&out);
+    let scratch = common::TestDir::new("thrusters-dist");
+    let out = scratch.join("dist");
     let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
     let built = Command::new(BIN).args(["build", example.to_str().unwrap(), "--out", out.to_str().unwrap()]).env("CARGO_TARGET_DIR", &target).output().unwrap();
     assert!(built.status.success(), "build failed:\n{}", String::from_utf8_lossy(&built.stderr));

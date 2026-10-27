@@ -72,6 +72,7 @@ impl TestDir {
         static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join("bevy-ts-cli-tests").join(format!("{name}-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         // Canonical, as a build reports its paths (macOS /var is /private/var).
         let path = dir.canonicalize().unwrap();
