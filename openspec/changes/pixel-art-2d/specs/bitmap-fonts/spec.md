@@ -23,7 +23,7 @@ A `SpriteFont` asset SHALL load from an XNA SpriteFont exported as JSON: `textur
 - **THEN** a `*` draws in its place
 
 ### Requirement: The bitmapText element
-`<bitmapText>` SHALL take `font` (an asset path), `color` (tints every glyph), `scale` (default 1), `anchor` (as `<text2d>`'s, over the measured box) and its text as children: strings and bindings, joined. A changed binding SHALL re-lay the glyphs. The glyph sprites SHALL be the element's own children, hidden from the reconciler and from saved levels, and SHALL follow the element's `YSort`, snap and `ScreenSize`. An unknown prop SHALL fail naming it and the line.
+`<bitmapText>` SHALL take `font` (an asset path), `color` (tints every glyph), `scale` (default 1), `anchor` (as `<text2d>`'s, over the measured box) and its text as children: strings and bindings, joined. A changed binding SHALL re-lay the glyphs. The glyph sprites SHALL be the element's own children, hidden from the reconciler and from saved levels, and SHALL follow the element's `YSort` and `ScreenSize` by Bevy's propagation. An unknown prop SHALL fail naming it and the line.
 
 #### Scenario: A bound label
 - **WHEN** `<bitmapText font="fonts/tiny.json">{() => name()}</bitmapText>` mounts and `name` changes from `Al` to `Bea`

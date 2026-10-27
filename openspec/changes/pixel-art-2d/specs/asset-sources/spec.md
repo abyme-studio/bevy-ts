@@ -11,8 +11,8 @@
 - **WHEN** `assetSources` has the name `Stardew` or `embedded`
 - **THEN** `bevy-ts dev` exits 1 naming `assetSources` and the name
 
-### Requirement: A missing source folder warns
-A source whose folder does not exist SHALL log one warning at start naming the source and the resolved folder, and the game SHALL run. A load from it SHALL fail as a missing file does.
+### Requirement: A missing source folder warns in dev
+Under `bevy-ts dev`, a source whose folder does not exist SHALL log one warning at start naming the source and the resolved folder, and the game SHALL run. A load from it SHALL fail as a missing file does.
 
 #### Scenario: Another machine
 - **WHEN** a project names a source whose folder is absent and starts with `bevy-ts dev`
@@ -25,12 +25,23 @@ Under `bevy-ts dev` each extra source SHALL be watched as the default one is: a 
 - **WHEN** a game under `bevy-ts dev` shows `stardew://Maps/springobjects.png` and that file changes
 - **THEN** the image reloads
 
-### Requirement: A build carries its sources
-`bevy-ts build` SHALL copy each existing source folder to `sources/<name>/` in the built game and list the names in `game.json`. `bevy-ts play` SHALL register each listed source from there, unwatched. A source whose folder is absent at build time SHALL fail the build naming it.
+### Requirement: A build never copies a source unless asked
+`bevy-ts build` SHALL NOT copy any file of an extra source into the built game. It SHALL write `assetSources` into `game.json`, each name to its folder: an absolute or `~/` folder as written, a relative one made absolute. A folder absent at build time SHALL warn naming the source and folder, and the build SHALL go on. `bevy-ts build --copy-sources` SHALL copy each source to `sources/<name>/` in the built game, name `sources/<name>` in `game.json`, report each source's file count, and fail naming a source whose folder is absent.
 
-#### Scenario: A built game with a source
-- **WHEN** a project with source `stardew` is built and played
-- **THEN** the game folder holds `sources/stardew/`, `game.json` lists `stardew`, and `stardew://` paths load in play
+#### Scenario: A default build
+- **WHEN** a project with source `stardew` at `~/dev/assets/stardew` is built without flags
+- **THEN** the built folder holds no file from that source and no `sources/` folder, and `game.json` has `"assetSources": { "stardew": "~/dev/assets/stardew" }`
+
+#### Scenario: A build that copies
+- **WHEN** the same project is built with `--copy-sources` and played
+- **THEN** the built folder holds `sources/stardew/`, `game.json` names `sources/stardew`, the report names `stardew` and its file count, and `stardew://` paths load in play
+
+### Requirement: A built game without its source exits at start
+`bevy-ts play`, and a built game's executable, SHALL register each source in `game.json` before `AssetPlugin` builds, unwatched, reading `~/` on the playing machine and a relative folder from the game folder. A source whose folder is absent SHALL exit 1 before a window opens, printing one line that names the source, the folder looked in, and the fix: put the folder there, or build with `--copy-sources`.
+
+#### Scenario: A player without the sprites
+- **WHEN** a game built without `--copy-sources` starts on a machine with no `~/dev/assets/stardew`
+- **THEN** it exits 1 before a window opens, with a line naming `stardew`, the resolved folder and `--copy-sources`
 
 ### Requirement: levels check resolves source prefixes
 `bevy-ts levels check` SHALL check a `name://` asset path under that source's folder, read from the `bevy-ts.json` found by walking up from the first file. An unknown name SHALL be an error naming it and the path.
