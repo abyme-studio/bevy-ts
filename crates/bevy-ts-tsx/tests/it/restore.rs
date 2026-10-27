@@ -330,10 +330,12 @@ fn an_inherited_visibility_change_is_not_written_back() {
 }
 
 /// Mounted with a mesh on `b`, with Bevy's transforms and bounds as a game runs them, its `Aabb`
-/// computed one frame in.
+/// computed one frame in. Bevy leaves `calculate_bounds` unordered against the asset events, so
+/// an asset's change can reach it a frame late; ordered after them, one frame is enough.
 fn meshed() -> (App, Entity) {
     let mut app = app();
-    app.add_plugins(bevy::transform::TransformPlugin).add_systems(PostUpdate, bevy::camera::visibility::calculate_bounds);
+    app.add_plugins(bevy::transform::TransformPlugin)
+        .add_systems(PostUpdate, bevy::camera::visibility::calculate_bounds.after(bevy::asset::AssetEventSystems));
     let mut desc = serde_json::to_value(level(0.0)).unwrap();
     desc[0]["children"][1]["components"].as_array_mut().unwrap().push(json!({ "type": "mesh", "kind": "intrinsic", "props": { "shape": "cuboid" } }));
     bevy_ts_tsx::reconcile_external(app.world_mut(), ROOT, None, &serde_json::from_value::<Vec<NodeDesc>>(desc).unwrap()).unwrap();
@@ -351,7 +353,8 @@ fn bounds_bevy_computes_again_from_the_mesh_are_no_change() {
     let start = app.world().read_change_tick();
     // As the mesh asset's load lands after the start: Bevy writes the `Aabb` again.
     let mesh = app.world().get::<Mesh3d>(b).unwrap().id();
-    app.world_mut().resource_mut::<Assets<Mesh>>().get_mut(mesh).unwrap();
+    // `AssetMut` sends `Modified` only once borrowed mutably.
+    app.world_mut().resource_mut::<Assets<Mesh>>().get_mut(mesh).unwrap().into_inner();
     app.update();
     let t = app.world().entity(b).get_change_ticks::<Aabb>().unwrap();
     assert!(t.is_changed(start, app.world().read_change_tick()), "Bevy wrote the Aabb after the start");
