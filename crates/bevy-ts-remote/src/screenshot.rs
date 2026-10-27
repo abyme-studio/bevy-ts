@@ -322,7 +322,7 @@ fn not_ready(world: &World, loads: &Loads) -> String {
     if loads.loading > 0 {
         why.push(format!("{} assets still loading", loads.loading));
     }
-    why.join(", ")
+    why.join("; ")
 }
 
 /// Everything a shot waits on, for a stall's line and a shot that gives up: whether the script
@@ -704,10 +704,12 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
                 Progress::Pending(capture(world, path))
             } else if world.contains_resource::<PipelinesWaiting>() && pipelines_waiting(world).is_none() && since.elapsed() > TIMEOUT {
                 let answer = Err(internal(format!("{}: no frame rendered within {} s", path.display(), TIMEOUT.as_secs())));
+                note_stall(world, String::new);
                 Progress::Done { answer, at: update, owed: 1 }
             } else if clock.stalled(ready_timeout(world)) {
                 let window = ready_timeout(world).as_secs_f64();
                 let answer = Err(internal(format!("{}: {} after {window} s with no progress", path.display(), not_ready(world, &loads))));
+                note_stall(world, String::new);
                 Progress::Done { answer, at: update, owed: 1 }
             } else {
                 note_stall(world, || format!("bevy-ts/screenshot {} waits on: {}", path.display(), waiting_on(world, &loads, ready.into(), Some(METHOD_FRAME.into()))));
@@ -776,13 +778,17 @@ fn abandon(world: &mut World, e: Entity) {
     }
 }
 
-/// Forgets the shots of requests that closed, and the shot entities still waiting for them.
-pub(crate) fn forget_closed(mut shots: ResMut<Shots>, mut commands: Commands) {
+/// Forgets the shots of requests that closed, and the shot entities still waiting for them. A
+/// shot forgotten while waiting or capturing no longer waits: the stall note it wrote goes.
+pub(crate) fn forget_closed(mut shots: ResMut<Shots>, note: Option<Res<StallNote>>, mut commands: Commands) {
     shots.1 += 1;
     shots.0.retain(|_, s| {
         let keep = std::mem::take(&mut s.touched);
         if !keep && let Progress::Pending(e) = s.state {
             commands.queue(move |world: &mut World| abandon(world, e));
+        }
+        if !keep && !matches!(s.state, Progress::Done { .. }) && let Some(note) = &note {
+            note.set(None);
         }
         keep
     });
@@ -956,6 +962,44 @@ mod tests {
         assert!(!path.exists(), "a shot was saved");
         let note = note.get().expect("a note");
         assert!(note.contains("the env shot waits on: the script started; held by the script: abymed; ready frame 0 of 60"), "{note}");
+    }
+
+    /// `bevy-ts/screenshot` under a hold never released: while it waits, the stall note names it
+    /// and the hold; once it fails, or a waiting request closes, the note is gone.
+    #[test]
+    fn the_methods_stall_note_goes_when_it_stops_waiting() {
+        let (mut app, renders) = fixed_app();
+        let note = crate::stall::StallNote::default();
+        app.insert_resource(ReadyTimeout(Duration::from_millis(200))).insert_resource(note.clone()).init_resource::<Shots>();
+        app.world_mut().resource_mut::<ReadyHold>().hold("abymed");
+        let ask = |app: &mut App, name: &str| {
+            let path = std::env::temp_dir().join(format!("bevy-ts-remote-note-{name}-{}.png", std::process::id()));
+            let params = serde_json::json!({ "path": path });
+            app.world_mut().run_system_cached_with(screenshot, Some(params)).unwrap()
+        };
+        let start = Instant::now();
+        let error = loop {
+            assert!(start.elapsed() < Duration::from_secs(30), "still waiting");
+            update(&mut app, &renders);
+            match ask(&mut app, "fails") {
+                Ok(None) => {
+                    let n = note.get().expect("a note while waiting");
+                    assert!(n.starts_with("bevy-ts/screenshot ") && n.contains("held by the script: abymed; "), "{n}");
+                }
+                Ok(Some(_)) => panic!("a shot under a hold"),
+                Err(e) => break e.message,
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        assert!(error.contains("held by the script: abymed"), "{error}");
+        assert_eq!(note.get(), None, "the note outlived the failed shot");
+
+        assert!(matches!(ask(&mut app, "closes"), Ok(None)));
+        assert!(note.get().is_some(), "a note while waiting");
+        for _ in 0..2 {
+            app.world_mut().run_system_cached(forget_closed).unwrap();
+        }
+        assert_eq!(note.get(), None, "the note outlived the closed request");
     }
 
     /// A shot waiting on pipelines: done rising every half `ReadyTimeout` keeps it waiting past the

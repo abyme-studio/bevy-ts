@@ -137,7 +137,7 @@ fn a_stall_names_what_the_shot_waits_on() {
     app.update();
     let line = rx.recv_timeout(BOUND).expect("a stall report").line();
     assert!(line.starts_with("Update stopped: frame 4 "), "{line}");
-    assert!(line.ends_with("; the env shot waits on: the script started; held by the script: abymed, no frame rendered; ready frame 0 of 60"), "{line}");
+    assert!(line.ends_with("; the env shot waits on: the script started; held by the script: abymed; no frame rendered; ready frame 0 of 60"), "{line}");
 }
 
 /// Posts one JSON-RPC request and returns the response's JSON, waiting for the server to come up.

@@ -15,8 +15,8 @@ A hold SHALL NOT be progress. When the env shot fails after 60 s with no progres
 - **THEN** the three shots are byte-identical
 
 #### Scenario: The same runs without a hold
-- **WHEN** the runs above do not hold
-- **THEN** the 400 ms run's shot differs from the 0 ms run's
+- **WHEN** a run whose data comes only after its shot does not hold
+- **THEN** its shot is taken without the data and differs from the held runs'
 
 #### Scenario: No time passes while held
 - **WHEN** a run under the fixed step holds for 20 frames with nothing loading and no pipeline waiting

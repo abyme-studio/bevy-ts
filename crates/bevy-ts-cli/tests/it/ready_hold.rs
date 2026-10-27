@@ -99,8 +99,8 @@ fn fox_on_data(app: &mut App, came: Arc<AtomicBool>) {
 }
 
 /// The fox shot at the 30th ready frame on the fixed step, its data coming `delay` after the
-/// script applied, with `work` of extra time each frame.
-fn fox_shot(name: &str, src: &str, delay: Duration, work: Duration) -> Vec<u8> {
+/// script applied (`None`: not before the shot), with `work` of extra time each frame.
+fn fox_shot(name: &str, src: &str, delay: Option<Duration>, work: Duration) -> Vec<u8> {
     let shots = TestDir::new(&format!("{name}-shots"));
     let path = shots.join("fox.png");
     let (_game, mut app) = engine(name, src, Some(&path), 30);
@@ -110,8 +110,10 @@ fn fox_shot(name: &str, src: &str, delay: Duration, work: Duration) -> Vec<u8> {
     start(&mut app);
     apply_script(&mut app);
     let reply = std::thread::spawn(move || {
-        std::thread::sleep(delay);
-        came.store(true, Ordering::Release);
+        if let Some(delay) = delay {
+            std::thread::sleep(delay);
+            came.store(true, Ordering::Release);
+        }
     });
     until(&mut app, &format!("{} written", path.display()), |app| {
         std::fs::metadata(&path).is_ok_and(|m| m.len() > 0) && !app.world().contains_resource::<ShotWhenReady>()
@@ -156,21 +158,22 @@ fn a_hold_in_startup_holds_from_the_first_started_frame() {
 }
 
 /// The fox's data comes at once, then after 400 ms with 30 ms of work a frame, twice: held until
-/// it comes, the three shots are one image. Without the hold, the late run's clip starts some
-/// steps in, and its shot differs.
+/// it comes, the three shots are one image. Without the hold, data that comes after the shot is
+/// missing from it.
 #[test]
 fn data_that_comes_late_is_shot_the_same_under_load() {
-    let quick = fox_shot("ready-hold-quick", HOLDS, Duration::ZERO, Duration::ZERO);
+    let quick = fox_shot("ready-hold-quick", HOLDS, Some(Duration::ZERO), Duration::ZERO);
     let lit = quick.chunks(4).filter(|p| p[..3] != [0, 0, 0]).count();
     assert!(lit > 1000, "the fox is in the shot: {lit} pixels");
     for i in 0..2 {
-        let late = fox_shot(&format!("ready-hold-late-{i}"), HOLDS, Duration::from_millis(400), Duration::from_millis(30));
+        let late = fox_shot(&format!("ready-hold-late-{i}"), HOLDS, Some(Duration::from_millis(400)), Duration::from_millis(30));
         assert!(quick == late, "held run {} differs in {} of {} bytes", i + 2, differ(&quick, &late), quick.len());
     }
-    let free_quick = fox_shot("ready-free-quick", FREE, Duration::ZERO, Duration::ZERO);
-    // Late enough to land steps after the quick arm's data even at ~600 ms a frame.
-    let free_late = fox_shot("ready-free-late", FREE, Duration::from_secs(3), Duration::from_millis(30));
-    assert!(free_quick != free_late, "without the hold the late shot is the same: the test does not see the bug");
+    // Without the hold nothing waits for data that has not come: data that comes after the shot
+    // (whenever load makes it late) is missing from it. Data that comes before it starts a load,
+    // which the ready count already waits out, so only data after the shot shows the bug here.
+    let free_late = fox_shot("ready-free-late", FREE, None, Duration::from_millis(30));
+    assert!(free_late != quick, "without the hold the shot waited for the data: the test does not see the bug");
 }
 
 /// Asks `bevy-ts/screenshot` for `path`; its answer comes on the receiver.
