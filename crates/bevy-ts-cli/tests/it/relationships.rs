@@ -447,6 +447,22 @@ export class Likes extends Component { static path = "game::Likes"; declare targ
     assert_eq!(sorted(list(&app, t, "game::LikedBy").unwrap()), sorted(vec![a, b]));
 }
 
+#[test]
+fn a_source_turned_plain_drops_its_deleted_linked_target() {
+    let (dir, mut app, _) = staged("rel-source-to-plain", |_| vec![], "");
+    let (o, c) = (spawn(&mut app), spawn(&mut app));
+    point(&mut app, c, "game::OwnedBy", o);
+    let owns = id(&app, "game::Owns");
+    let plain = src("")
+        .replace("export class OwnedBy extends Relationship", "export class OwnedBy extends Component")
+        .replace("export class Owns extends RelationshipTarget(OwnedBy, { linkedSpawn: true }) { static path = \"game::Owns\" }\n", "");
+    reload_with(&mut app, &dir, &plain);
+    assert!(!app.world().entity(o).contains_id(owns), "the stale list is gone");
+    app.world_mut().entity_mut(o).despawn();
+    app.world_mut().flush();
+    assert!(app.world().get_entity(c).is_ok(), "no longer a source, so not despawned with o");
+}
+
 fn list_opt(app: &App, e: Entity) -> Option<Vec<Entity>> {
     bevy_ts::plugin_api::component_by_name(app.world(), "game::LikedBy").and_then(|_| list(app, e, "game::LikedBy"))
 }

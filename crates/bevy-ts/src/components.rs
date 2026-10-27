@@ -13,7 +13,7 @@ use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Where a TS component stands.
@@ -593,11 +593,16 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
     // A pair with a new id is rebuilt, not migrated: its hooks, old and new, are off until then
     // (custom-relationships decision 8).
     let mut rebuild = Vec::new();
+    // Old source ids this commit retires: a target no longer declared that lists them is stale.
+    let mut retired_sources = HashSet::new();
     {
         let mut hooks = world.get_resource_or_init::<TsHooks>();
         for (decl, _, planned, id) in &pending.items {
             let Planned::New { from, .. } = planned else { continue };
             let old = from.map(|i| registry.entries[i].id);
+            if let Some(o) = old.filter(|o| matches!(hooks.role(*o), Some(Role::Source { .. }))) {
+                retired_sources.insert(o);
+            }
             if decl.relationship.is_some() || old.is_some_and(|o| hooks.role(o).is_some()) {
                 hooks.suspend(old.into_iter().chain([*id]));
             }
@@ -671,6 +676,25 @@ pub fn commit(world: &mut World, pending: PendingComponents) -> Vec<Migration> {
         if !declared.contains_key(&c.decl.name) {
             c.state = ComponentState::Undeclared;
         }
+    }
+    // An undeclared target whose source got a new id lists entities that are no longer its
+    // sources: it goes, with its hooks off, so a linked one cannot despawn them later.
+    let stale: Vec<usize> = registry
+        .current
+        .values()
+        .copied()
+        .filter(|&i| registry.entries[i].state == ComponentState::Undeclared)
+        .filter(|&i| matches!(world.resource::<TsHooks>().role(registry.entries[i].id), Some(Role::Target { source, .. }) if retired_sources.contains(&source)))
+        .collect();
+    for i in stale {
+        let old = registry.entries[i].id;
+        world.resource_mut::<TsHooks>().suspend([old]);
+        for e in entities_with(world, old) {
+            world.entity_mut(e).remove_by_id(old);
+        }
+        registry.entries[i].state = ComponentState::Retired;
+        let name = registry.entries[i].decl.name.clone();
+        registry.current.remove(&name);
     }
     world.insert_resource(registry);
     for (source, target) in rebuild {
