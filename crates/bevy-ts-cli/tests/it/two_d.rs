@@ -38,13 +38,24 @@ fn load_with(name: &str, body: &str, plugins: impl FnOnce(&mut App)) -> (App, Re
 
 /// [`load_with`], given the whole of `game.tsx`.
 fn load_game(name: &str, game: &str, plugins: impl FnOnce(&mut App)) -> (App, ReloadReport) {
+    load_game_with_assets(name, game, &[], plugins)
+}
+
+/// [`load_game`], with `assets` (path and bytes) written under the project's `assets/`, its asset root.
+fn load_game_with_assets(name: &str, game: &str, assets: &[(&str, &[u8])], plugins: impl FnOnce(&mut App)) -> (App, ReloadReport) {
     let dir = project(name, &[("game.tsx", game)]);
+    for (path, bytes) in assets {
+        let p = dir.join("assets").join(path);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, bytes).unwrap();
+    }
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
             .build()
             .disable::<WinitPlugin>()
-            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() }),
+            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
+            .set(bevy_ts_cli::headless::asset_plugin_unwatched(&dir.join("assets"))),
     )
     .add_plugins(bevy_ts_cli::headless::HeadlessPlugin)
     .add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(Default::default())).dev(true))
@@ -623,4 +634,54 @@ fn a_sprite_clip_from_tsx_steps_its_atlas_index() {
     // 0.45 s: frames 0, 1, 2, 3, then 2.
     updates(&mut app, 9);
     assert_eq!(app.world().get::<Sprite>(e).unwrap().texture_atlas.as_ref().unwrap().index, 2);
+}
+
+// Change pixel-art-2d, stage 5: a bound `<bitmapText>` re-lays its glyphs.
+
+const LABEL: &str = r##"import { app, Component, u8, signal, Update, type Query } from "bevy-ts";
+
+export class Grow extends Component { static path = "game::Grow"; declare on: u8 }
+export const [name, setName] = signal("AL");
+export function grown(q: Query<[Grow]>) {
+  q.each((g) => { if (g.on === 1) setName("BEA"); });
+}
+app.addSystems(Update, grown);
+
+app.scene("s", () => (
+  <entity key="label">
+    <bitmapText font="fonts/tiny.json" scale={2}>{() => name()}</bitmapText>
+  </entity>
+));
+"##;
+
+#[test]
+fn a_bound_bitmap_text_goes_from_two_glyphs_to_three() {
+    let fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/shapes-2d/assets/fonts");
+    let (json, png) = (std::fs::read(fonts.join("tiny.json")).unwrap(), std::fs::read(fonts.join("tiny.png")).unwrap());
+    let (mut app, r) = load_game_with_assets("two-d-bitmap-text", LABEL, &[("fonts/tiny.json", &json), ("fonts/tiny.png", &png)], |app| {
+        app.add_plugins(bevy_ts_material::BitmapTextPlugin);
+    });
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    let e = node(&mut app, "label");
+    let glyphs = |app: &mut App| {
+        let world = app.world_mut();
+        world.query_filtered::<&ChildOf, With<bevy_ts_material::bitmap_text::Glyph>>().iter(world).filter(|c| c.parent() == e).count()
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while glyphs(&mut app) == 0 {
+        assert!(std::time::Instant::now() < deadline, "the font never loaded");
+        app.update();
+    }
+    assert_eq!(glyphs(&mut app), 2, "AL");
+    let label = app.world().get::<bevy_ts_material::BitmapText>(e).unwrap();
+    assert_eq!((label.text.as_str(), label.scale), ("AL", 2.0));
+    let before = app.world().entity(e).get_ref::<Transform>().unwrap().last_changed();
+    let (id, _) = bevy_ts::plugin_api::component_by_name(app.world(), "game::Grow").unwrap();
+    let grow = app.world_mut().spawn_empty().id();
+    // SAFETY: Grow is one u8.
+    unsafe { bevy_ts::commands::insert_bytes(&mut app.world_mut().entity_mut(grow), id, &[1]) };
+    updates(&mut app, 2);
+    assert_eq!(glyphs(&mut app), 3, "BEA");
+    assert_eq!(app.world().entity(e).get_ref::<Transform>().unwrap().last_changed(), before, "the entity's own components are unchanged");
 }

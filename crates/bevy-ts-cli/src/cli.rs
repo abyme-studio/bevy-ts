@@ -305,6 +305,7 @@ pub fn base_app_with_sources(
         .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .add_plugins(bevy_ts_material::WorldTextPlugin)
         .add_plugins(bevy_ts_material::Pixel2dPlugin)
+        .add_plugins(bevy_ts_material::BitmapTextPlugin)
         .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
         .add_plugins(crate::input::ScriptInputPlugin)
         .add_plugins(crate::audio::ScriptAudioPlugin)

@@ -39,13 +39,13 @@
 
 ## 5. Stage 5: bitmap fonts
 
-- [ ] 5.1 `crates/bevy-ts-material/src/bitmap_text/`: `SpriteFont` asset and loader for typed `json` loads; the PNG as a dependency from `texture.export`; length checks naming field and counts (design 5)
-- [ ] 5.2 Layout as MonoGame's (`SpriteFont.cs:212-258`, `SpriteBatch.cs:616-617`): bearings, spacing, cropping, line spacing, default character, one warning when there is none; measured box for `anchor`
-- [ ] 5.3 `BitmapText { text, font, color, scale }` component; glyph children owned, hidden from the reconciler and levels, re-laid on change, removed with it
-- [ ] 5.4 `crates/bevy-ts-tsx`: `<bitmapText>` intrinsic (`font`, `color`, `scale`, `anchor`, joined string and bound children); unknown props fail naming prop and line; `jsx-runtime.d.ts` `BitmapTextProps`; `elements.tsx` cases
-- [ ] 5.5 `crates/bevy-ts-material/tests/it/bitmap_text.rs`: a small test font (PNG and JSON written by the test) lays `AB` at x 1 and 9; a newline; a missing character; a broken font fails naming `cropping`. Where `~/dev/assets/stardew` exists, `SmallFont.json` loads with the expected counts (skipped, with a line saying so, where it does not)
-- [ ] 5.6 `two_d.rs`: a bound `<bitmapText>` goes from two glyphs to three
-- [ ] 5.7 `examples/shapes-2d`: a label in a tiny bitmap font the example ships (made for it, no Stardew art); `docs/2d.md`: "Bitmap text" section and row
+- [x] 5.1 `crates/bevy-ts-material/src/bitmap_text/`: `SpriteFont` asset and loader for typed `json` loads; the PNG as a dependency from `texture.export`; length checks naming field and counts (design 5)
+- [x] 5.2 Layout as MonoGame's (`SpriteFont.cs:212-258`, `SpriteBatch.cs:616-617`): bearings, spacing, cropping, line spacing, default character, one warning when there is none; measured box for `anchor`
+- [x] 5.3 `BitmapText { text, font, color, scale }` component; glyph children owned, hidden from the reconciler and levels, re-laid on change, removed with it
+- [x] 5.4 `crates/bevy-ts-tsx`: `<bitmapText>` intrinsic (`font`, `color`, `scale`, `anchor`, joined string and bound children); unknown props fail naming prop and line; `jsx-runtime.d.ts` `BitmapTextProps`; `elements.tsx` cases
+- [x] 5.5 `crates/bevy-ts-material/tests/it/bitmap_text.rs`: a small test font (PNG and JSON written by the test) lays `AB` at x 1 and 9; a newline; a missing character; a broken font fails naming `cropping`. Where `~/dev/assets/stardew` exists, `SmallFont.json` loads with the expected counts (skipped, with a line saying so, where it does not)
+- [x] 5.6 `two_d.rs`: a bound `<bitmapText>` goes from two glyphs to three
+- [x] 5.7 `examples/shapes-2d`: a label in a tiny bitmap font the example ships (made for it, no Stardew art); `docs/2d.md`: "Bitmap text" section and row
 
 ## 6. Stage 6: sprite clips
 

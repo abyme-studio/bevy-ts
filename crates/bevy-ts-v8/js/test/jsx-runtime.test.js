@@ -201,6 +201,14 @@ Deno.test("worldText is a component of its entity, its children its text", () =>
   if (!b.components[0].props.text.$b) throw new Error("a bound child makes text a binding");
 });
 
+Deno.test("bitmapText is a component of its entity, its children its text", () => {
+  const [e] = describe(jsx("entity", { children: jsxs("bitmapText", { font: "fonts/tiny.json", scale: 2, children: ["Al", () => "!"] }) }));
+  eq(e.components.map((c) => [c.type, c.kind]), [["bitmapText", "intrinsic"]]);
+  eq(e.components[0].props.font, "fonts/tiny.json");
+  if (!e.components[0].props.text.$b) throw new Error("a bound child makes text a binding");
+  throws(() => describe(jsx("entity", { children: jsx("bitmapText", { children: jsx("span", {}) }) })), /<bitmapText> takes strings, numbers and bindings, not <span>/);
+});
+
 Deno.test("text2d is a component of its entity; its spans are child entities that inherit its font", () => {
   const [e] = describe(
     jsx("entity", {

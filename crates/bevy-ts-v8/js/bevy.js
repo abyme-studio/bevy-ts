@@ -471,6 +471,16 @@ export const MissingComponents = reflectClass("MissingComponents");
 
 export class MaterialAlpha extends nativeComponent("MaterialAlpha", { alpha: f32 }) {}
 
+export class BitmapText extends nativeComponent("BitmapText", { scale: f32 }) {}
+
+export class PixelCamera extends nativeComponent("PixelCamera", { zoom: f32, ease: f32 }) {}
+
+export class ScreenSize extends nativeComponent("ScreenSize", { scale: f32 }) {}
+
+export class SpriteClip extends nativeComponent("SpriteClip", { first: u32, last: u32, fps: f32, mode: enumOf("Repeat", "Once", "PingPong"), playing: bool, finished: bool }) {}
+
+export class YSort extends nativeComponent("YSort", { layer: f32, offset: f32 }) {}
+
 export class ComputedWorldText extends nativeComponent("ComputedWorldText", { quads: u32 }) {}
 
 export const WorldText = reflectClass("WorldText");

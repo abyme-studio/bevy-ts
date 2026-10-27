@@ -16,7 +16,7 @@ export const Fragment = Symbol.for("bevy-ts.fragment");
 const ELEMENT = Symbol.for("bevy-ts.element");
 
 /** Intrinsics that describe components of the enclosing entity. */
-const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d", "worldText", "text2d"]);
+const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d", "worldText", "text2d", "bitmapText"]);
 /** bevy_ui intrinsics: entities of their own, with one intrinsic component named after the tag. */
 const UI_INTRINSICS = new Set([
   "node", "text", "image", "button", "span", "viewport", "input",
@@ -1459,7 +1459,7 @@ function describeComponent(el, spans) {
   }
   const d = { type: typeName(el.type), kind, props };
   if (el.source) d.source = el.source;
-  if (el.type === "worldText") {
+  if (el.type === "worldText" || el.type === "bitmapText") {
     const t = worldTextOf(el);
     props.text = typeof t === "function" && Describing ? Describing.ctx.bind(t, Describing.owner, el.source) : t;
   } else if (el.type === "text2d") {
@@ -1473,13 +1473,13 @@ function describeComponent(el, spans) {
   return d;
 }
 
-/** `<worldText>`'s children, strings, numbers and bindings, joined as `<text>` joins them; no element. */
+/** `<worldText>`'s and `<bitmapText>`'s children, strings, numbers and bindings, joined as `<text>` joins them; no element. */
 function worldTextOf(el) {
   const parts = [];
   const walk = (c) => {
     if (c === null || c === undefined || c === false || c === true) return;
     if (Array.isArray(c)) return c.forEach(walk);
-    if (isElement(c)) throw located(`<worldText> takes strings, numbers and bindings, not <${typeName(c.type)}>`, c.source || el.source);
+    if (isElement(c)) throw located(`<${el.type}> takes strings, numbers and bindings, not <${typeName(c.type)}>`, c.source || el.source);
     parts.push(c);
   };
   walk(el.children);

@@ -4,6 +4,8 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `<bitmapText font>` draws text in an XNA SpriteFont (JSON beside its PNG), one sprite per glyph,
+  laid out as MonoGame does (docs/2d.md).
 - `<SpriteClip first last fps mode />` steps a sprite's atlas index (`Repeat`, `Once`, `PingPong`)
   on virtual time (docs/2d.md).
 - `<PixelCamera zoom ease />` zooms a `Camera2d` by whole numbers, eased, and draws its view from

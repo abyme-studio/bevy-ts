@@ -387,6 +387,24 @@ export interface Text2dProps extends SpanStyle {
   children?: TextChild | readonly TextChild[];
 }
 
+/**
+ * `<bitmapText>`: text in a bitmap font (an XNA SpriteFont exported as JSON beside its PNG), a
+ * component of its `<entity>`, one sprite per glyph laid out as MonoGame does, placed by its
+ * `Transform` in pixels under a `Camera2d`. Its children are strings, numbers and bindings, joined.
+ * docs/2d.md.
+ */
+export interface BitmapTextProps {
+  /** The font's JSON, an asset path (`"fonts/tiny.json"`, `"stardew://Fonts/SmallFont.json"`). */
+  font: Bindable<string>;
+  /** Tints every glyph; default white. */
+  color?: Bindable<ColorValue>;
+  /** Screen pixels per font pixel at zoom 1; default 1. */
+  scale?: Bindable<number>;
+  /** `Anchor`: the point of the measured box at the entity's origin (default `"center"`). */
+  anchor?: Bindable<WorldTextAnchor>;
+  children?: WorldTextChild | readonly WorldTextChild[];
+}
+
 /** `<worldText>`'s children: strings, numbers and bindings, no element. */
 export type WorldTextChild = string | number | (() => string | number) | null | undefined | false;
 
@@ -1054,6 +1072,7 @@ export declare namespace JSX {
     material2d: Material2dProps;
     worldText: WorldTextProps;
     text2d: Text2dProps;
+    bitmapText: BitmapTextProps;
     node: PlainNodeProps & KeyAttribute;
     button: ButtonProps & KeyAttribute;
     text: TextProps & KeyAttribute;

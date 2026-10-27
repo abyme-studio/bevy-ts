@@ -520,7 +520,7 @@ impl Plugin for TsxPlugin {
         app.add_systems(
             PostUpdate,
             // The sweep frees instances no entity holds once the reconcile has set this frame's; world text lays out after, so a bound label draws the frame its binding changes, and the pixel-2D pass, so a bound y draws its z the same frame.
-            host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare).before(bevy_ts_material::kinds::sweep).before(bevy_ts_material::WorldTextSystems).before(bevy_ts_material::Pixel2dSystems),
+            host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare).before(bevy_ts_material::kinds::sweep).before(bevy_ts_material::WorldTextSystems).before(bevy_ts_material::Pixel2dSystems).before(bevy_ts_material::BitmapTextSystems),
         );
         app.add_ts_command_kind(mount::UNMOUNT, mount::unmount);
         app.add_systems(PostUpdate, intrinsics::report_texture_failures);

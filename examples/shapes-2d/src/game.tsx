@@ -2,8 +2,8 @@
 // and a row of sprites: plain, tinted, flipped; click one to tint it. Beside them, a sprite sheet
 // a `<SpriteClip>` animates (Bevy's sprite_animation example), a `<text2d>` counting the clicks, and three
 // y-sorted walkers pacing past each other at the right edge, the first with a screen-size marker
-// over its head. The camera is a pixel camera: keys 1, 2 and 4 zoom it. One world unit is one
-// pixel. docs/2d.md
+// over its head. The camera is a pixel camera: keys 1, 2 and 4 zoom it. A title in a bitmap font
+// counts the clicks too. One world unit is one pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
 import { app, Component, signal, sliced, Time, Update, type f32, type Mut, type Query, type Res } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
@@ -119,6 +119,13 @@ export const Shapes = () => (
         )}
       </entity>
     ))}
+    {/* fonts/tiny.json is a 3x5 bitmap font made for this example (an XNA SpriteFont as JSON and PNG). */}
+    <entity key="title" name="title">
+      <Transform translation={[0, 1.8 * STEP, 0]} />
+      <bitmapText font="fonts/tiny.json" scale={3} color="#ff4">
+        SHAPES 2D: {() => `${clicks()}`} CLICKS
+      </bitmapText>
+    </entity>
     <entity key="clicks" name="clicks">
       {/* Above the shapes: inside a 540-pixel-high view. */}
       <Transform translation={[0, 1.4 * STEP, 0]} />

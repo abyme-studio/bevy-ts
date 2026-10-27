@@ -31,6 +31,7 @@ use bevy::ui::{
     OverflowClipMargin, RadialGradient, RadialGradientShape, ShadowStyle, UiPosition, UiTransform, Val2, VisualBox,
 };
 use bevy::ui_widgets::TextInput;
+use bevy_ts_material::BitmapText;
 use bevy_ts_material::world_text::{MAX_OUTLINE, WorldText, WorldTextStyle};
 use serde_json::{Map, Value};
 
@@ -69,6 +70,8 @@ pub enum UiKind {
     DialogDragHandle,
     /// `<text2d>`: Bevy's `Text2d`, a component of its entity. No `Node`.
     Text2d,
+    /// `<bitmapText>`: `BitmapText` in a bitmap font, a component of its entity. No `Node`.
+    BitmapText,
 }
 
 /// What every UI intrinsic but `<span>`, `<worldText>` and `<text2d>` takes: its `Node`'s look and placement, `disabled`, and
@@ -90,6 +93,9 @@ const TEXT2D_PROPS: &[&str] = &[
     "text", "size", "color", "font", "weight", "italic", "lineHeight", "letterSpacing", "textBackground", "underline", "strikethrough", "justify", "linebreak",
     "textShadow", "anchor", "bounds",
 ];
+
+/// `<bitmapText>`'s props: `BitmapText`'s fields, and `Anchor`.
+const BITMAP_TEXT_PROPS: &[&str] = &["text", "font", "color", "scale", "anchor"];
 
 /// `<worldText>`'s props: `<text>`'s font props, and world text's own (`WorldTextStyle`).
 const WORLD_TEXT_PROPS: &[&str] = &["text", "font", "weight", "italic", "justify", "linebreak", "lineHeight", "color", "size", "letterSpacing", "width", "anchor", "outline", "lit"];
@@ -127,6 +133,7 @@ impl UiKind {
             "modalDialogBarrier" => UiKind::ModalDialogBarrier,
             "dialogDragHandle" => UiKind::DialogDragHandle,
             "text2d" => UiKind::Text2d,
+            "bitmapText" => UiKind::BitmapText,
             _ => return None,
         })
     }
@@ -139,6 +146,8 @@ impl UiKind {
             UiKind::WorldText => return WORLD_TEXT_PROPS.to_vec(),
             // Text in the 2D world, not a node: no node props.
             UiKind::Text2d => return TEXT2D_PROPS.to_vec(),
+            // A label of glyph sprites, not a node: no node props.
+            UiKind::BitmapText => return BITMAP_TEXT_PROPS.to_vec(),
             // Its widths and corners are `ScrollbarThumb`'s fields; the scrollbar places it.
             UiKind::ScrollbarThumb => return vec!["style", "background", "border", "radius"],
             UiKind::Node => &["scrollArea"],
@@ -245,6 +254,8 @@ enum Part {
     Anchor,
     /// `bounds` on `<text2d>`: `TextBounds`.
     Bounds,
+    /// `<bitmapText>`'s text, font, colour and scale: `BitmapText`.
+    BitmapText,
 }
 
 /// On an entity whose `tabIndex` or `tabGroup` is a prop, so the engine can name one mounted
@@ -255,6 +266,9 @@ pub struct TabProp;
 fn part(kind: UiKind, prop: &str) -> Part {
     if kind == UiKind::WorldText && WORLD_STYLE_PROPS.contains(&prop) {
         return Part::WorldStyle;
+    }
+    if kind == UiKind::BitmapText && prop != "anchor" {
+        return Part::BitmapText;
     }
     match prop {
         "style" | "radius" if kind == UiKind::ScrollbarThumb => Part::Thumb,
@@ -1448,6 +1462,7 @@ fn check_part(kind: UiKind, props: &Map<String, Value>, p: Part) -> Result<(), S
         Part::Disabled => props["disabled"].as_bool().map(|_| ()).ok_or_else(|| "disabled takes a boolean".into()),
         Part::ActivateOnPress => props["activateOnPress"].as_bool().map(|_| ()).ok_or_else(|| "activateOnPress takes a boolean".into()),
         Part::WorldStyle => world_style(props).map(|_| ()),
+        Part::BitmapText => bitmap_text(props).map(|_| ()),
         Part::TabIndex => tab_index(&props["tabIndex"]).map(|_| ()),
         Part::TabGroup => tab_group(&props["tabGroup"]).map(|_| ()),
         Part::Checked => flag_prop(props, &["checked", "initialChecked"]).map(|_| ()),
@@ -1687,6 +1702,14 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
             let s = world_style(props)?;
             world.entity_mut(e).insert(s);
         }
+        Part::BitmapText => {
+            let (text, path, color, scale) = bitmap_text(props)?;
+            let font = world.get_resource::<AssetServer>().ok_or("<bitmapText> needs the asset plugin (no AssetServer)")?.load(path);
+            let label = BitmapText { text, font, color, scale };
+            if world.get::<BitmapText>(e) != Some(&label) {
+                world.entity_mut(e).insert(label);
+            }
+        }
         Part::TabIndex => match props.get("tabIndex") {
             Some(v) => {
                 world.entity_mut(e).insert((TabIndex(tab_index(v)?), TabProp));
@@ -1807,6 +1830,22 @@ fn write_part(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Va
     Ok(())
 }
 
+/// `<bitmapText>`'s `BitmapText` fields: its text, font path, colour (white unless given) and
+/// scale (1 unless given, above 0).
+fn bitmap_text(props: &Map<String, Value>) -> Result<(String, String, Color, f32), String> {
+    let text = match props.get("text") {
+        None => String::new(),
+        Some(v) => v.as_str().ok_or_else(|| format!("text takes a string, not {v}"))?.to_string(),
+    };
+    let font = props.get("font").and_then(Value::as_str).ok_or("<bitmapText> needs font=\"path\", its SpriteFont's JSON")?.to_string();
+    let color = props.get("color").map(|c| color(c).map_err(|e| format!("color: {e}"))).transpose()?.unwrap_or(Color::WHITE);
+    let scale = match props.get("scale") {
+        None => 1.0,
+        Some(v) => v.as_f64().filter(|s| *s > 0.0).ok_or_else(|| format!("scale takes a number above 0, not {v}"))? as f32,
+    };
+    Ok((text, font, color, scale))
+}
+
 /// Removes `TabProp` once neither `tabIndex` nor `tabGroup` is a prop.
 fn tab_prop_gone(world: &mut World, e: Entity, props: &Map<String, Value>) {
     if !props.contains_key("tabIndex") && !props.contains_key("tabGroup") {
@@ -1850,13 +1889,14 @@ fn props_of(kind: UiKind, props: &Map<String, Value>, p: Part) -> bool {
 
 /// Inserts everything a UI intrinsic owns, from its current props.
 pub fn insert(world: &mut World, e: Entity, kind: UiKind, props: &Map<String, Value>) -> Result<(), String> {
-    if !matches!(kind, UiKind::Span | UiKind::WorldText | UiKind::ScrollbarThumb | UiKind::Text2d) {
+    if !matches!(kind, UiKind::Span | UiKind::WorldText | UiKind::ScrollbarThumb | UiKind::Text2d | UiKind::BitmapText) {
         write_part(world, e, kind, props, Part::Node)?;
     }
     let mut parts: Vec<Part> = props.keys().map(|k| part(kind, k)).filter(|p| *p != Part::Node).collect();
     match kind {
         UiKind::Text | UiKind::Span | UiKind::Text2d => parts.extend([Part::Text, Part::Font]),
         UiKind::WorldText => parts.extend([Part::Text, Part::Font, Part::Color, Part::Layout, Part::LineHeight, Part::WorldStyle]),
+        UiKind::BitmapText => parts.extend([Part::BitmapText, Part::Anchor]),
         UiKind::Input => {
             if props.contains_key("initialValue") {
                 check_part(kind, props, Part::Value)?;
@@ -1981,6 +2021,10 @@ pub fn remove(world: &mut World, e: Entity, kind: UiKind) {
         // `NotShadowCaster` came with it, so a `<mesh>` in its place casts a shadow again.
         UiKind::WorldText => {
             em.remove::<(WorldText, WorldTextStyle, TextFont, TextColor, TextLayout, LineHeight, bevy::light::NotShadowCaster)>();
+        }
+        // The glyph sprites go with `BitmapText` (bitmap text's own observer).
+        UiKind::BitmapText => {
+            em.remove::<(BitmapText, Anchor)>();
         }
         UiKind::Text2d => {
             em.remove::<(Text2d, TextFont, TextColor, TextLayout, LineHeight, LetterSpacing, Text2dShadow, TextBackgroundColor, Anchor, TextBounds)>();
@@ -2108,6 +2152,27 @@ mod tests {
         ] {
             let e = check(UiKind::Text2d, props.as_object().unwrap()).expect_err(&format!("{props} is refused"));
             assert!(e.contains(prop), "{props}: {e} names {prop}");
+        }
+    }
+
+    #[test]
+    fn bitmap_text_takes_its_fields_and_anchor_and_names_what_it_refuses() {
+        let ok = json!({ "text": "HI", "font": "fonts/tiny.json", "color": "#ff4", "scale": 2, "anchor": "top-left" });
+        check(UiKind::BitmapText, ok.as_object().unwrap()).unwrap();
+        let (text, font, color, scale) = bitmap_text(ok.as_object().unwrap()).unwrap();
+        assert_eq!((text.as_str(), font.as_str(), scale), ("HI", "fonts/tiny.json", 2.0));
+        assert_eq!(color.to_srgba().to_hex(), "#FFFF44");
+        let (_, _, color, scale) = bitmap_text(json!({ "font": "f.json" }).as_object().unwrap()).unwrap();
+        assert_eq!((color, scale), (Color::WHITE, 1.0), "white at scale 1 unless given");
+        for (props, names) in [
+            (json!({ "text": "A" }), "font"),
+            (json!({ "font": "f.json", "scale": 0 }), "scale"),
+            (json!({ "font": "f.json", "color": "nope" }), "color"),
+            (json!({ "font": "f.json", "size": 3 }), "size"),
+            (json!({ "font": "f.json", "style": { "width": 3 } }), "style"),
+        ] {
+            let e = check(UiKind::BitmapText, props.as_object().unwrap()).expect_err(&format!("{props} is refused"));
+            assert!(e.contains(names), "{props}: {e} names {names}");
         }
     }
 

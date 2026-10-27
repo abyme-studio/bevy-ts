@@ -1400,6 +1400,47 @@ export declare class MaterialAlpha extends Component {
   declare alpha: f32;
 }
 
+/** Holes, not columns: text: opaque to reflection (alloc::string::String); font: an enum with data (bevy_asset::handle::Handle<bevy_ts_material::bitmap_text::font::SpriteFont>); color: an enum with data (bevy_color::color::Color). */
+export declare class BitmapText extends Component {
+  static readonly path: "bevy_ts_material::bitmap_text::BitmapText";
+  static readonly native: true;
+  /** Its props as an element. */
+  static readonly __element: { text: string; font: string | null; color: ColorValue; scale: number };
+  declare scale: f32;
+}
+export interface BitmapText extends Holes<{ text: string; font: string | null; get color(): ColorRead; set color(v: ColorValue) }> {}
+
+export declare class PixelCamera extends Component {
+  static readonly path: "bevy_ts_material::pixel2d::PixelCamera";
+  static readonly native: true;
+  declare zoom: f32;
+  declare ease: f32;
+}
+
+export declare class ScreenSize extends Component {
+  static readonly path: "bevy_ts_material::pixel2d::ScreenSize";
+  static readonly native: true;
+  declare scale: f32;
+}
+
+export declare class SpriteClip extends Component {
+  static readonly path: "bevy_ts_material::pixel2d::SpriteClip";
+  static readonly native: true;
+  declare first: u32;
+  declare last: u32;
+  declare fps: f32;
+  declare mode: "Repeat" | "Once" | "PingPong";
+  declare playing: bool;
+  declare finished: bool;
+}
+
+export declare class YSort extends Component {
+  static readonly path: "bevy_ts_material::pixel2d::YSort";
+  static readonly native: true;
+  declare layer: f32;
+  declare offset: f32;
+}
+
 /** Holes, not columns: rect: not plain data (bevy_math::rects::rect::Rect). */
 export declare class ComputedWorldText extends Component {
   static readonly path: "bevy_ts_material::world_text::ComputedWorldText";

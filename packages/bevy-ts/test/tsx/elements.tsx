@@ -339,6 +339,20 @@ export const ScoreText2d = () => (
 export const BoundsNumber = () => <entity><text2d bounds={200}>A</text2d></entity>;
 // @ts-expect-error  <text2d> is not a UI node: no style
 export const StyledText2d = () => <entity><text2d style={{ width: 3 }}>A</text2d></entity>;
+const [who] = signal("Al");
+export const BitmapLabel = () => (
+  <entity>
+    <bitmapText font="fonts/tiny.json" color="#ff4" scale={2} anchor="top-left">
+      HI {() => who()}
+    </bitmapText>
+  </entity>
+);
+// @ts-expect-error  <bitmapText> needs a font
+export const NoFont = () => <entity><bitmapText>A</bitmapText></entity>;
+// @ts-expect-error  <bitmapText> takes no element children
+export const SpanInBitmap = () => <entity><bitmapText font="f.json"><span>A</span></bitmapText></entity>;
+// @ts-expect-error  <bitmapText> has no size: its font's pixels are its size
+export const SizedBitmap = () => <entity><bitmapText font="f.json" size={3}>A</bitmapText></entity>;
 // A graph root: a built graph, or a .animgraph.ron path.
 const blended = AnimationGraph.fromClips(["models/Fox.glb#Animation0", "models/Fox.glb#Animation2"])[0];
 export const Blended = () => <entity><PlayAnimation graph={blended} /></entity>;

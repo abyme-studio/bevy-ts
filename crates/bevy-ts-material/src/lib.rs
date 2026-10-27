@@ -3,6 +3,7 @@
 //! per material.
 
 pub mod alpha;
+pub mod bitmap_text;
 pub mod instance;
 pub mod kinds;
 pub mod layout;
@@ -13,6 +14,7 @@ pub mod scene;
 pub mod wgsl;
 pub mod world_text;
 
+pub use bitmap_text::{BitmapText, BitmapTextPlugin, BitmapTextSystems, SpriteFont};
 pub use alpha::{Fade, FadeMaterial, MaterialAlpha, MaterialAlphaTargets, standard_of};
 pub use instance::ScriptInstance;
 pub use kinds::MaterialKinds;
