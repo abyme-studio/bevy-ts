@@ -122,7 +122,8 @@ impl Plugin for Pixel2dPlugin {
                     .chain()
                     .in_set(Pixel2dSystems),
             )
-            .add_systems(PostUpdate, snap_pixel_camera.after(TransformSystems::Propagate).before(CameraUpdateSystems).run_if(any_with_component::<PixelCamera>));
+            .add_systems(PostUpdate, snap_pixel_camera.after(TransformSystems::Propagate).before(CameraUpdateSystems).run_if(any_with_component::<PixelCamera>))
+            .add_systems(PostUpdate, requeue_new_z.after(TransformSystems::Propagate).run_if(any_with_component::<YSort>));
     }
 }
 
@@ -172,6 +173,28 @@ fn y_sort(
         let z = y_sort_z(y.layer, t.translation.y, y.offset);
         if t.translation.z != z {
             t.translation.z = z;
+        }
+    }
+}
+
+/// Bevy 0.20 sorts a transparent 2D mesh (a sprite is one) by the z it had when it was queued, and
+/// queues it again only when its mesh or material changes
+/// (`bevy_sprite_render-0.20.0/src/mesh2d/material.rs:718-729, 1191`), so a new z alone keeps the
+/// old draw order. This marks `Mesh2d` changed on each 2D mesh whose global z moved, so it is queued
+/// again with the new z: a y-sorted entity and its children, as they walk. It runs while a `YSort`
+/// exists; Bevy's check sees the change that frame or the next.
+pub fn requeue_new_z(
+    mut moved: Query<(Entity, &GlobalTransform, &mut Mesh2d), Changed<GlobalTransform>>,
+    mut queued: Local<bevy::ecs::entity::EntityHashMap<f32>>,
+    mut gone: RemovedComponents<Mesh2d>,
+) {
+    for e in gone.read() {
+        queued.remove(&e);
+    }
+    for (e, at, mut mesh) in &mut moved {
+        let z = at.translation().z;
+        if queued.insert(e, z).is_some_and(|was| was != z) {
+            mesh.set_changed();
         }
     }
 }

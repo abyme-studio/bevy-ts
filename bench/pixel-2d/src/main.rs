@@ -3,13 +3,14 @@
 //! Arms: `off` (no pixel-2D component, the pass skipped), `ysort-still` (every sprite y-sorted,
 //! none moving), `ysort-moving` (every sprite y-sorted and moving each frame), `all-moving`
 //! (`ysort-moving`, a tenth with `ScreenSize`, under a moving `PixelCamera` easing between zoom 2
-//! and 4). Prints one line: the pass, propagation and the camera snap per frame, median and p95,
-//! over 600 frames after 120 warm-up.
+//! and 4). Each sprite and shadow holds a `Mesh2d`, as a drawn sprite does, so the re-queue of a
+//! moved z (`requeue_new_z`) does its work. Prints one line: the pass, propagation, the camera snap
+//! and the re-queue per frame, median and p95, over 600 frames after 120 warm-up.
 
 use bevy::camera::{CameraUpdateSystems, RenderTargetInfo};
 use bevy::prelude::*;
 use bevy::transform::TransformSystems;
-use bevy_ts_material::pixel2d::snap_pixel_camera;
+use bevy_ts_material::pixel2d::{requeue_new_z, snap_pixel_camera};
 use bevy_ts_material::{PixelCamera, Pixel2dPlugin, Pixel2dSystems, ScreenSize, YSort};
 use std::time::Instant;
 
@@ -23,6 +24,8 @@ struct Marks {
     pass: Vec<f64>,
     propagate: Vec<f64>,
     snap: Vec<f64>,
+    requeue: Vec<f64>,
+    snapped: Option<Instant>,
     mid: Option<Instant>,
     end: Option<Instant>,
 }
@@ -73,7 +76,14 @@ fn end(mut m: ResMut<Marks>) {
 
 fn snapped(mut m: ResMut<Marks>) {
     let s = m.end.take().unwrap();
-    m.snap.push(s.elapsed().as_secs_f64() * 1e3);
+    let now = Instant::now();
+    m.snap.push((now - s).as_secs_f64() * 1e3);
+    m.snapped = Some(now);
+}
+
+fn requeued(mut m: ResMut<Marks>) {
+    let s = m.snapped.take().unwrap();
+    m.requeue.push(s.elapsed().as_secs_f64() * 1e3);
 }
 
 fn main() {
@@ -96,20 +106,21 @@ fn main() {
                 start.before(Pixel2dSystems),
                 mid.after(Pixel2dSystems).before(TransformSystems::Propagate),
                 end.after(TransformSystems::Propagate).before(snap_pixel_camera),
-                snapped.after(snap_pixel_camera).after(CameraUpdateSystems),
+                snapped.after(snap_pixel_camera).after(CameraUpdateSystems).before(requeue_new_z),
+                requeued.after(requeue_new_z),
             ),
         );
     let world = app.world_mut();
     for i in 0..SPRITES {
         let (x, y) = ((i % 100) as f32 * 16.0, (i / 100) as f32 * 16.0);
-        let mut e = world.spawn((Transform::from_xyz(x, y, 0.0), Walker(i as f32 * 0.01)));
+        let mut e = world.spawn((Transform::from_xyz(x, y, 0.0), Mesh2d::default(), Walker(i as f32 * 0.01)));
         if sorted {
             e.insert(YSort { layer: 1.0, offset: -8.0 });
         }
         if all && i % 10 == 0 {
             e.insert(ScreenSize::default());
         }
-        e.with_child(Transform::from_xyz(0.0, -8.0, -1e-5));
+        e.with_child((Transform::from_xyz(0.0, -8.0, -1e-5), Mesh2d::default()));
     }
     if all {
         let mut camera = Camera::default();
@@ -124,6 +135,7 @@ fn main() {
         m.pass.clear();
         m.propagate.clear();
         m.snap.clear();
+        m.requeue.clear();
     }
     for _ in 0..FRAMES {
         app.update();
@@ -135,12 +147,14 @@ fn main() {
         v[v.len() * p / 100]
     };
     println!(
-        "arm={arm} sprites={SPRITES} pass_median_ms={:.3} pass_p95_ms={:.3} propagate_median_ms={:.3} propagate_p95_ms={:.3} snap_median_ms={:.3} snap_p95_ms={:.3}",
+        "arm={arm} sprites={SPRITES} pass_median_ms={:.3} pass_p95_ms={:.3} propagate_median_ms={:.3} propagate_p95_ms={:.3} snap_median_ms={:.3} snap_p95_ms={:.3} requeue_median_ms={:.3} requeue_p95_ms={:.3}",
         at(&m.pass, 50),
         at(&m.pass, 95),
         at(&m.propagate, 50),
         at(&m.propagate, 95),
         at(&m.snap, 50),
         at(&m.snap, 95),
+        at(&m.requeue, 50),
+        at(&m.requeue, 95),
     );
 }

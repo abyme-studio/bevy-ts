@@ -45,6 +45,33 @@ fn z_is_the_layer_less_the_base_y() {
     assert_eq!(drawn_z(&app, plain), z(&app, plain));
 }
 
+/// Entities whose `Mesh2d` changed this frame, seen in `Last`.
+#[derive(Resource, Default)]
+struct Requeued(Vec<Entity>);
+
+#[test]
+fn a_moved_z_marks_the_mesh_and_its_childs_changed_and_a_still_one_does_not() {
+    let mut app = app();
+    app.init_resource::<Requeued>().add_systems(Last, |q: Query<Entity, Changed<Mesh2d>>, mut r: ResMut<Requeued>| r.0 = q.iter().collect());
+    let walker = app.world_mut().spawn((YSort { layer: 1.0, offset: 0.0 }, Transform::from_xyz(0.0, 10.0, 0.0), Mesh2d::default())).id();
+    let shadow = app.world_mut().spawn((Transform::from_xyz(0.0, -8.0, -1e-5), Mesh2d::default(), ChildOf(walker))).id();
+    let still = app.world_mut().spawn((YSort { layer: 1.0, offset: 0.0 }, Transform::from_xyz(50.0, 0.0, 0.0), Mesh2d::default())).id();
+    app.update();
+    app.update();
+    assert!(app.world().resource::<Requeued>().0.is_empty(), "nothing moved: {:?}", app.world().resource::<Requeued>().0);
+    app.world_mut().get_mut::<Transform>(walker).unwrap().translation.y = -10.0;
+    app.update();
+    let mut got = app.world().resource::<Requeued>().0.clone();
+    got.sort();
+    let mut want = vec![walker, shadow];
+    want.sort();
+    assert_eq!(got, want, "the walker and its shadow, not {still}");
+    // x alone keeps z: not queued again.
+    app.world_mut().get_mut::<Transform>(walker).unwrap().translation.x = 5.0;
+    app.update();
+    assert!(app.world().resource::<Requeued>().0.is_empty());
+}
+
 #[test]
 fn past_the_clamp_sprites_tie_with_one_warning_and_layers_never_mix() {
     let mut app = app();
