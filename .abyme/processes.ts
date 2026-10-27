@@ -681,6 +681,9 @@ const processes = {
   "custom-relationships-bench-8": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; uptime; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"uptime; BENCH_RUNS=8 cargo static test --release -p bevy-ts-cli --test it -- --ignored --nocapture --exact relationships::bench_packed_target_reads; uptime\" 2>&1 | grep -v ld64 | tee target/custom-relationships-bench-8.log | grep -E \"^\\||load average|^error|panicked|test result\"'",
   },
+  "custom-relationships-rerun": {
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"scripts/gen-protocol.sh --check && cargo test -p bevy-ts-cli --no-fail-fast --test it -- ui_gallery:: relationships:: && cargo test -p bevy-ts-material --no-fail-fast --test it -- alpha_render::\" 2>&1 | grep -v ld64 | tee target/custom-relationships-rerun.log | grep -E \"^error|-->|test result|FAILED|panicked|stale\"'",
+  },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
