@@ -44,13 +44,22 @@ impl Gate {
         *self.open.lock().unwrap() = true;
         self.opened.notify_all();
     }
+
+    /// Whether `stall` is the held frame's. On a loaded machine the first frames, which build
+    /// pipelines and start the engine, can outlast the test's short limit too.
+    fn holds(&self, stall: &Stall) -> bool {
+        stall.frame == self.at.load(Ordering::SeqCst) as u64
+    }
 }
 
-/// The watchdog's action: send the stall, then let the frame go on.
+/// The watchdog's action: send the held frame's stall, then let the frame go on.
 fn report(gate: &Arc<Gate>) -> (StallAction, std::sync::mpsc::Receiver<Stall>) {
     let (tx, rx) = channel();
     let gate = gate.clone();
     let action = StallAction::Call(Arc::new(move |s: &Stall| {
+        if !gate.holds(s) {
+            return;
+        }
         tx.send(s.clone()).unwrap();
         gate.release();
     }));
@@ -114,6 +123,8 @@ fn post(port: u16, method: &str, params: Value) -> Value {
     loop {
         if let Ok(mut s) = std::net::TcpStream::connect(("127.0.0.1", port)) {
             let req = format!("POST / HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            // A request no frame answers fails the test instead of holding it.
+            s.set_read_timeout(Some(BOUND)).unwrap();
             s.write_all(req.as_bytes()).unwrap();
             let mut out = String::new();
             s.read_to_string(&mut out).unwrap();
@@ -141,6 +152,9 @@ fn open_requests_are_answered_when_update_stops() {
     let (tx, rx) = channel();
     let g = gate.clone();
     let action = StallAction::Call(Arc::new(move |s: &Stall| {
+        if !g.holds(s) {
+            return;
+        }
         let pause = post(port, "bevy-ts/pause", serde_json::json!({ "paused": true }));
         tx.send((s.clone(), pause)).unwrap();
         g.release();
@@ -155,11 +169,8 @@ fn open_requests_are_answered_when_update_stops() {
     app.cleanup();
     updates(&mut app, 3);
 
-    // The render of frame `at` blocks before it records its pipelines, so the shot asked next
-    // waits for that render: it is open, read by the frame after, when Update stops.
-    let at = app.world().resource::<FrameCount>().0 + 1;
-    gate.at.store(at, Ordering::SeqCst);
-    app.update();
+    // The shot reaches the app's mailbox first: were the render already held, a slow transport
+    // could bring it after the stall, to frames the test no longer runs.
     let shots = crate::common::TestDir::new("stall-shot");
     let shot = shots.join("stall.png");
     let params = serde_json::json!({ "path": shot.to_str().unwrap() });
@@ -169,6 +180,10 @@ fn open_requests_are_answered_when_update_stops() {
         assert!(!client.is_finished() && start.elapsed() < BOUND, "the shot never reached the app");
         std::thread::sleep(Duration::from_millis(5));
     }
+    // Frame `at` reads the shot, and its render blocks before it records its pipelines, so the
+    // shot waits for that render: it is open when Update stops.
+    let at = app.world().resource::<FrameCount>().0 + 1;
+    gate.at.store(at, Ordering::SeqCst);
     app.update();
 
     let screenshot = client.join().unwrap();
