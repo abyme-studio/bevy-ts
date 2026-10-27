@@ -31,6 +31,7 @@ fn the_gallery_mounts_every_intrinsic() {
         .init_asset::<bevy::sprite_render::ColorMaterial>()
         .init_asset::<Image>()
         .init_asset::<bevy::image::TextureAtlasLayout>()
+        .add_plugins(bevy_ts_material::BitmapTextPlugin)
         .init_resource::<bevy::picking::pointer::PointerMap>()
         // The Focus panel's system reads `bevy-ts/input`, with the gallery's two switches on.
         .add_plugins((bevy::input::InputPlugin, bevy::input_focus::InputFocusPlugin, bevy_ts_cli::input::ScriptInputPlugin))
