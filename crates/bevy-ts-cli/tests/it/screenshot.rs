@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const BEFORE: Color = Color::srgb(0.1, 0.2, 0.9);
@@ -186,7 +186,8 @@ fn dechunk(mut rest: &str) -> String {
 }
 
 /// `bevy-ts dev --headless`, out of process: `BEVY_TS_SCREENSHOT` writes its one file, and the
-/// method over Bevy's HTTP transport is one plain JSON-RPC response.
+/// method over Bevy's HTTP transport is one plain JSON-RPC response. With no shot, it fails with
+/// the engine's log.
 #[test]
 fn a_dev_engine_takes_its_env_shot_once_and_answers_the_method_over_http_plainly() {
     let dir = project("screenshot-dev", &[("tsconfig.json", "{}"), ("src/game.ts", "import { app } from \"bevy-ts\";\n")]);
@@ -205,13 +206,29 @@ fn a_dev_engine_takes_its_env_shot_once_and_answers_the_method_over_http_plainly
         .env("NO_COLOR", "1")
         .env("BEVY_TS_SCREENSHOT", &env_shot)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap());
+    // The engine's log, shown when the shot is missing: it names why.
+    let log = Arc::new(Mutex::new(String::new()));
+    let stderr = engine.0.stderr.take().unwrap();
+    std::thread::spawn({
+        let log = log.clone();
+        move || {
+            for line in std::io::BufRead::lines(std::io::BufReader::new(stderr)).map_while(Result::ok) {
+                let mut log = log.lock().unwrap();
+                log.push_str(&line);
+                log.push('\n');
+            }
+        }
+    });
     let deadline = Instant::now() + Duration::from_secs(120);
     while !env_shot.exists() {
-        assert!(Instant::now() < deadline, "no {} within 120 s", env_shot.display());
-        assert!(engine.0.try_wait().unwrap().is_none(), "the engine exited");
+        let exited = engine.0.try_wait().unwrap();
+        if Instant::now() >= deadline || exited.is_some() {
+            let why = exited.map_or_else(|| "within 120 s".to_string(), |status| format!("and the engine exited, {status}"));
+            panic!("no {} {why}; the engine's log:\n{}", env_shot.display(), log.lock().unwrap());
+        }
         std::thread::sleep(Duration::from_millis(100));
     }
     let path = shots.join("http.png");

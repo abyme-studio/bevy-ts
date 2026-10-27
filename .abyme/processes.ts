@@ -31,6 +31,8 @@ const processes = {
     cmd: "cd bench/dx/rust && cargo check 2>&1 | tee ../results/rust-check.txt",
   },
   build: { cmd: "cargo build --workspace --all-targets" },
+  // Change screenshot-cold-and-atomic: the ready-shot tests, full log in target/screenshot-cold-test.log, in a check slot.
+  "screenshot-cold-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; NO_COLOR=1 ~/dev/abyme/scripts/gate-slot run bevy-ts:screenshot-cold-and-atomic -- bash -c \"cargo test -p bevy-ts-remote --lib screenshot && cargo test -p bevy-ts-cli --no-fail-fast --test it -- screenshot_ready:: screenshot::\" > target/screenshot-cold-test.log 2>&1; s=$?; grep -E \"^test |test result|panicked\" target/screenshot-cold-test.log; exit $s'" },
   // Change mesh-picking: its crates built, then the headless click and the switch's tests.
   // CI's headless-linux job in an OrbStack container: target and registry in volumes of their own.
   "mesh-picking-linux": { cmd: "bash -c 'set -o pipefail; docker run --rm --pull always -v $PWD:/src -v bevy-ts-linux-target:/target -v bevy-ts-linux-cargo:/usr/local/cargo/registry -e CARGO_TARGET_DIR=/target -w /src rust:1-bookworm bash -c \"apt-get update -qq && apt-get install -y -qq libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev pkg-config mesa-vulkan-drivers >/dev/null && cargo test -p bevy-ts-cli --test it headless_pointer::\" 2>&1 | tee target/mesh-picking-linux.log | grep -E \"^error|^test |test result|panicked\"'" },

@@ -4,6 +4,16 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- **Breaking:** `BEVY_TS_SCREENSHOT` no longer shoots anyway. When it cannot be ready after 60 s
+  with no progress, or Bevy renders, reads back or writes nothing in time, it saves no file, logs
+  an error naming the path and the reason, and the run exits with code 1. A script that took any
+  PNG as success sees the failure. The 60 s, for it and for `bevy-ts/screenshot`, now restarts on
+  progress (a pipeline finished, fewer assets loading), so a cold build is waited out.
+- **Breaking:** `bevy-ts play` and `bevy-ts dev` exit with the code of the game's `AppExit`: a
+  game that exits with `AppExit::Error` sets it. They used to exit 0.
+- A shot is written to a temp file beside its path and renamed onto it: a reader polling the path
+  never reads part of a PNG.
+
 - `bevy_ts::commands::apply` takes a fifth argument, `label`: what queued the ops, named in a
   delayed queue's warnings. A Rust caller passes its own context (`"my plugin"`).
 - Protocol 1.36.0: `mutate_components` takes `.field[i]` and `.field[i].member` on a list field,

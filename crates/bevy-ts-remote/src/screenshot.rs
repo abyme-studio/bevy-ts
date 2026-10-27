@@ -768,7 +768,7 @@ mod tests {
     /// window; none for the window ends it with no file, no capture and an `AppExit` of code 1.
     #[test]
     fn the_shot_waits_while_pipelines_finish_and_fails_when_they_stop() {
-        let window = Duration::from_millis(400);
+        let window = Duration::from_secs(1);
         let path = std::env::temp_dir().join(format!("bevy-ts-remote-progress-{}.png", std::process::id()));
         let mut app = App::new();
         app.add_plugins((FrameCountPlugin, ReadyPlugin)).insert_resource(ReadyTimeout(window)).insert_resource(ShotWhenReady::new(&path));
@@ -776,7 +776,7 @@ mod tests {
         app.cleanup();
         let renders = app.world().resource::<PipelinesWaiting>().clone();
         let start = Instant::now();
-        let mut done = 0;
+        let (mut done, mut progress) = (0, start);
         let step = |app: &mut App, done: u64| {
             let drawing = app.world().resource::<FrameCount>().0;
             app.update();
@@ -785,16 +785,18 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         };
         while start.elapsed() < window * 3 {
-            done = (start.elapsed().as_millis() / (window.as_millis() / 2)) as u64;
+            let now = (start.elapsed().as_millis() / (window.as_millis() / 2)) as u64;
+            if now != done {
+                (done, progress) = (now, Instant::now());
+            }
             step(&mut app, done);
             assert!(app.world().contains_resource::<ShotWhenReady>(), "failed while pipelines finished, after {:?}", start.elapsed());
         }
-        let stopped = Instant::now();
         while app.world().contains_resource::<ShotWhenReady>() {
-            assert!(stopped.elapsed() < window * 10, "still waiting with no progress");
+            assert!(progress.elapsed() < window * 10, "still waiting with no progress");
             step(&mut app, done);
         }
-        assert!(stopped.elapsed() >= window, "failed before the window: {:?}", stopped.elapsed());
+        assert!(progress.elapsed() >= window, "failed before the window: {:?}", progress.elapsed());
         assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
         assert!(!path.exists(), "a shot was saved");
         let world = app.world_mut();

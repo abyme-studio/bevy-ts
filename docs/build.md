@@ -66,10 +66,16 @@ written, with its size and the frame it shows; for a chosen frame, `bevy-ts/paus
 `bevy-ts/step` there first (rendering runs while paused). A shot waits until no render pipeline
 is still compiling and no asset is still loading (a texture, a glTF and its scene), three updates
 in a row, so nothing is caught as its fallback or missing: the pipelines a texture's material
-needs once it loads are only queued in the render after; an asset that failed is named in a warning; after 60 s the method fails, naming what never held: pipelines still waiting, assets still loading, or no frame rendered. A run with no protocol (`play
+needs once it loads are only queued in the render after; an asset that failed is named in a warning. A shot waits as long as
+the run makes progress: a pipeline finished, or fewer assets loading than the fewest so far. After 60 s with no progress the
+method fails, naming what never held: pipelines still waiting, assets still loading, or no frame rendered. So a cold build
+that keeps compiling is waited out, and a missing shader is not. A run with no protocol (`play
 --headless`) takes one shot with `BEVY_TS_SCREENSHOT=<path>`, at the 60th ready frame in a row: a
-frame on which the script has started, no pipeline is waiting and nothing is loading (after 60 s it shoots anyway,
-and warns). Under it, time runs on a fixed step, through Bevy's
+frame on which the script has started, no pipeline is waiting and nothing is loading. After 60 s with no progress it
+saves nothing, logs an error naming the path and what is not ready, and the run exits with code 1; it fails the same way
+when no frame renders within 5 s of its capture, no image is read back within 60 s, or Bevy captured but wrote nothing.
+`bevy-ts play` and `bevy-ts dev` exit with the code of the game's `AppExit`. Both shots write a temp file beside the path
+(`.<name>.tmp-…`) and rename it onto the path, so a reader polling the path sees no file or a whole PNG, never part of one. Under it, time runs on a fixed step, through Bevy's
 `TimeUpdateStrategy::ManualDuration`: 1/60 s a ready frame and none on a frame that is not ready.
 The shot's clock is always 60 steps: a ready frame before one that was not (a load the script had
 not asked for yet) stepped time too, so the steps stop at 60. And every camera draws with Bevy's
