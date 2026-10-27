@@ -649,12 +649,14 @@ fn bench_packed_target_reads() {
         let sum: String = (0..per).map(|i| format!("n += v.e{i};")).collect();
         let body = format!(
             r#"export class Inline extends Component {{ static path = "game::Inline"; {fields}}}
+export class Row extends Component {{ static path = "game::Row" }}
 let sink = 0;
+export function bare(q: Query<[Row]>) {{ q.each(() => {{ sink++; }}); }}
 export function empty(q: Query<[LikedBy]>) {{ q.each(() => {{ sink++; }}); }}
 export function packed(q: Query<[LikedBy]>) {{ let n = 0; q.each((l) => {{ for (let i = 0; i < l.length; i++) n += l.at(i)!; }}); sink += n; }}
 export function emptyInline(q: Query<[Inline]>) {{ q.each(() => {{ sink++; }}); }}
 export function inline(q: Query<[Inline]>) {{ let n = 0; q.each((v) => {{ {sum} }}); sink += n; }}
-app.addSystems(Update, [empty, packed, emptyInline, inline]);
+app.addSystems(Update, bare, empty, packed, emptyInline, inline);
 "#
         );
         let (_, mut app, _) = staged(&format!("rel-bench-{per}"), |_| vec![], &body);
@@ -665,20 +667,26 @@ app.addSystems(Update, [empty, packed, emptyInline, inline]);
                 insert_ts(&mut app, s, "game::Likes", json!({ "target": t.to_bits() }));
             }
             insert_ts(&mut app, t, "game::Inline", json!({}));
+            insert_ts(&mut app, t, "game::Row", json!({}));
         }
         app.world_mut().flush();
         updates(&mut app, 20);
-        let (mut packed, mut inline) = (Vec::new(), Vec::new());
+        let ns = |us: f64| us * 1000.0 / ROWS as f64;
+        let (mut pack, mut column, mut packed, mut inline) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for _ in 0..runs {
-            let m = medians(&mut app, &["empty", "packed", "emptyInline", "inline"]);
-            packed.push((m[1] - m[0]).max(0.0) * 1000.0 / ROWS as f64);
-            inline.push((m[3] - m[2]).max(0.0) * 1000.0 / ROWS as f64);
+            let m = medians(&mut app, &["empty", "packed", "emptyInline", "inline", "bare"]);
+            // What naming a target costs over naming a field-less marker on the same rows: the
+            // packing and its frame.
+            pack.push(ns(m[0] - m[4]));
+            column.push(ns(m[2] - m[4]));
+            packed.push(ns(m[1] - m[0]));
+            inline.push(ns(m[3] - m[2]));
         }
-        table.push((per, packed, inline));
+        table.push((per, pack, column, packed, inline));
     }
-    println!("| entities per row | packed ns/row (runs) | inline array ns/row (runs) |\n|---|---|---|");
-    for (per, p, i) in table {
+    println!("| entities per row | target over a marker (pack), ns/row | inline column over a marker, ns/row | packed JS read, ns/row | inline JS read, ns/row |\n|---|---|---|---|---|");
+    for (per, k, c, p, i) in table {
         let f = |v: &[f64]| v.iter().map(|x| format!("{x:.1}")).collect::<Vec<_>>().join(", ");
-        println!("| {per} | {} | {} |", f(&p), f(&i));
+        println!("| {per} | {} | {} | {} | {} |", f(&k), f(&c), f(&p), f(&i));
     }
 }
