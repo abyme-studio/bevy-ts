@@ -22,4 +22,4 @@
 - [x] 3.1 `docs/native.md` "Reflected values in TSX": hole props bind (drop "a hole prop takes a value, not a binding" and "A layout-tier hole prop (below) takes a value only"); a line on the dev WARN being per field
 - [x] 3.2 `docs/research/bevy-coverage.md`: row "Layout-tier holes" gains binding and its tests; row "Reflect-tier TSX props bound to a function" drops "a layout-tier hole takes a value only"; the "Docs and specs that claim more than the code" line about script-2d keeps only reflect-tier wording
 - [x] 3.3 Cargo jobs through `~/dev/abyme/scripts/gate-slot`
-- [ ] 3.4 Sync the deltas into `openspec/specs` at archive
+- [x] 3.4 Sync the deltas into `openspec/specs` at archive
