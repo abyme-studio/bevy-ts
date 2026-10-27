@@ -143,6 +143,30 @@ building), two passes per shape. The pass-to-pass spread is ±10%.
   which is a bug fix. It belongs with whichever lands first, this change or ecs-queries.
 - New dependency or infrastructure: none.
 
+## 5. The landed packing, measured (task 5.4)
+
+`relationships::bench_packed_target_reads` (ignored; the `custom-relationships-bench` process runs
+it as `cargo static test --release`). 10,000 target rows, each listing 1, 4 or 16 sources, and the
+same entities as an inline array of `Entity` fields on a plain component on the same rows. Five
+systems run every frame, so the arms alternate: a query of a field-less marker (the floor), of the
+target, of the inline component, and a read of each. A cell is one run's median of 200 frames of
+TsSystems' `last_run_us`, less the arm it is over, per row.
+
+Under load, 2026-10-28 (load 70 to 87, Apple M5 Max, other agents building), 3 runs:
+
+| entities per row | target over the marker (packing), ns/row | inline column over the marker | packed JS read | inline JS read |
+|---|---|---|---|---|
+| 1 | 3.4, 2.1, 3.5 | 7.9, 2.1, 7.7 | 8.2, 2.6, 8.0 | -4.4, 0.4, -4.3 |
+| 4 | 10.0, 10.1, 10.1 | 28.9, 28.8, 29.0 | 49.9, 50.2, 50.4 | 19.3, 19.7, 20.0 |
+| 16 | 29.4, 17.0, 25.9 | 71.5, 54.2, 69.1 | 146.5, 99.7, 143.9 | 66.1, 44.5, 75.0 |
+
+- Against the gate (proposal: about 4 ns per row plus 1 ns per entity): 1 entity is inside, 4 is
+  2 ns over with a tight spread, 16 straddles it. Ambiguous under this load: it is rerun 8 times
+  on a quiet machine before the change lands.
+- Naming a target costs 2.5 to 3 times less than naming the same entities as an inline column.
+- The JS read through `TargetList.at` costs about 2 to 3 ns per entity more than reading inline
+  fields.
+
 ## Sources
 
 - `bevy_ecs` 0.20.0: `relationship/mod.rs` (hooks, clone, accessor),
