@@ -43,9 +43,10 @@ pub(crate) fn build(app: &mut App) {
 /// The render world's pipeline cache at its last frame: how many pipelines it holds, and
 /// [`COMPILING`] while any is compiling. Pipelines compile in the background, so a mesh draws only
 /// once its pipeline is ready; a thumbnail reads back only once this has held still. A pipeline
-/// retrying on a shader still loading, or on a shader's import, counts as compiling: on a loaded
-/// machine shaders load slowly, and the pipeline count holds still while they do. One retrying on a
-/// shader that never loads is not, so it holds no thumbnail back.
+/// retrying on a shader still loading, or on an import one of its shaders is still loading, counts
+/// as compiling: on a loaded machine shaders load slowly, and the pipeline count holds still while
+/// they do. One retrying on a shader or an import that never loads is not, so it holds no thumbnail
+/// back.
 #[derive(Resource, Clone, Default)]
 struct Pipelines(std::sync::Arc<std::sync::atomic::AtomicU64>);
 
@@ -58,11 +59,25 @@ fn note_pipelines(cache: Res<bevy::render::render_resource::PipelineCache>, serv
         CachedPipelineState::Creating(_) => true,
         // Loaded but not yet extracted to the render world is loading too.
         CachedPipelineState::Err(ShaderCacheError::ShaderNotLoaded(id)) => matches!(server.get_load_state(*id), Some(LoadState::Loading | LoadState::Loaded)),
-        CachedPipelineState::Err(ShaderCacheError::ShaderImportNotYetAvailable) => true,
+        // A shader's imports by path are its dependencies: they load with it.
+        CachedPipelineState::Err(ShaderCacheError::ShaderImportNotYetAvailable) => {
+            shaders(&p.descriptor).any(|h| matches!(server.get_recursive_dependency_load_state(h), Some(RecursiveDependencyLoadState::Loading)))
+        }
         _ => false,
     });
     let held = cache.pipelines().count() as u64;
     pipelines.0.store(held | if compiling { COMPILING } else { 0 }, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The shaders a pipeline compiles.
+fn shaders(descriptor: &bevy::render::render_resource::PipelineDescriptor) -> impl Iterator<Item = &Handle<bevy::shader::Shader>> {
+    use bevy::render::render_resource::PipelineDescriptor as D;
+    let (a, b, c) = match descriptor {
+        D::RenderPipelineDescriptor(d) => (Some(&d.vertex.shader), d.fragment.as_ref().map(|f| &f.shader), None),
+        D::ComputePipelineDescriptor(d) => (Some(&d.shader), None, None),
+        D::MeshPipelineDescriptor(d) => (Some(&d.mesh.shader), d.fragment.as_ref().map(|f| &f.shader), d.task.as_ref().map(|t| &t.shader)),
+    };
+    [a, b, c].into_iter().flatten()
 }
 
 /// The subject's meshes whose mesh asset is loaded: a glTF part spawns, and its mesh loads, some
