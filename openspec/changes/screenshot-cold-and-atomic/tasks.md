@@ -11,7 +11,7 @@
 ## 2. CLI
 
 - [x] 2.1 `crates/bevy-ts-cli/src/play.rs`: `run` returns the code of `app.run()`'s `AppExit`
-- [x] 2.2 `crates/bevy-ts-cli/src/cli.rs`: the dev run exits with `app.run()`'s code; `shot_from_env`'s doc says a shot that cannot be ready exits 1
+- [x] 2.2 `crates/bevy-ts-cli/src/cli.rs`: the dev and skeleton runs exit with `app.run()`'s code; `shot_from_env`'s doc says a shot that cannot be ready exits 1
 
 ## 3. Tests (docs/testing.md)
 

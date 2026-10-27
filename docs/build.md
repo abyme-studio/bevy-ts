@@ -74,7 +74,7 @@ that keeps compiling is waited out, and a missing shader is not. A run with no p
 frame on which the script has started, no pipeline is waiting and nothing is loading. After 60 s with no progress it
 saves nothing, logs an error naming the path and what is not ready, and the run exits with code 1; it fails the same way
 when no frame renders within 5 s of its capture, no image is read back within 60 s, or Bevy captured but wrote nothing.
-`bevy-ts play` and `bevy-ts dev` exit with the code of the game's `AppExit`. Both shots write a temp file beside the path
+`bevy-ts play`, `bevy-ts dev` and `bevy-ts skeleton` exit with the code of the game's `AppExit`. Both shots write a temp file beside the path
 (`.<name>.tmp-…`) and rename it onto the path, so a reader polling the path sees no file or a whole PNG, never part of one. Under it, time runs on a fixed step, through Bevy's
 `TimeUpdateStrategy::ManualDuration`: 1/60 s a ready frame and none on a frame that is not ready.
 The shot's clock is always 60 steps: a ready frame before one that was not (a load the script had

@@ -9,7 +9,7 @@ Changes a user of bevy-ts must act on, newest first.
   an error naming the path and the reason, and the run exits with code 1. A script that took any
   PNG as success sees the failure. The 60 s, for it and for `bevy-ts/screenshot`, now restarts on
   progress (a pipeline finished, fewer assets loading), so a cold build is waited out.
-- **Breaking:** `bevy-ts play` and `bevy-ts dev` exit with the code of the game's `AppExit`: a
+- **Breaking:** `bevy-ts play`, `bevy-ts dev` and `bevy-ts skeleton` exit with the code of the game's `AppExit`: a
   game that exits with `AppExit::Error` sets it. They used to exit 0.
 - A shot is written to a temp file beside its path and renamed onto it: a reader polling the path
   never reads part of a PNG.

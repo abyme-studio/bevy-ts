@@ -518,10 +518,12 @@ fn skeleton(engine: &Engine, extra: impl Plugin, headless_mode: bool) {
     tx.send(DevEvent::Compiled(Ok(set), Duration::ZERO)).unwrap();
     let display = if headless_mode { Display::Headless } else { Display::Window };
     let mut app = base_app(engine, extra, display, V8Options::default(), None, true, Switches::default(), &[], false);
-    app.insert_resource(channel)
+    let exit = app
+        .insert_resource(channel)
         .add_systems(Startup, scene)
         .add_systems(PostUpdate, report_changed.after(bevy_ts::BevyTsSet::PostUpdate))
         .run();
+    std::process::exit(crate::play::exit_code(exit));
 }
 
 fn scene(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
