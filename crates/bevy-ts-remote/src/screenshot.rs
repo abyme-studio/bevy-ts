@@ -1,10 +1,11 @@
 //! Screenshots: the one owner of what a shot captures, when it is taken and what it answers.
 //! `bevy-ts/screenshot` and `BEVY_TS_SCREENSHOT` both take theirs with [`capture`], which spawns
-//! Bevy's `Screenshot` observed by Bevy's `save_to_disk`. A shot waits for a ready run: the script
-//! started, Bevy's pipeline cache with nothing waiting, and no asset load in flight ([`ReadyPlugin`],
-//! [`loads`]). Under [`FixedStep`]
-//! time advances 1/60 s a ready frame and not at all otherwise, and every camera draws without
-//! Bevy's GPU culling, so a shot is the same at any load.
+//! Bevy's `Screenshot` observed by [`save_atomically`]: a temp file, renamed onto the path. A shot
+//! waits for a ready run: the script started, Bevy's pipeline cache with nothing waiting, and no
+//! asset load in flight ([`ReadyPlugin`], [`loads`]). It waits as long as the run makes progress
+//! ([`Clock`], [`ReadyTimeout`]), then fails: the method answers an error, the env shot exits 1.
+//! Under [`FixedStep`] time advances 1/60 s a ready frame and not at all otherwise, and every
+//! camera draws without Bevy's GPU culling, so a shot is the same at any load.
 
 use crate::{frame, internal, invalid, protocol, required};
 use bevy::asset::{RecursiveDependencyLoadState, ReflectAsset, ReflectHandle, UntypedAssetId, UntypedHandle};
@@ -27,6 +28,7 @@ use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -37,10 +39,25 @@ pub const TIMEOUT: Duration = Duration::from_secs(5);
 /// since Bevy marks it captured on its first frame.
 pub const READBACK_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// How long a shot waits for the pipeline cache to empty and its assets to load before it gives up
-/// (the method) or shoots anyway (`BEVY_TS_SCREENSHOT`). A missing shader keeps a pipeline waiting
-/// for ever.
+/// How long a shot waits with no progress ([`Clock`]) for the pipeline cache to empty and its assets
+/// to load before it fails: the method answers an error, `BEVY_TS_SCREENSHOT` exits 1. A no-progress
+/// window, not a limit from the start: a cold build that keeps compiling is waited out, and a
+/// missing shader, which keeps a pipeline waiting for ever, is not. [`ReadyTimeout`]'s default.
 pub const READY_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The no-progress window both shots read, [`READY_TIMEOUT`] unless a test sets it.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct ReadyTimeout(pub Duration);
+
+impl Default for ReadyTimeout {
+    fn default() -> Self {
+        Self(READY_TIMEOUT)
+    }
+}
+
+fn ready_timeout(world: &World) -> Duration {
+    world.get_resource::<ReadyTimeout>().map_or(READY_TIMEOUT, |t| t.0)
+}
 /// The env shot's ready frame: the 60th in a row.
 pub const SHOT_FRAME: u64 = 60;
 /// The method's ready update: the 3rd in a row. Loads are read as they are now and pipelines one
@@ -50,19 +67,22 @@ pub const METHOD_FRAME: u32 = 3;
 /// One frame of [`FixedStep`] time.
 pub const STEP: Duration = Duration::from_nanos(1_000_000_000 / 60);
 
-/// How many pipelines Bevy's `PipelineCache` had waiting after each render, by the `FrameCount`
-/// that render extracted, written by the render world. The last few renders.
+/// How many pipelines Bevy's `PipelineCache` had waiting, and how many done, after each render, by
+/// the `FrameCount` that render extracted, written by the render world. The last few renders.
 #[derive(Resource, Clone, Default)]
-pub struct PipelinesWaiting(Arc<Mutex<VecDeque<(u32, u64)>>>);
+pub struct PipelinesWaiting(Arc<Mutex<VecDeque<(u32, u64, u64)>>>);
 
 impl PipelinesWaiting {
     /// Pipelines waiting after the render of `frame`, if it rendered.
     pub fn at(&self, frame: u32) -> Option<u64> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).iter().rev().find(|(f, _)| *f == frame).map(|(_, n)| *n)
+        self.render(Some(frame)).map(|(waiting, _)| waiting)
     }
 
-    fn latest(&self) -> Option<u64> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).back().map(|(_, n)| *n)
+    /// Pipelines waiting and done after the render of `frame` (`None`: the last render), if any.
+    fn render(&self, frame: Option<u32>) -> Option<(u64, u64)> {
+        let renders = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut found = renders.iter().rev().filter(|(f, _, _)| frame.is_none_or(|frame| *f == frame));
+        found.next().map(|(_, waiting, done)| (*waiting, *done))
     }
 }
 
@@ -81,11 +101,56 @@ fn note_frame(frame: Option<Res<FrameCount>>, mut update: ResMut<UpdateFrame>) {
 /// frame's answer at any load, from any schedule of the update. With no `FrameCount`, the last
 /// render's.
 pub fn pipelines_waiting(world: &World) -> Option<u64> {
-    let waiting = world.get_resource::<PipelinesWaiting>()?;
+    last_render(world).map(|(waiting, _)| waiting)
+}
+
+/// Pipelines done after the same render [`pipelines_waiting`] reads.
+pub fn pipelines_done(world: &World) -> Option<u64> {
+    last_render(world).map(|(_, done)| done)
+}
+
+fn last_render(world: &World) -> Option<(u64, u64)> {
+    let renders = world.get_resource::<PipelinesWaiting>()?;
     let noted = world.get_resource::<UpdateFrame>().and_then(|u| u.0);
-    match noted.or_else(|| world.get_resource::<FrameCount>().map(|f| f.0)) {
-        Some(frame) => waiting.at(frame.wrapping_sub(1)),
-        None => waiting.latest(),
+    renders.render(noted.or_else(|| world.get_resource::<FrameCount>().map(|f| f.0)).map(|f| f.wrapping_sub(1)))
+}
+
+/// A waiting shot's progress: when it last saw some, and what it had seen by then. Progress is a
+/// pipeline the cache finished, or fewer loads in flight than the fewest since the last progress:
+/// loads a script queues go up and down, and only a new low is work done.
+#[derive(Debug, Clone)]
+pub struct Clock {
+    since: Instant,
+    done: Option<u64>,
+    fewest: Option<usize>,
+}
+
+impl Clock {
+    pub fn new() -> Self {
+        Self { since: Instant::now(), done: None, fewest: None }
+    }
+
+    /// Notes a frame's pipelines done and loads in flight, each `None` when not known this frame.
+    pub fn note(&mut self, done: Option<u64>, loading: Option<usize>) {
+        let progress = done > self.done || matches!((loading, self.fewest), (Some(l), Some(f)) if l < f);
+        if progress {
+            self.since = Instant::now();
+            self.fewest = loading;
+        } else if self.fewest.is_none() {
+            self.fewest = loading;
+        }
+        self.done = self.done.max(done);
+    }
+
+    /// Whether `window` has passed with no progress.
+    pub fn stalled(&self, window: Duration) -> bool {
+        self.since.elapsed() > window
+    }
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -122,18 +187,21 @@ struct HandleTypes(HashMap<TypeId, bool>);
 #[derive(Resource)]
 pub struct FixedStep;
 
-/// `BEVY_TS_SCREENSHOT`'s shot: saved at the `at`th ready frame in a row ([`SHOT_FRAME`]), or
-/// after [`READY_TIMEOUT`] with a warning.
+/// `BEVY_TS_SCREENSHOT`'s shot: captured at the `at`th ready frame in a row ([`SHOT_FRAME`]), and
+/// gone once written. With no progress for [`ReadyTimeout`] before it, or a capture [`result`]
+/// fails, it saves nothing, logs an error and exits the app with code 1.
 #[derive(Resource)]
 pub struct ShotWhenReady {
     pub path: PathBuf,
     pub at: u64,
-    since: Option<Instant>,
+    clock: Option<Clock>,
+    /// The `Shot` entity, once captured.
+    taken: Option<Entity>,
 }
 
 impl ShotWhenReady {
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into(), at: SHOT_FRAME, since: None }
+        Self { path: path.into(), at: SHOT_FRAME, clock: None, taken: None }
     }
 }
 
@@ -146,13 +214,15 @@ impl Plugin for ReadyPlugin {
             .init_resource::<Ready>()
             .init_resource::<HandleTypes>()
             .init_resource::<UpdateFrame>()
+            .init_resource::<ReadyTimeout>()
             .add_observer(|add: On<Add<Camera>>, fixed: Option<Res<FixedStep>>, mut commands: Commands| {
                 if fixed.is_some() {
                     commands.entity(add.entity).insert(NoIndirectDrawing);
                 }
             })
             .add_systems(First, (note_frame, count_ready).chain().before(TimeSystems))
-            .add_systems(Update, shoot_when_ready.run_if(resource_exists::<ShotWhenReady>));
+            // After Update: Bevy marks a shot `Captured` there and despawns it next `First`.
+            .add_systems(PostUpdate, shoot_when_ready.run_if(resource_exists::<ShotWhenReady>));
     }
 
     fn finish(&self, app: &mut App) {
@@ -162,7 +232,9 @@ impl Plugin for ReadyPlugin {
             Render,
             (move |cache: Res<PipelineCache>, frame: Option<Res<FrameCount>>| {
                 let mut renders = waiting.0.lock().unwrap_or_else(PoisonError::into_inner);
-                renders.push_back((frame.map_or(0, |f| f.0), cache.waiting_pipelines().count() as u64));
+                let waiting = cache.waiting_pipelines().count() as u64;
+                let done = (cache.pipelines().count() as u64).saturating_sub(waiting);
+                renders.push_back((frame.map_or(0, |f| f.0), waiting, done));
                 while renders.len() > 8 {
                     renders.pop_front();
                 }
@@ -365,25 +437,47 @@ fn info_holds(registry: &TypeRegistry, info: Option<&'static TypeInfo>, types: &
     })
 }
 
-/// Takes [`ShotWhenReady`]'s shot once, at its ready frame.
+/// Takes [`ShotWhenReady`]'s shot once, at its ready frame, and watches it until it is written.
+/// With no progress for [`ReadyTimeout`] first, or a capture that fails, it gives up: see
+/// [`ShotWhenReady`].
 pub fn shoot_when_ready(world: &mut World) {
-    let frames = world.resource::<Ready>().frames;
-    let mut shot = world.resource_mut::<ShotWhenReady>();
-    let since = *shot.since.get_or_insert_with(Instant::now);
-    let (at, late) = (shot.at, since.elapsed() > READY_TIMEOUT);
-    if frames < at && !late {
+    let shot = world.resource::<ShotWhenReady>();
+    let path = shot.path.clone();
+    if let Some(e) = shot.taken {
+        match result(world, e) {
+            None => {}
+            Some(Ok(_)) => drop(world.remove_resource::<ShotWhenReady>()),
+            Some(Err(err)) => {
+                abandon(world, e);
+                give_up(world, &format!("{}; no shot saved", err.message));
+            }
+        }
         return;
     }
-    let path = shot.path.clone();
-    world.remove_resource::<ShotWhenReady>();
-    let loads = world.resource::<Ready>().loads.clone();
-    if frames < at {
+    let (window, done) = (ready_timeout(world), pipelines_done(world));
+    let ready = world.resource::<Ready>();
+    let (frames, loads) = (ready.frames, ready.loads.clone());
+    let mut shot = world.resource_mut::<ShotWhenReady>();
+    let at = shot.at;
+    let clock = shot.clock.get_or_insert_with(Clock::new);
+    clock.note(done, Some(loads.loading));
+    let stalled = clock.stalled(window);
+    if frames >= at {
+        warn_failed(&path, &loads);
+        let e = capture(world, path);
+        world.resource_mut::<ShotWhenReady>().taken = Some(e);
+    } else if stalled {
         let started = world.get_resource::<RuntimeInfo>().is_none_or(|i| i.generation > 0);
         let why = if started { not_ready(world, &loads) } else { "the script has not started".to_string() };
-        warn!("{}: not ready after {} s ({why}); shooting anyway", path.display(), READY_TIMEOUT.as_secs());
+        give_up(world, &format!("{}: not ready after {} s with no progress ({why}); no shot saved", path.display(), window.as_secs_f64()));
     }
-    warn_failed(&path, &loads);
-    capture(world, path);
+}
+
+/// Ends [`ShotWhenReady`] with `error`, and the app with code 1.
+fn give_up(world: &mut World, error: &str) {
+    error!("{error}");
+    world.remove_resource::<ShotWhenReady>();
+    world.write_message(AppExit::from_code(1));
 }
 
 /// What a shot captures. Absent: the primary window. Headless names its offscreen image.
@@ -404,7 +498,7 @@ pub struct Shot {
 }
 
 /// Spawns a shot of the run's [`ScreenshotTarget`] (or the primary window), saved to `path` on
-/// the next rendered frame.
+/// the next rendered frame by [`save_atomically`].
 pub fn capture(world: &mut World, path: impl Into<PathBuf>) -> Entity {
     let path = path.into();
     let target = world.get_resource::<ScreenshotTarget>().map_or(RenderTarget::Window(Default::default()), |t| t.0.clone());
@@ -412,13 +506,44 @@ pub fn capture(world: &mut World, path: impl Into<PathBuf>) -> Entity {
     let shot = Shot { path: path.clone(), asked, since: Instant::now(), frame: frame(world), size: None };
     world
         .spawn((Screenshot(target), shot))
-        .observe(save_to_disk(path))
+        .observe(save_atomically(path))
         .observe(|c: On<ScreenshotCaptured>, mut shots: Query<&mut Shot>| {
             if let Ok(mut s) = shots.get_mut(c.entity) {
                 s.size = Some(c.image.size());
             }
         })
         .id()
+}
+
+/// Temp files named so far, for [`temp_beside`].
+static TEMPS: AtomicU64 = AtomicU64::new(0);
+
+/// A temp file in `path`'s folder: `.<stem>.tmp-<pid>-<n>.<ext>`. The same filesystem, so a rename
+/// onto `path` is atomic; a leading dot and another name, so a poller of `path`, or of `*.png`,
+/// never opens it; the extension kept, so Bevy picks the same format.
+fn temp_beside(path: &Path) -> PathBuf {
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let mut name = format!(".{stem}.tmp-{}-{}", std::process::id(), TEMPS.fetch_add(1, Ordering::Relaxed));
+    if let Some(ext) = path.extension() {
+        name = format!("{name}.{}", ext.to_string_lossy());
+    }
+    path.with_file_name(name)
+}
+
+/// An observer that saves a captured shot to `path` whole: Bevy's `save_to_disk` writes a temp
+/// file beside it ([`temp_beside`]), then a rename puts it at `path`. A reader of `path` sees the
+/// old file or the whole new one. A failed rename logs an error and removes the temp file; a
+/// shot's [`result`] then says it was not written.
+pub fn save_atomically(path: impl Into<PathBuf>) -> impl FnMut(On<ScreenshotCaptured>) {
+    let path = path.into();
+    move |captured| {
+        let temp = temp_beside(&path);
+        save_to_disk(&temp)(captured);
+        if let Err(e) = std::fs::rename(&temp, &path) {
+            error!("Cannot save screenshot to {}: {e}", path.display());
+            let _ = std::fs::remove_file(&temp);
+        }
+    }
 }
 
 /// Shots `bevy-ts/screenshot` is serving, keyed by params, and the updates counted so far.
@@ -434,8 +559,9 @@ struct Served {
 enum Progress {
     /// Asked, and waiting for the pipeline cache to empty and the loads to finish before it
     /// captures, at the [`METHOD_FRAME`]th ready update in a row; `ready` counts them, to update
-    /// `at`, so identical requests in one update count it once.
-    Waiting { path: PathBuf, since: Instant, ready: u32, at: u64 },
+    /// `at`, so identical requests in one update count it once. `clock` fails it after
+    /// [`ReadyTimeout`] with no progress.
+    Waiting { path: PathBuf, since: Instant, clock: Clock, ready: u32, at: u64 },
     Pending(Entity),
     /// Answered in update `at`, to `owed` requests. Bevy calls each once more in the next update
     /// (its send then fails, and Bevy drops it): those calls get the answer again, as does an
@@ -471,12 +597,15 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
         Some(w @ Progress::Waiting { .. }) => w,
         _ => {
             let params: protocol::ScreenshotParams = required(p)?;
-            Progress::Waiting { path: check(&params.path)?, since: Instant::now(), ready: 0, at: update.wrapping_sub(1) }
+            Progress::Waiting { path: check(&params.path)?, since: Instant::now(), clock: Clock::new(), ready: 0, at: update.wrapping_sub(1) }
         }
     };
     let state = match state {
-        Progress::Waiting { path, since, ready, at } => {
-            let loads = if pipelines_idle(world) { loads(world) } else { Loads { loading: 1, failed: Vec::new() } };
+        Progress::Waiting { path, since, mut clock, ready, at } => {
+            let idle = pipelines_idle(world);
+            let loads = if idle { loads(world) } else { Loads { loading: 1, failed: Vec::new() } };
+            // Loads are only counted once the pipelines are idle.
+            clock.note(pipelines_done(world), idle.then_some(loads.loading));
             let ready = match (pipelines_idle(world) && loads.loading == 0, at == update) {
                 (false, _) => 0,
                 (true, true) => ready,
@@ -488,11 +617,12 @@ pub(crate) fn screenshot(In(p): In<Option<Value>>, world: &mut World) -> BrpResu
             } else if world.contains_resource::<PipelinesWaiting>() && pipelines_waiting(world).is_none() && since.elapsed() > TIMEOUT {
                 let answer = Err(internal(format!("{}: no frame rendered within {} s", path.display(), TIMEOUT.as_secs())));
                 Progress::Done { answer, at: update, owed: 1 }
-            } else if since.elapsed() > READY_TIMEOUT {
-                let answer = Err(internal(format!("{}: {} after {} s", path.display(), not_ready(world, &loads), READY_TIMEOUT.as_secs())));
+            } else if clock.stalled(ready_timeout(world)) {
+                let window = ready_timeout(world).as_secs_f64();
+                let answer = Err(internal(format!("{}: {} after {window} s with no progress", path.display(), not_ready(world, &loads))));
                 Progress::Done { answer, at: update, owed: 1 }
             } else {
-                Progress::Waiting { path, since, ready, at: update }
+                Progress::Waiting { path, since, clock, ready, at: update }
             }
         }
         state => state,
@@ -596,7 +726,7 @@ mod tests {
         for _ in 0..6 {
             app.update();
             if let Some(frame) = drawing {
-                renders.0.lock().unwrap().push_back((frame, 0));
+                renders.0.lock().unwrap().push_back((frame, 0, 0));
             }
             drawing = Some(app.world().resource::<FrameCount>().0);
         }
@@ -626,11 +756,103 @@ mod tests {
         for _ in 0..20 {
             let drawing = app.world().resource::<FrameCount>().0;
             app.update();
-            renders.0.lock().unwrap().push_back((drawing, waiting.next().unwrap()));
-            if elapsed.is_none() && !app.world().contains_resource::<ShotWhenReady>() {
+            renders.0.lock().unwrap().push_back((drawing, waiting.next().unwrap(), 0));
+            if elapsed.is_none() && app.world().resource::<ShotWhenReady>().taken.is_some() {
                 elapsed = Some(app.world().resource::<Time>().elapsed());
             }
         }
         assert_eq!(elapsed, Some(STEP * 5), "the shot's clock");
+    }
+
+    /// A shot waiting on pipelines: done rising every half `ReadyTimeout` keeps it waiting past the
+    /// window; none for the window ends it with no file, no capture and an `AppExit` of code 1.
+    #[test]
+    fn the_shot_waits_while_pipelines_finish_and_fails_when_they_stop() {
+        let window = Duration::from_millis(400);
+        let path = std::env::temp_dir().join(format!("bevy-ts-remote-progress-{}.png", std::process::id()));
+        let mut app = App::new();
+        app.add_plugins((FrameCountPlugin, ReadyPlugin)).insert_resource(ReadyTimeout(window)).insert_resource(ShotWhenReady::new(&path));
+        app.finish();
+        app.cleanup();
+        let renders = app.world().resource::<PipelinesWaiting>().clone();
+        let start = Instant::now();
+        let mut done = 0;
+        let step = |app: &mut App, done: u64| {
+            let drawing = app.world().resource::<FrameCount>().0;
+            app.update();
+            // One pipeline always waiting: never ready.
+            renders.0.lock().unwrap().push_back((drawing, 1, done));
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        while start.elapsed() < window * 3 {
+            done = (start.elapsed().as_millis() / (window.as_millis() / 2)) as u64;
+            step(&mut app, done);
+            assert!(app.world().contains_resource::<ShotWhenReady>(), "failed while pipelines finished, after {:?}", start.elapsed());
+        }
+        let stopped = Instant::now();
+        while app.world().contains_resource::<ShotWhenReady>() {
+            assert!(stopped.elapsed() < window * 10, "still waiting with no progress");
+            step(&mut app, done);
+        }
+        assert!(stopped.elapsed() >= window, "failed before the window: {:?}", stopped.elapsed());
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
+        assert!(!path.exists(), "a shot was saved");
+        let world = app.world_mut();
+        assert_eq!(world.query::<&Shot>().iter(world).count(), 0, "a shot was captured");
+    }
+
+    /// A shot saved again and again while a thread reads its path: every read finds no file or a
+    /// whole PNG, and no temp file is left.
+    #[test]
+    fn a_reader_never_sees_a_partial_png() {
+        use bevy::asset::RenderAssetUsages;
+        use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
+        use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+        use std::sync::atomic::AtomicBool;
+        let dir = std::env::temp_dir().join(format!("bevy-ts-remote-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("big.png");
+        // Noise does not compress, so each write takes long enough to be caught part way.
+        let size = 1024u32;
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let noise: Vec<u8> = (0..size * size * 4)
+            .map(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                seed as u8
+            })
+            .collect();
+        let extent = Extent3d { width: size, height: size, depth_or_array_layers: 1 };
+        let image = Image::new(extent, TextureDimension::D2, noise, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
+        let stop = Arc::new(AtomicBool::new(false));
+        let reader = std::thread::spawn({
+            let (path, stop) = (path.clone(), stop.clone());
+            move || {
+                let (mut whole, mut bad) = (0, Vec::new());
+                while !stop.load(Ordering::Relaxed) {
+                    let Ok(bytes) = std::fs::read(&path) else { continue };
+                    match Image::from_buffer(&bytes, ImageType::Extension("png"), CompressedImageFormats::NONE, true, ImageSampler::Default, RenderAssetUsages::default()) {
+                        Ok(_) => whole += 1,
+                        Err(e) => bad.push(format!("{} bytes: {e}", bytes.len())),
+                    }
+                }
+                (whole, bad)
+            }
+        });
+        let mut world = World::new();
+        let shot = world.spawn_empty().observe(save_atomically(path.clone())).id();
+        world.flush();
+        for _ in 0..5 {
+            world.trigger(ScreenshotCaptured { entity: shot, image: image.clone() });
+        }
+        stop.store(true, Ordering::Relaxed);
+        let (whole, bad) = reader.join().unwrap();
+        assert!(bad.is_empty(), "partial reads: {bad:?}");
+        assert!(whole > 0, "the reader never read the PNG");
+        let names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, ["big.png"], "only the shot is left");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

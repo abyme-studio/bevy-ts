@@ -312,7 +312,8 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
     app
 }
 
-/// `BEVY_TS_SCREENSHOT=<path>` saves one shot at the 60th ready frame, on a fixed step;
+/// `BEVY_TS_SCREENSHOT=<path>` saves one shot at the 60th ready frame, on a fixed step; a shot
+/// that cannot be ready, or that Bevy never writes, saves nothing and the run exits 1.
 /// `BEVY_TS_FIXED_STEP=1` turns on the fixed step alone, for a run driven over the protocol.
 fn shot_from_env(app: &mut App) {
     use bevy_ts_remote::screenshot::{FixedStep, ShotWhenReady};
@@ -481,7 +482,7 @@ fn run_dev(engine: &Engine, extra: impl Plugin, args: DevArgs) {
         // The levels the editor left open and closed come back, and every change is remembered.
         app.world_mut().resource_mut::<bevy_ts_levels::engine::Levels>().state_file = Some(compiler.root.join(".bevy-ts/editor.json"));
     }
-    app.run();
+    std::process::exit(crate::play::exit_code(app.run()));
 }
 
 /// Plain JS, so it writes the declarations the compile step would otherwise append.

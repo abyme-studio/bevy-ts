@@ -161,18 +161,24 @@ pub fn save_dir(game: &str) -> Option<PathBuf> {
     one_folder.then(|| bevy_ts::saves::game_save_dir(game)).flatten()
 }
 
-/// Plays the game in `folder` with the game's arguments `args`. Returns the exit code when it cannot.
+/// Plays the game in `folder` with the game's arguments `args`. Returns the code of the game's
+/// `AppExit`, or 1 when it cannot start.
 pub fn run(engine: &Engine, extra: impl Plugin, folder: &Path, headless: bool, args: &[String]) -> i32 {
     let display = if headless { Display::Headless } else { Display::Window };
     match app(engine, extra, folder, display, args) {
-        Ok(mut app) => {
-            app.run();
-            0
-        }
+        Ok(mut app) => exit_code(app.run()),
         Err(e) => {
             eprintln!("bevy-ts play: {e}");
             1
         }
+    }
+}
+
+/// The process exit code of a Bevy `AppExit`: 0, or its error's code.
+pub fn exit_code(exit: AppExit) -> i32 {
+    match exit {
+        AppExit::Success => 0,
+        AppExit::Error(code) => i32::from(code.get()),
     }
 }
 
