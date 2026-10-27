@@ -8,10 +8,9 @@
 use crate::common;
 
 use bevy::prelude::*;
-use bevy_ts::reflect_codec::CALLS;
+use bevy_ts::reflect_codec::calls;
 use common::*;
 use serde_json::json;
-use std::sync::atomic::Ordering;
 
 const HEAD: &str = r#"import { app, chain, Component, Update } from "bevy-ts";
 import type { Changed, f32, Mut, Query, u32 } from "bevy-ts";
@@ -259,17 +258,14 @@ app.addSystems(Update, labels);
     for i in 0..1000 {
         spawn_ts(&mut app, "game::Tag", json!({ "label": format!("l{i}") }), ());
     }
-    let before = CALLS.load(Ordering::Relaxed);
+    // The count is this thread's, so other tests running at once add nothing to it.
+    let before = calls();
     app.update();
-    // Tests in this binary run at once and share the counter: at least our 1000 misses.
-    assert!(CALLS.load(Ordering::Relaxed) - before >= 1000);
+    assert_eq!(calls() - before, 1000, "a miss for each row");
     assert!(messages(&app).iter().all(|m| !m.contains("read ")), "{:?}", messages(&app));
-    let quiet = (0..5).any(|_| {
-        let before = CALLS.load(Ordering::Relaxed);
-        app.update();
-        CALLS.load(Ordering::Relaxed) == before
-    });
-    assert!(quiet, "every frame made host calls for rows nothing wrote");
+    let before = calls();
+    app.update();
+    assert_eq!(calls() - before, 0, "the second frame made host calls for rows nothing wrote");
 }
 
 #[test]
@@ -308,12 +304,9 @@ app.insertResource(Title.of({ text: "x" })).addSystems(Update, chain(rename, sho
     let m = messages(&app);
     assert!(m.iter().any(|l| l == "title hello 5"), "{m:?}");
     // `show` reads twice a frame and `rename` once; once nothing writes it, none is a host call.
-    let quiet = (0..5).any(|_| {
-        let before = CALLS.load(Ordering::Relaxed);
-        app.update();
-        CALLS.load(Ordering::Relaxed) == before
-    });
-    assert!(quiet, "an unchanged resource's string was fetched again");
+    let before = calls();
+    app.update();
+    assert_eq!(calls() - before, 0, "an unchanged resource's string was fetched again");
 }
 
 #[test]
@@ -439,13 +432,9 @@ app.addMessage(Ping).addSystems(Update, chain(send, read));
 "#;
     let (_, mut app) = load("heap-plain-message", src);
     updates(&mut app, 2);
-    // Tests in this binary run at once and share the counter: one quiet frame of five.
-    let quiet = (0..5).any(|_| {
-        let before = CALLS.load(Ordering::Relaxed);
-        app.update();
-        CALLS.load(Ordering::Relaxed) == before
-    });
-    assert!(quiet, "a plain message's reader made host calls");
+    let before = calls();
+    app.update();
+    assert_eq!(calls() - before, 0, "a plain message's reader made host calls");
 }
 
 /// The `Hit` of the TS below, as a Rust system mirrors it: a `#[repr(C)]` struct of its members.

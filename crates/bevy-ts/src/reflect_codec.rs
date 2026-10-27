@@ -878,8 +878,17 @@ pub const READ_JSON: u32 = 0xFFFF_0002;
 /// slice 0. Places as `WRITE`'s.
 pub const WRITE_EDIT: u32 = 0xFFFF_0003;
 
-/// Reflected host calls made so far (reads and writes), for tests and the bench.
-pub static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    /// Reflected host calls made so far on this thread (reads and writes).
+    static CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Reflected host calls made so far on this thread, for tests and the bench. TS systems run on
+/// the thread that runs the schedule, so an app's calls count on its caller's thread, apart from
+/// any other app's.
+pub fn calls() -> u64 {
+    CALLS.get()
+}
 
 /// `reflect_read(place, target)` and `reflect_write(place, target, len)`: arguments as `f64`
 /// slots in the place layout (`places.rs`: slot 0 and 1 the place, slot 2 the target, then the
@@ -973,7 +982,7 @@ fn local_call(world: &World, i: u32, field: u32, id: u32, r: &mut crate::host::S
 }
 
 fn call_with(cell: UnsafeWorldCell, tick: Tick, scratch: &mut Vec<u8>, id: u32, args: &[u8], ret: &mut [u8], slices: &mut [&mut [u8]]) -> Result<usize, String> {
-    CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    CALLS.set(CALLS.get() + 1);
     let mut r = crate::host::SlotReader::new(args);
     let place = Place::decode(r.slot()?, r.slot()?)?;
     let index = r.slot()? as u32;

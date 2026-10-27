@@ -5,9 +5,7 @@ use crate::common;
 
 use bevy::camera::{OrthographicProjection, PerspectiveProjection, Projection};
 use bevy::prelude::*;
-use bevy_ts::reflect_codec::CALLS;
 use common::*;
-use std::sync::atomic::Ordering;
 
 /// Reflect tier: no plain-data leaf.
 #[derive(Component, Reflect, Default)]
@@ -41,7 +39,7 @@ fn with_types(name: &str, body: &str) -> App {
 }
 
 fn calls() -> u64 {
-    CALLS.load(Ordering::Relaxed)
+    bevy_ts::reflect_codec::calls()
 }
 
 #[test]
@@ -91,20 +89,13 @@ app.addSystems(Update, chain(names, positions));
     assert!(r.errors.is_empty(), "{:?}", r.errors);
     let before = calls();
     app.update();
-    // Tests in this binary run in parallel and share the counter: at least our 1000 misses.
+    // The count is this thread's, so other tests running at once add nothing to it.
     assert!(calls() - before >= 1000, "{}", calls() - before);
     assert!(messages(&app).iter().all(|m| !m.contains("threw")), "{:?}", messages(&app));
     // The second frame hits the cache for every row; `positions` never reads Badge.
-    let mut quiet = None;
-    for _ in 0..5 {
-        let before = calls();
-        app.update();
-        if calls() == before {
-            quiet = Some(());
-            break;
-        }
-    }
-    assert!(quiet.is_some(), "every frame made reflected host calls");
+    let before = calls();
+    app.update();
+    assert_eq!(calls() - before, 0, "the second frame made reflected host calls");
 }
 
 #[test]
