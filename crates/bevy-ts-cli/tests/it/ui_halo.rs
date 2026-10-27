@@ -145,8 +145,8 @@ mod drawn {
         while std::time::Instant::now() < deadline {
             app.update();
             if let Some(i) = shot.lock().unwrap().take() {
-                // Kept for a failure: the temp folder's `bevy-ts-ui-halo.png` is the last shot.
-                let _ = i.clone().try_into_dynamic().map(|d| d.to_rgba8().save(std::env::temp_dir().join("bevy-ts-ui-halo.png")));
+                // Kept for a failure: the test dir's `ui-halo.png` is the last shot (BEVY_TS_KEEP_TEST_DIRS=1).
+                let _ = i.clone().try_into_dynamic().map(|d| d.to_rgba8().save(app.world().resource::<TestDir>().join("ui-halo.png")));
                 return i;
             }
         }

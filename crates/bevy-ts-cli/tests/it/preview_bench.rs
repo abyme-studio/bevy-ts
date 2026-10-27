@@ -123,8 +123,7 @@ fn preview_cost() {
     let scenario = std::env::var("SCENARIO").unwrap_or_else(|_| "none".into());
     let secs: u64 = std::env::var("SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
     let model = std::env::var("PREVIEW_MODEL").expect("PREVIEW_MODEL: a .glb to preview");
-    let dir = std::env::temp_dir().join("bevy-ts-preview-bench");
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::TestDir::new("preview-bench");
     copy_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/arena"), &dir);
     std::fs::create_dir_all(dir.join("assets/models")).unwrap();
     std::fs::copy(&model, dir.join("assets/models/model.glb")).unwrap();

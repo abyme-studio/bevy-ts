@@ -1,7 +1,8 @@
 //! What Bevy's `experimental_pbr_pcss` feature costs the prebuilt engine with soft shadows unset: a
 //! civ-like board (a ground and a grid of cubes) under one shadowed sun, drawn offscreen, no
 //! window. One arm per build: run it with `--no-default-features`, then as is; each prints its frame
-//! times and saves its last frame, and the second compares its frame with the first's by pixel.
+//! times and saves its last frame (kept with BEVY_TS_KEEP_TEST_DIRS=1); PCSS_OTHER_RGBA=<the other
+//! arm's kept pcss-*.rgba> makes it compare its frame with that one by pixel.
 //! `cargo static test --release -p bevy-ts-cli --test it pcss_bench:: -- --ignored --nocapture`.
 #![cfg(target_os = "macos")]
 
@@ -13,6 +14,7 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_disk};
 use bevy::window::ExitCondition;
 use bevy::winit::WinitPlugin;
+use crate::common::TestDir;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -27,16 +29,16 @@ fn arm() -> &'static str {
 }
 
 /// The arm's last frame: a PNG to look at, and its raw RGBA to compare.
-fn frame_path(arm: &str, ext: &str) -> PathBuf {
-    // Outside target/, which test runs prune.
-    let dir = std::env::temp_dir().join("bevy-ts-pcss");
-    std::fs::create_dir_all(&dir).unwrap();
+fn frame_path(dir: &TestDir, arm: &str, ext: &str) -> PathBuf {
     dir.join(format!("pcss-{arm}.{ext}"))
 }
 
 #[test]
 #[ignore = "a bench: run each arm in release"]
 fn pcss_bench() {
+    // Held to the end. Each arm is its own process: BEVY_TS_KEEP_TEST_DIRS=1 keeps its frames, and
+    // PCSS_OTHER_RGBA names the other arm's kept `.rgba` to compare against.
+    let dir = TestDir::new("pcss");
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -79,7 +81,7 @@ fn pcss_bench() {
     }
     let shot: Arc<Mutex<Option<Image>>> = Arc::default();
     let s = shot.clone();
-    app.world_mut().spawn(Screenshot::image(target)).observe(save_to_disk(frame_path(arm(), "png"))).observe(move |e: On<ScreenshotCaptured>| {
+    app.world_mut().spawn(Screenshot::image(target)).observe(save_to_disk(frame_path(&dir, arm(), "png"))).observe(move |e: On<ScreenshotCaptured>| {
         *s.lock().unwrap() = Some(e.image.clone());
     });
     let img = loop {
@@ -96,8 +98,8 @@ fn pcss_bench() {
         app.update();
     }
     let rgba = img.data.clone().unwrap();
-    std::fs::write(frame_path(arm(), "rgba"), &rgba).unwrap();
-    let other = frame_path(if arm() == "on" { "off" } else { "on" }, "rgba");
+    std::fs::write(frame_path(&dir, arm(), "rgba"), &rgba).unwrap();
+    let other = PathBuf::from(std::env::var_os("PCSS_OTHER_RGBA").unwrap_or_default());
     if let Ok(o) = std::fs::read(&other) {
         let (mut differ, mut max) = (0usize, 0u8);
         for (a, b) in rgba.chunks(4).zip(o.chunks(4)) {
