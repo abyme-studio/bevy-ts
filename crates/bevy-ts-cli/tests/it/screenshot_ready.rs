@@ -256,7 +256,7 @@ fn stacked_shot(name: &str, work: Duration) -> Vec<u8> {
     const QUADS: usize = 64;
     let dir = shots_dir(name);
     let path = dir.join("stacked.png");
-    let mut app = engine(name, &path, 30);
+    let (_game, mut app) = engine(name, &path, 30);
     app.insert_resource(FixedStep)
         .add_systems(Startup, |mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {
             let size = 64;
@@ -476,7 +476,7 @@ fn cold_build_shot(name: &str, window: Duration, gap: Option<Duration>) -> (Vec<
     let gates = Gates::held(6);
     let mut released = if gap.is_some() { 1 } else { 6 };
     (0..released).for_each(|n| gates.release(n));
-    let mut app = engine_with(name, &path, 30, Some(Slow::shaders(dir.join("assets"), gates.clone())));
+    let (_game, mut app) = engine_with(name, &path, 30, Some(Slow::shaders(dir.join("assets"), gates.clone())));
     app.insert_resource(FixedStep);
     flat_scene(&mut app, 6);
     let compiled = shaders_compiled(&mut app);
@@ -532,7 +532,7 @@ fn a_pipeline_that_never_compiles_fails_the_env_shot() {
     let (env, method) = (dir.join("env.png"), dir.join("method.png"));
     flat_shaders(&dir.join("assets"), 1);
     let slow = Slow::shaders(dir.join("assets"), Gates::held(1));
-    let mut app = engine_with("ready-never-compiles", &env, 3, Some(slow));
+    let (_game, mut app) = engine_with("ready-never-compiles", &env, 3, Some(slow));
     app.add_plugins(RemotePlugin::default());
     flat_scene(&mut app, 1);
     bevy_ts_remote::add_methods(&mut app);
