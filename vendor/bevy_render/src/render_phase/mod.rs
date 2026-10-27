@@ -169,6 +169,13 @@ where
     gpu_preprocessing_mode: GpuPreprocessingMode,
 }
 
+/// While this resource is in the render world, `sort_binned_render_phase` sorts
+/// each batchable bin's entities by [`MainEntity`], so instances at one depth
+/// draw in the same order on every run, not in the order they were queued,
+/// which changes with timing.
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct StableBinOrder;
+
 /// All entities that share a mesh and a material and can be batched as part of
 /// a [`BinnedRenderPhase`].
 #[derive(Default)]
@@ -2330,6 +2337,13 @@ impl RenderBin {
     /// Returns true if the bin contains no entities.
     fn is_empty(&self) -> bool {
         self.entities.is_empty()
+    }
+
+    /// Sorts the bin's entities by [`MainEntity`], if they are not already.
+    pub(crate) fn sort(&mut self) {
+        if !self.entities.keys().is_sorted() {
+            self.entities.sort_unstable_keys();
+        }
     }
 
     /// Returns the [`IndexMap`] containing all the entities in the bin, along

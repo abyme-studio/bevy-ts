@@ -288,6 +288,49 @@ fn stacked_instances_at_one_depth_are_the_same_every_shot() {
     }
 }
 
+/// A bin's instances queued in a scrambled order, as a frame that queues some a frame late does:
+/// with Bevy's [`StableBinOrder`], which [`ReadyPlugin`] keeps under the fixed step, the bin sorts
+/// them by entity, the same order every run; without it they stay in queue order.
+#[test]
+fn a_bin_draws_in_entity_order_with_stable_bin_order() {
+    use bevy::core_pipeline::core_3d::{Opaque3d, Opaque3dBatchSetKey, Opaque3dBinKey};
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::render::batching::gpu_preprocessing::GpuPreprocessingMode;
+    use bevy::render::batching::sort_binned_render_phase;
+    use bevy::render::mesh::allocator::MeshSlabs;
+    use bevy::render::render_phase::{BinnedRenderPhaseType, DrawFunctionId, InputUniformIndex, StableBinOrder, ViewBinnedRenderPhases};
+    use bevy::render::render_resource::CachedRenderPipelineId;
+    use bevy::render::sync_world::MainEntity;
+    use bevy::render::view::RetainedViewEntity;
+
+    let run = |stable: bool| {
+        let mut world = World::new();
+        let view = RetainedViewEntity::new(MainEntity::from(world.spawn_empty().id()), None, 0);
+        let spawned: Vec<Entity> = (0..8).map(|_| world.spawn_empty().id()).collect();
+        let queued: Vec<Entity> = [3, 0, 6, 1, 7, 2, 5, 4].map(|i| spawned[i]).into();
+        let mut phases = ViewBinnedRenderPhases::<Opaque3d>::default();
+        phases.prepare_for_new_frame(view, GpuPreprocessingMode::PreprocessingOnly);
+        let batch_set = Opaque3dBatchSetKey { pipeline: CachedRenderPipelineId::new(0), draw_function: DrawFunctionId(0), material_bind_group_index: None, slabs: MeshSlabs::default(), lightmap_slab: None };
+        let bin = Opaque3dBinKey { asset_id: AssetId::<Mesh>::default().untyped() };
+        let phase = phases.get_mut(&view).unwrap();
+        for (i, &e) in queued.iter().enumerate() {
+            phase.add(batch_set.clone(), bin.clone(), (e, MainEntity::from(e)), InputUniformIndex(i as u32), BinnedRenderPhaseType::BatchableMesh);
+        }
+        world.insert_resource(phases);
+        if stable {
+            world.insert_resource(StableBinOrder);
+        }
+        world.run_system_once(sort_binned_render_phase::<Opaque3d>).unwrap();
+        let order: Vec<Entity> = world.resource::<ViewBinnedRenderPhases<Opaque3d>>()[&view].batchable_meshes[0].entities().keys().map(|m| m.id()).collect();
+        (queued, order)
+    };
+    let (mut queued, order) = run(true);
+    queued.sort();
+    assert_eq!(order, queued, "with StableBinOrder, entity order");
+    let (queued, order) = run(false);
+    assert_eq!(order, queued, "without it, queue order");
+}
+
 /// A PNG of 4 x 4 RGBA pixels, one colour.
 fn png_of(rgba: [u8; 4]) -> Vec<u8> {
     let mut out = Vec::new();

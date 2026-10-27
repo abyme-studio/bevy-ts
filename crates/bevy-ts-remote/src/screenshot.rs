@@ -5,7 +5,7 @@
 //! asset load in flight ([`ReadyPlugin`], [`loads`]). It waits as long as the run makes progress
 //! ([`Clock`], [`ReadyTimeout`]), then fails: the method answers an error, the env shot exits 1.
 //! Under [`FixedStep`] time advances 1/60 s a ready frame and not at all otherwise, and every
-//! camera draws without Bevy's GPU culling, so a shot is the same at any load.
+//! camera draws without Bevy's GPU culling, in entity order, so a shot is the same at any load.
 
 use crate::{frame, internal, invalid, protocol, required};
 use bevy::asset::{RecursiveDependencyLoadState, ReflectAsset, ReflectHandle, UntypedAssetId, UntypedHandle};
@@ -19,7 +19,8 @@ use bevy::remote::{BrpError, BrpResult};
 use bevy::render::render_resource::PipelineCache;
 use bevy::render::view::NoIndirectDrawing;
 use bevy::render::view::screenshot::{Captured, Capturing, Screenshot, ScreenshotCaptured, save_to_disk};
-use bevy::render::{Render, RenderApp, RenderSystems};
+use bevy::render::render_phase::StableBinOrder;
+use bevy::render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems};
 use bevy::time::{TimeSystems, TimeUpdateStrategy};
 use bevy::world_serialization::{DynamicWorldRoot, WorldAssetRoot, WorldInstance, WorldInstanceSpawner};
 use bevy_ts::runtime::RuntimeInfo;
@@ -183,7 +184,8 @@ struct HandleTypes(HashMap<TypeId, bool>);
 /// too, and the shot's clock must not count it. Every camera spawned under it gets Bevy's
 /// `NoIndirectDrawing`: GPU culling places each instance with an atomic add, so the order of a
 /// batch's instances, and which of two at the same depth is drawn last, changes from frame to
-/// frame. Under `BEVY_TS_SCREENSHOT` or `BEVY_TS_FIXED_STEP=1`.
+/// frame. And the render world gets [`StableBinOrder`], so those instances draw in entity order on
+/// every run ([`stable_bin_order`]). Under `BEVY_TS_SCREENSHOT` or `BEVY_TS_FIXED_STEP=1`.
 #[derive(Resource)]
 pub struct FixedStep;
 
@@ -241,6 +243,19 @@ impl Plugin for ReadyPlugin {
             })
             .in_set(RenderSystems::Cleanup),
         );
+        render.add_systems(ExtractSchedule, stable_bin_order);
+    }
+}
+
+/// Keeps [`StableBinOrder`] in the render world while [`FixedStep`] is in the main world: without
+/// GPU culling, a bin's instances draw in the order they were queued, and an instance whose
+/// pipeline was not ready on its first frame is queued a frame later, so which of two at one depth
+/// is drawn last changes with load.
+fn stable_bin_order(fixed: Extract<Option<Res<FixedStep>>>, stable: Option<Res<StableBinOrder>>, mut commands: Commands) {
+    match (fixed.is_some(), stable.is_some()) {
+        (true, false) => commands.insert_resource(StableBinOrder),
+        (false, true) => commands.remove_resource::<StableBinOrder>(),
+        _ => {}
     }
 }
 

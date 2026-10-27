@@ -70,9 +70,10 @@ not inputs, so a TS edit never rebuilds anything.
   ([build.md](build.md)).
 - The generated `Cargo.toml` patches `bevy_render` with bevy-ts's vendored copy, which compiles
   render pipelines off the render thread on macOS (Bevy 0.20 blocks on each one there, so a fresh
-  engine froze 33-91 s on its first render; bevy#26151). From a checkout the patch is the
+  engine froze 33-91 s on its first render; bevy#26151), and under the fixed step draws a batch's
+  instances in entity order. From a checkout the patch is the
   checkout's `vendor/bevy_render`; from crates.io it is the bevy-ts git repository at tag
-  `v<version>`, fetched once by cargo. It goes once Bevy ships the fix
+  `v<version>`, fetched once by cargo. It goes once Bevy ships both
   ([vendor/bevy_render/PATCH.md](../vendor/bevy_render/PATCH.md)). A native crate's own `cargo`
   commands, run outside bevy-ts, build unpatched Bevy; that is harmless, since no engine runs from
   them.

@@ -109,7 +109,9 @@ The shot's clock is always 60 steps: a ready frame before one that was not (a lo
 not asked for yet) stepped time too, so the steps stop at 60. And every camera draws with Bevy's
 `NoIndirectDrawing`: Bevy's GPU culling places each instance with an atomic add, so which of two
 instances at the same depth is drawn last changes from frame to frame (a leaf of one tree over
-another's, in a few pixels). So the shot is the same picture, byte for byte, at any machine load.
+another's, in a few pixels). Without it, a batch draws its instances in the order they were queued,
+which changes with load, so the render world also gets `StableBinOrder` (vendor/bevy_render/PATCH.md):
+each batch draws in entity order, the same on every run. So the shot is the same picture, byte for byte, at any machine load.
 `BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the same clock and drawing; a
 `bevy-ts/screenshot` without it can differ in such pixels. `BEVY_TS_PIPELINE_TRACE=1` prints when the pipelines are ready
 ([native.md](native.md#project-engines)). Every bound above runs inside Update, so a frame that never
