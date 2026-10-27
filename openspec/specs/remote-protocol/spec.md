@@ -174,13 +174,15 @@ A method whose answer needs later frames SHALL be served with `bevy_ts_remote::a
 - **THEN** the request stays open until the handler answers, and the reply is one JSON-RPC response, not a stream
 
 ### Requirement: Screenshot over the protocol
-`bevy-ts/screenshot` (params `path: string`) SHALL save what the run shows as a PNG at `path`. It SHALL capture once Bevy's `PipelineCache` has nothing waiting and no asset load is in flight, as a headless run's ready frame defines both, on the third update in a row that holds, by spawning Bevy's `Screenshot` entity observed by Bevy's `save_to_disk(path)`. The target SHALL be the offscreen image under `--headless`, the viewport's frame under `--viewport`, and the primary window in a window.
+`bevy-ts/screenshot` (params `path: string`) SHALL save what the run shows as a PNG at `path`. It SHALL capture once Bevy's `PipelineCache` has nothing waiting and no asset load is in flight, as a headless run's ready frame defines both, on the third update in a row that holds, by spawning Bevy's `Screenshot` entity observed by bevy-ts's atomic save: Bevy's `save_to_disk` to a temp file in `path`'s folder, named with a leading dot and unlike `path`, then a rename onto `path`. A reader of `path` SHALL see the old file or the whole new PNG, never part of one. The target SHALL be the offscreen image under `--headless`, the viewport's frame under `--viewport`, and the primary window in a window.
 
 It SHALL answer once the file is written with `{ path, width, height, frame }`. `frame` is the bevy-ts frame it rendered in: the counter `bevy-ts/pause` and `bevy-ts/step` report, which counts paused updates too.
 
+While it waits to capture, it SHALL count progress as a headless run's ready frame does: a pipeline the `PipelineCache` finished, or fewer asset loads in flight than the fewest since the last progress. It SHALL keep waiting while progress comes at least every 60 seconds.
+
 It SHALL fail, writing nothing, when:
 - `path` is not absolute, does not end in `.png`, or names a folder that does not exist;
-- pipelines are still waiting, or assets still loading, after 60 seconds;
+- pipelines are still waiting, or assets still loading, after 60 seconds with no progress;
 - no frame renders within 5 seconds;
 - Bevy started a capture and no image is read back within 60 seconds;
 - Bevy captured but did not write the file.
@@ -205,6 +207,14 @@ With `BEVY_TS_FIXED_STEP=1`, an engine SHALL advance time as under `BEVY_TS_SCRE
 - **WHEN** a client asks for a shot while a material's pipeline is compiling
 - **THEN** the shot is taken once the pipeline is ready, and shows the material
 
+#### Scenario: A cold build longer than the limit
+- **WHEN** a client asks for a shot while pipelines finish one at a time over longer than the no-progress limit, never with a gap as long as it
+- **THEN** the call answers after the last pipeline, and the PNG shows every material
+
+#### Scenario: A pipeline that never compiles
+- **WHEN** a client asks for a shot while a material's shader read is held for ever
+- **THEN** after the no-progress limit the call fails naming the path and the pipelines waiting, and no file is written
+
 #### Scenario: A texture still loading
 - **WHEN** a client asks for a shot while a material's texture is still being read
 - **THEN** no answer comes while it loads; the shot is taken once it has loaded and the pipelines its material then needs are ready, and shows the texture
@@ -227,7 +237,7 @@ The layout in a TS component's `x-bevy-ts` SHALL name a `string` field's type `{
 ### Requirement: Open requests are answered when Update stops
 When the stall watchdog fires, an engine SHALL answer every protocol request still open with a JSON-RPC error, code `-32603`, whose message starts `Update stopped:` and is the watchdog's line. That covers a deferred method waiting for frames (such as `bevy-ts/screenshot`) and a request no frame has read yet. An engine that then exits SHALL wait until those answers are read, at most 1 s, before it exits. A request that arrives while the stall lasts SHALL get the same answer.
 
-The method's own timeouts (no frame within 5 s, no readback within 60 s, not ready within 60 s) SHALL stay as they are: they hold while Update runs. When Update stops, the watchdog's answer is the bound.
+The method's own timeouts (no frame within 5 s, no readback within 60 s, not ready after 60 s with no progress) SHALL stay as they are: they hold while Update runs. When Update stops, the watchdog's answer is the bound.
 
 #### Scenario: A screenshot asked for before the stall
 - **WHEN** a client calls `bevy-ts/screenshot` and the render then stalls
