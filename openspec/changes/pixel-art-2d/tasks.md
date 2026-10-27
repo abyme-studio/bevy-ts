@@ -62,7 +62,7 @@
 
 ## 8. Landing (each stage)
 
-- [ ] 8.1 Commits only this stage's paths; the gate's checks run in its slots (`docs/check-slots.md`)
-- [ ] 8.2 Protocol unchanged, or the next free minor if a change shows
-- [ ] 8.3 `docs/2d.md`: no row marked working without a test that exists
-- [ ] 8.4 Rebase on script-2d's `docs/2d.md` and `two_d.rs` at landing; touch none of its stage 5
+- [x] 8.1 Commits only this stage's paths; the gate's checks run in its slots (`docs/check-slots.md`)
+- [x] 8.2 Protocol unchanged, or the next free minor if a change shows
+- [x] 8.3 `docs/2d.md`: no row marked working without a test that exists
+- [x] 8.4 Rebase on script-2d's `docs/2d.md` and `two_d.rs` at landing; touch none of its stage 5 (rebased on main at a3f9386a7; script-2d had not landed, and none of its stage 5 is touched)
