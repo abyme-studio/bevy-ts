@@ -251,6 +251,16 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
     };
     match display {
         Display::Headless => {
+            match headless_size(std::env::var_os("BEVY_TS_SIZE").as_deref()) {
+                Ok(Some(size)) => {
+                    app.insert_resource(headless::HeadlessSize(size));
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("bevy-ts: {e}");
+                    std::process::exit(2);
+                }
+            }
             app.add_plugins(headless::HeadlessPlugin);
         }
         #[cfg(target_os = "macos")]
@@ -350,6 +360,17 @@ fn stall_secs(value: Option<&std::ffi::OsStr>) -> Result<Option<Duration>, Strin
     let Some(value) = value else { return Ok(None) };
     let text = value.to_string_lossy();
     text.trim().parse::<u64>().map(|s| Some(Duration::from_secs(s))).map_err(|_| format!("BEVY_TS_STALL_SECS={text}: expected a whole number of seconds (0 turns the stall watchdog off)"))
+}
+
+/// `BEVY_TS_SIZE`: the headless image's `<width>x<height>` in pixels, or none set.
+fn headless_size(value: Option<&std::ffi::OsStr>) -> Result<Option<UVec2>, String> {
+    let Some(value) = value else { return Ok(None) };
+    let text = value.to_string_lossy();
+    let side = |s: &str| s.parse::<u32>().ok().filter(|n| *n >= 1 && s.bytes().all(|b| b.is_ascii_digit()));
+    if let Some((Some(w), Some(h))) = text.trim().split_once('x').map(|(w, h)| (side(w), side(h))) {
+        return Ok(Some(UVec2::new(w, h)));
+    }
+    Err(format!("BEVY_TS_SIZE={text}: expected <width>x<height> in pixels, each at least 1, as 2880x1620"))
 }
 
 /// A mesh that has a pointer handler, one of the two just added.
@@ -582,6 +603,17 @@ mod tests {
         assert_eq!(stall_secs(Some(OsStr::new("0"))), Ok(Some(Duration::ZERO)), "0 turns it off");
         for bad in ["", "1.5", "-3", "ten"] {
             assert!(stall_secs(Some(OsStr::new(bad))).unwrap_err().starts_with("BEVY_TS_STALL_SECS="), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_headless_size_is_width_by_height_and_names_its_variable() {
+        use std::ffi::OsStr;
+        assert_eq!(headless_size(None), Ok(None));
+        assert_eq!(headless_size(Some(OsStr::new("2880x1620"))), Ok(Some(UVec2::new(2880, 1620))));
+        assert_eq!(headless_size(Some(OsStr::new(" 640x480 "))), Ok(Some(UVec2::new(640, 480))), "trimmed");
+        for bad in ["2880", "0x540", "640x0", "640X480", "640x480x2", "-1x5", "ax b", "", "+640x480"] {
+            assert!(headless_size(Some(OsStr::new(bad))).unwrap_err().starts_with("BEVY_TS_SIZE="), "{bad:?}");
         }
     }
 }

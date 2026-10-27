@@ -13,7 +13,20 @@ use bevy_ts_remote::screenshot::ScreenshotTarget;
 use bevy::winit::WinitPlugin;
 use std::time::Duration;
 
+/// The offscreen image's size unless [`HeadlessSize`] sets another.
 pub const SIZE: (u32, u32) = (960, 540);
+
+/// The size the offscreen image is made at: read once by [`HeadlessPlugin`] when it is built, so
+/// insert it before the plugin. Unset, [`SIZE`]. Changing it afterwards does nothing: the image
+/// owns the size, and whatever wants it reads the [`Offscreen`] image.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HeadlessSize(pub UVec2);
+
+impl Default for HeadlessSize {
+    fn default() -> Self {
+        HeadlessSize(UVec2::new(SIZE.0, SIZE.1))
+    }
+}
 
 /// The image every camera renders into when headless.
 #[derive(Resource, Clone)]
@@ -60,7 +73,9 @@ pub struct HeadlessPlugin;
 impl Plugin for HeadlessPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(1.0 / 60.0)));
-        let mut image = Image::new_target_texture(SIZE.0, SIZE.1, TextureFormat::Rgba8UnormSrgb, None);
+        let size = app.world().get_resource::<HeadlessSize>().copied().unwrap_or_default();
+        app.insert_resource(size);
+        let mut image = Image::new_target_texture(size.0.x, size.0.y, TextureFormat::Rgba8UnormSrgb, None);
         image.asset_usage = bevy::asset::RenderAssetUsages::default();
         let handle = app.world_mut().resource_mut::<Assets<Image>>().add(image);
         app.insert_resource(bevy_ts::WindowImage(handle.clone()));
@@ -71,6 +86,25 @@ impl Plugin for HeadlessPlugin {
         });
         app.add_systems(PostUpdate, default_ui_camera.before(UiSystems::Prepare));
     }
+
+    /// After `RenderPlugin::finish` puts the `RenderDevice` in the main world: a size past the
+    /// GPU's largest texture would panic deep in wgpu, so it stops the start here.
+    fn finish(&self, app: &mut App) {
+        let Some(device) = app.world().get_resource::<bevy::render::renderer::RenderDevice>() else { return };
+        let size = app.world().resource::<HeadlessSize>().0;
+        if let Err(e) = fits(size, device.limits().max_texture_dimension_2d) {
+            eprintln!("bevy-ts: {e}");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// Whether an image of `size` fits a GPU whose largest 2D texture is `max` on a side.
+pub fn fits(size: UVec2, max: u32) -> Result<(), String> {
+    if size.x <= max && size.y <= max {
+        return Ok(());
+    }
+    Err(format!("BEVY_TS_SIZE={}x{}: larger than this GPU's largest texture, {max}x{max}", size.x, size.y))
 }
 
 /// Marks the `IsDefaultUiCamera` headless placed, so a game's own is told apart from it.
@@ -140,6 +174,16 @@ pub fn pipeline_trace(app: &mut App) {
 mod tests {
     use super::*;
     use bevy::asset::io::AssetSourceId;
+
+    #[test]
+    fn a_size_fits_up_to_the_gpu_limit_on_either_side() {
+        assert_eq!(fits(UVec2::new(8192, 8192), 8192), Ok(()));
+        for size in [UVec2::new(8193, 540), UVec2::new(960, 8193)] {
+            let e = fits(size, 8192).unwrap_err();
+            assert!(e.starts_with(&format!("BEVY_TS_SIZE={}x{}:", size.x, size.y)), "{e}");
+            assert!(e.contains("8192"), "{e}");
+        }
+    }
 
     #[test]
     fn dev_reads_assets_from_the_project() {

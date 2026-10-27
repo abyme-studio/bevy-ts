@@ -26,6 +26,7 @@ mod exported;
 mod gizmos;
 mod headless_keys;
 mod headless_pointer;
+mod headless_size;
 mod heap_fields;
 mod headless_ui;
 mod input_devices;

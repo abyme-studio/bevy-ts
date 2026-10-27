@@ -61,7 +61,10 @@ the other commands are not reachable from a shipped game. `bevy-ts play <folder>
 the arguments after `--` as the game's.
 
 Headless (`play --headless`, `dev --headless`) has no window: every camera renders into one 960x540
-offscreen image. `bevy-ts/screenshot { path }` saves it as a PNG and answers once the file is
+offscreen image. `BEVY_TS_SIZE=<W>x<H>` (as `2880x1620`) makes it that size instead; only a headless
+run reads it. The UI, headless input and both shots follow the image. A value that is not
+`<W>x<H>`, has a side of 0, or is past the GPU's largest texture stops the start with exit code 2
+and a line starting `bevy-ts: BEVY_TS_SIZE=`. `bevy-ts/screenshot { path }` saves it as a PNG and answers once the file is
 written, with its size and the frame it shows; for a chosen frame, `bevy-ts/pause` and
 `bevy-ts/step` there first (rendering runs while paused). A shot waits until no render pipeline
 is still compiling and no asset is still loading (a texture, a glTF and its scene), three updates
