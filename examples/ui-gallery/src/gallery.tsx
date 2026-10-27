@@ -345,9 +345,9 @@ app.scene("gallery", () => (
     <entity key="caption">
       <text2d size={16} color="#fff">{() => `Clicked ${clicks()} times`}</text2d>
     </entity>
-    {/* Not UI: 2D text in a bitmap font, so <bitmapText> appears (it draws under a Camera2d only). */}
+    {/* Not UI: 2D text in a bitmap font, so <bitmapText> appears (it draws under a Camera2d only). The font is uppercase only. */}
     <entity key="pixels">
-      <bitmapText font="fonts/tiny.json" scale={2} color="#ff4">{() => `Clicked ${clicks()} times`}</bitmapText>
+      <bitmapText font="fonts/tiny.json" scale={2} color="#ff4">{() => `CLICKED ${clicks()} TIMES`}</bitmapText>
     </entity>
     {/* The minimap's camera, above the cube looking down; its viewport gives it an image of its own. */}
     <entity key="mini" ref={mini}>
