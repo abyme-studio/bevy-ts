@@ -21,4 +21,4 @@
 
 ## 4. Hand-off
 
-- [ ] 4.1 Note to lead@engine-core for agent town: hold `"abymed"` from `connect()` until link applied its first records; count `LABELS_FROM` in steps; keep `Update stopped:` and exit lines in `scripts/shot-rounds.sh` and `frame.mjs`; recheck the 1 px leaf at (300,374) after
+- [x] 4.1 Note to lead@engine-core for agent town: hold `"abymed"` from `connect()` until link applied its first records; count `LABELS_FROM` in steps; keep `Update stopped:` and exit lines in `scripts/shot-rounds.sh` and `frame.mjs`; recheck the 1 px leaf at (300,374) after
