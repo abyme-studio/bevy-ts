@@ -362,7 +362,7 @@ fn watch(In(p): In<Option<Value>>, world: &mut World) -> BrpResult<Option<Value>
 /// Whether a scene under the subject has yet to spawn: a level places a model through a
 /// `WorldAssetRoot`, whose glTF loads and spawns some frames later, and nothing draws or compiles
 /// for it meanwhile. One whose file failed to load never will, so it is not pending.
-fn scenes_pending(world: &World, subject: Entity) -> bool {
+pub(crate) fn scenes_pending(world: &World, subject: Entity) -> bool {
     use bevy::world_serialization::{WorldAssetRoot, WorldInstance, WorldInstanceSpawner};
     let (spawner, server) = (world.resource::<WorldInstanceSpawner>(), world.resource::<AssetServer>());
     let mut stack = vec![subject];

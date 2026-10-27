@@ -28,7 +28,18 @@ use std::time::{Duration, Instant};
 pub const PREVIEW_LAYERS: std::ops::Range<usize> = 20..30;
 /// How long a preview outlives its viewport, so a pane that closes and reopens does not reload.
 pub const KEEP_ALIVE: Duration = Duration::from_secs(30);
-/// Frames to let a scene spawn and its bounds settle before framing it.
+
+/// How long a preview outlives its viewport: [`KEEP_ALIVE`], unless an app replaces it (a test
+/// that opens many previews on a loaded machine, where opening them outlasts it).
+#[derive(Resource, Clone, Copy)]
+pub struct PreviewKeepAlive(pub Duration);
+
+impl Default for PreviewKeepAlive {
+    fn default() -> Self {
+        PreviewKeepAlive(KEEP_ALIVE)
+    }
+}
+/// Frames to let a spawned scene's bounds settle before framing it.
 const SETTLE_FRAMES: u32 = 3;
 /// A preview's size before a viewer attaches, in points at 2x.
 const DEFAULT_SIZE: (f32, f32, f32) = (512.0, 512.0, 2.0);
@@ -132,6 +143,7 @@ impl Previews {
 
 pub(crate) fn build(app: &mut App) {
     app.init_resource::<Previews>()
+        .init_resource::<PreviewKeepAlive>()
         .add_observer(inherit)
         .add_systems(First, drain)
         .add_systems(Update, settle)
@@ -510,6 +522,10 @@ pub(crate) fn frame(world: &mut World, id: u32) {
 fn settle(world: &mut World) {
     let ids: Vec<u32> = world.resource::<Previews>().open.iter().filter(|(_, p)| !p.framed).map(|(id, _)| *id).collect();
     for id in ids {
+        // A glTF's scene spawns some frames after the preview opens, more on a loaded machine.
+        if crate::assets::scenes_pending(world, world.resource::<Previews>().open[&id].subject) {
+            continue;
+        }
         let frames = {
             let mut previews = world.resource_mut::<Previews>();
             let p = previews.open.get_mut(&id).unwrap();
@@ -590,13 +606,14 @@ fn control(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     })
 }
 
-/// Closes previews whose viewport has been gone `KEEP_ALIVE`.
+/// Closes previews whose viewport has been gone [`PreviewKeepAlive`].
 fn keep_alive(world: &mut World) {
+    let limit = world.resource::<PreviewKeepAlive>().0;
     let due: Vec<u32> = world
         .resource::<Previews>()
         .open
         .iter()
-        .filter(|(_, p)| !p.shared.attached() && p.detached_at.is_some_and(|t| t.elapsed() >= KEEP_ALIVE))
+        .filter(|(_, p)| !p.shared.attached() && p.detached_at.is_some_and(|t| t.elapsed() >= limit))
         .map(|(id, _)| *id)
         .collect();
     for id in due {
