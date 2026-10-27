@@ -1,7 +1,7 @@
 //! `bevy-ts.json`: the project file. Found by walking up from the entry (or the working
 //! directory). Only `native`, `features` and `engineCache` concern the engine build; `name` and
 //! `entry` concern `bevy-ts build`; `levels` and the switches (`meshPicking`, `tabNavigation`,
-//! `directionalNavigation`) and `diagnostics` are read when the game runs.
+//! `directionalNavigation`, `imageSampler`) and `diagnostics` are read when the game runs.
 //!
 //! ```jsonc
 //! {
@@ -20,6 +20,7 @@
 //!   "tabNavigation": true,                     // Bevy's TabNavigationPlugin: Tab moves focus
 //!   "directionalNavigation": true,             // Bevy's DirectionalNavigationPlugin
 //!   "diagnostics": ["FrameTimeDiagnosticsPlugin"], // Bevy's diagnostics plugins; baked into a build
+//!   "imageSampler": "nearest",                 // ImagePlugin's default sampler; baked into a build
 //!   "net": { "allow": ["127.0.0.1:4477", "${ABYME_URL}"] }, // hosts scripts may connect to
 //!   "env": ["ABYME_URL", "ABYME_KEY"]          // the only variables `process.env` shows
 //! }
@@ -95,7 +96,7 @@ pub struct ProjectConfig {
 }
 
 /// Bevy plugins a project opts into, each off by default as Bevy keeps it out of
-/// `DefaultPlugins`: read from `bevy-ts.json` under `dev` and from `game.json` when playing, where
+/// `DefaultPlugins`, and `ImagePlugin`'s default sampler: read from `bevy-ts.json` under `dev` and from `game.json` when playing, where
 /// `bevy-ts build` writes each that is on. None is an engine hash input: the prebuilt engine has
 /// every plugin, and `base_app` adds the ones switched on.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -109,6 +110,35 @@ pub struct Switches {
     /// `DirectionalNavigationPlugin`: the map `DirectionalNavigation` navigates.
     #[serde(default, rename = "directionalNavigation", deserialize_with = "directional_navigation", skip_serializing_if = "is_false")]
     pub directional_navigation: bool,
+    /// `imageSampler`: `ImagePlugin`'s sampler for every image whose sampler is `Default`.
+    #[serde(default, rename = "imageSampler", skip_serializing_if = "DefaultSampler::is_linear")]
+    pub image_sampler: DefaultSampler,
+}
+
+/// `imageSampler` in `bevy-ts.json`: Bevy's default, linear, or `ImagePlugin::default_nearest()`
+/// for pixel art. An image given its own sampler keeps it.
+#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DefaultSampler {
+    #[default]
+    Linear,
+    Nearest,
+}
+
+impl DefaultSampler {
+    fn is_linear(&self) -> bool {
+        *self == DefaultSampler::Linear
+    }
+}
+
+impl<'de> Deserialize<'de> for DefaultSampler {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match serde_json::Value::deserialize(d)? {
+            serde_json::Value::String(s) if s == "linear" => Ok(DefaultSampler::Linear),
+            serde_json::Value::String(s) if s == "nearest" => Ok(DefaultSampler::Nearest),
+            v => Err(serde::de::Error::custom(format!("imageSampler must be \"nearest\" or \"linear\", not {v}"))),
+        }
+    }
 }
 
 fn is_false(b: &bool) -> bool {
@@ -300,11 +330,24 @@ mod tests {
     fn switches_are_bools_off_by_default() {
         assert_eq!(parse("{}").unwrap().switches, Switches::default());
         let on = parse(r#"{ "meshPicking": true, "tabNavigation": true, "directionalNavigation": true }"#).unwrap().switches;
-        assert_eq!(on, Switches { mesh_picking: true, tab_navigation: true, directional_navigation: true });
+        assert_eq!(on, Switches { mesh_picking: true, tab_navigation: true, directional_navigation: true, image_sampler: DefaultSampler::Linear });
         assert!(!parse(r#"{ "meshPicking": false }"#).unwrap().switches.mesh_picking);
         for field in ["meshPicking", "tabNavigation", "directionalNavigation"] {
             let e = parse(&format!(r#"{{ "{field}": "yes" }}"#)).unwrap_err();
             assert!(e.contains(field) && e.contains("\"yes\""), "{e}");
         }
+    }
+
+    #[test]
+    fn image_sampler_is_nearest_or_linear() {
+        assert_eq!(parse("{}").unwrap().switches.image_sampler, DefaultSampler::Linear);
+        assert_eq!(parse(r#"{ "imageSampler": "nearest" }"#).unwrap().switches.image_sampler, DefaultSampler::Nearest);
+        assert_eq!(parse(r#"{ "imageSampler": "linear" }"#).unwrap().switches.image_sampler, DefaultSampler::Linear);
+        let e = parse(r#"{ "imageSampler": "Nearest" }"#).unwrap_err();
+        assert!(e.contains("imageSampler") && e.contains("\"Nearest\""), "{e}");
+        // Written to game.json only when nearest.
+        assert_eq!(serde_json::to_string(&Switches::default()).unwrap(), "{}");
+        let on = Switches { image_sampler: DefaultSampler::Nearest, ..Default::default() };
+        assert_eq!(serde_json::to_string(&on).unwrap(), r#"{"imageSampler":"nearest"}"#);
     }
 }

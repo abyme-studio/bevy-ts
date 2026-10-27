@@ -420,7 +420,7 @@ pub(crate) mod keys {
     use serde_json::{Value, json};
     use std::time::Duration;
 
-    const TAB: Switches = Switches { mesh_picking: false, tab_navigation: true, directional_navigation: false };
+    const TAB: Switches = Switches { mesh_picking: false, tab_navigation: true, directional_navigation: false, image_sampler: bevy_ts_cli::project::DefaultSampler::Linear };
 
     pub(crate) fn call(app: &mut App, method: &str, params: Value) -> Value {
         let id = match app.world().resource::<RemoteMethods>().get(method) {

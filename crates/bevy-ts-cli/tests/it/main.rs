@@ -30,6 +30,7 @@ mod headless_size;
 mod heap_fields;
 mod headless_ui;
 mod input_devices;
+mod image_sampler;
 mod inspector;
 mod launcher_commands;
 mod levels_bench;

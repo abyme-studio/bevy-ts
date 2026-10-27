@@ -4,6 +4,8 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `bevy-ts.json` takes `"imageSampler": "nearest"`: every image on the default sampler samples
+  nearest, in dev and in a built game (docs/assets.md). Bevy's text atlas follows it.
 - **Breaking:** `BEVY_TS_SCREENSHOT` no longer shoots anyway. When it cannot be ready after 60 s
   with no progress, or Bevy renders, reads back or writes nothing in time, it saves no file, logs
   an error naming the path and the reason, and the run exits with code 1. A script that took any

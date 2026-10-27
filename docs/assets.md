@@ -107,6 +107,26 @@ sampler is Bevy's `ImageSampler` in the writer's shape: `"Default"` (the `ImageP
 current sampler's, or for a new one Bevy's default plugin sampler, `ImageSamplerDescriptor::linear()`:
 linear filters, clamped to the edge. Name `mag_filter: "Nearest"` (and `min_filter`) for pixel art.
 
+### The project's default sampler
+
+`"imageSampler": "nearest"` in `bevy-ts.json` makes every image whose sampler is `"Default"` sample
+nearest: Bevy's `ImagePlugin::default_nearest()`, as Bevy's pixel-art example sets it. That is
+every image loaded by path with no settings, so pixel art needs nothing per image.
+
+```jsonc
+{ "imageSampler": "nearest" }   // or "linear", Bevy's default, the same as no key
+```
+
+- An image given its own sampler keeps it: `Image.load(p, { sampler: { Descriptor: { mag_filter: "Linear" } } })`
+  stays linear. A `Descriptor`'s unset fields are `ImageSamplerDescriptor::linear()`'s, not the
+  project's, so a `{ Descriptor: { address_mode_u: "Repeat" } }` filters linearly: name
+  `mag_filter` and `min_filter` too.
+- Bevy's text atlas uses `"Default"` for smoothed text (`bevy_text` `font_atlas.rs:58-60`), so with
+  `nearest`, `<text>` and `<text2d>` glyphs sample nearest too: the same at their own size, blocky
+  when scaled up. `<worldText>` has its own sampler and is unchanged.
+- Another value fails at start naming `imageSampler` and the value. `bevy-ts build` writes the key
+  into `game.json`, and `bevy-ts play` applies it.
+
 `Image.load(path, settings)` is a path loaded with loader settings, for any `Handle<Image>` slot:
 
 ```tsx

@@ -207,7 +207,7 @@ fn switches_are_baked_into_game_json_and_played() {
     use bevy::picking::mesh_picking::MeshPickingSettings;
     use bevy_ts_cli::cli::{Display, Engine, Prebuilt};
     let engine = Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") };
-    let all = r#"{ "entry": "src/game.ts", "meshPicking": true, "tabNavigation": true, "directionalNavigation": true }"#;
+    let all = r#"{ "entry": "src/game.ts", "meshPicking": true, "tabNavigation": true, "directionalNavigation": true, "imageSampler": "nearest" }"#;
     for (name, config, on) in [("build-switches-on", all, true), ("build-switches-off", r#"{ "entry": "src/game.ts" }"#, false)] {
         let project = common::project(name, &[("bevy-ts.json", config), ("tsconfig.json", "{}"), ("src/game.ts", "export const a = 1;\n")]);
         let out = project.join("dist/here");
@@ -218,11 +218,14 @@ fn switches_are_baked_into_game_json_and_played() {
         for key in ["meshPicking", "tabNavigation", "directionalNavigation"] {
             assert_eq!(file.get(key), on.then_some(&Value::Bool(true)), "{key} in {file}");
         }
+        assert_eq!(file.get("imageSampler").and_then(Value::as_str), on.then_some("nearest"), "{file}");
         let app = bevy_ts_cli::play::app(&engine, Prebuilt, &game, Display::Headless, &[]).unwrap();
         assert_eq!(app.world().contains_resource::<MeshPickingSettings>(), on, "{name}");
         assert_eq!(app.is_plugin_added::<TabNavigationPlugin>(), on, "{name}");
         assert_eq!(app.is_plugin_added::<DirectionalNavigationPlugin>(), on, "{name}");
         assert_eq!(app.world().contains_resource::<DirectionalNavigationMap>(), on, "{name}");
+        let filter = app.get_added_plugins::<bevy::image::ImagePlugin>()[0].default_sampler.mag_filter;
+        assert_eq!(filter, if on { bevy::image::ImageFilterMode::Nearest } else { bevy::image::ImageFilterMode::Linear }, "{name}");
     }
 }
 

@@ -31,11 +31,11 @@
 
 ## 4. Stage 4: nearest by default
 
-- [ ] 4.1 `project.rs`: `imageSampler` (`nearest` or `linear`), errors naming the value; `GameFile` carries it
-- [ ] 4.2 `base_app`: `ImagePlugin::default_nearest()` when `nearest` (design 4), in dev and play
-- [ ] 4.3 Check whether Bevy's text glyph atlas uses `ImageSampler::Default`; write what holds in `docs/assets.md`
-- [ ] 4.4 Tests: a project with `nearest` loads an image whose GPU sampler is nearest; an explicit linear sampler stays linear; build then play keeps nearest; an unknown value fails
-- [ ] 4.5 `docs/assets.md` (the key, beside per-image samplers), `docs/2d.md` (pixel-art setup), `CHANGELOG.md`
+- [x] 4.1 `project.rs`: `imageSampler` (`nearest` or `linear`), errors naming the value; `GameFile` carries it
+- [x] 4.2 `base_app`: `ImagePlugin::default_nearest()` when `nearest` (design 4), in dev and play
+- [x] 4.3 Check whether Bevy's text glyph atlas uses `ImageSampler::Default`; write what holds in `docs/assets.md`
+- [x] 4.4 Tests: a project with `nearest` loads an image whose GPU sampler is nearest; an explicit linear sampler stays linear; build then play keeps nearest; an unknown value fails
+- [x] 4.5 `docs/assets.md` (the key, beside per-image samplers), `docs/2d.md` (pixel-art setup), `CHANGELOG.md`
 
 ## 5. Stage 5: bitmap fonts
 

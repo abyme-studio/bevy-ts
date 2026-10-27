@@ -23,7 +23,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-const BOTH: Switches = Switches { mesh_picking: false, tab_navigation: true, directional_navigation: true };
+const BOTH: Switches = Switches { mesh_picking: false, tab_navigation: true, directional_navigation: true, image_sampler: bevy_ts_cli::project::DefaultSampler::Linear };
 
 fn engine() -> Engine {
     Engine { identity: bevy_ts_cli::EngineIdentity::prebuilt(env!("CARGO_PKG_VERSION"), "test") }

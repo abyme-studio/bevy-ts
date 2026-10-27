@@ -4,7 +4,7 @@
 //! `bevy-ts build`, `bevy-ts play`, and an engine with a `game/` beside it, which plays that game
 //! with every argument it was started with.
 
-use crate::project::Switches;
+use crate::project::{DefaultSampler, Switches};
 use bevy::input_focus::directional_navigation::DirectionalNavigationPlugin;
 use bevy::input_focus::tab_navigation::TabNavigationPlugin;
 use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
@@ -225,7 +225,7 @@ pub enum Display {
 /// project's `assets/` under `bevy-ts dev`; `None` keeps Bevy's default. `dev` runs bevy-ts in dev
 /// mode and watches the assets; a shipped game runs with neither. `switches` adds the Bevy plugins
 /// a project opts into (`bevy-ts.json`'s, or `game.json`'s, `meshPicking`, `tabNavigation` and
-/// `directionalNavigation`), and `diagnostics` the Bevy diagnostics plugins listed there: the one
+/// `directionalNavigation`) and sets `imageSampler`'s default sampler, and `diagnostics` the Bevy diagnostics plugins listed there: the one
 /// place each is added, so dev and play cannot differ. `audio` plays sound in a viewport
 /// (`--audio`); a window always does, headless never (`crate::audio::plays`).
 #[allow(clippy::too_many_arguments)]
@@ -243,6 +243,10 @@ pub fn base_app(engine: &Engine, extra: impl Plugin, display: Display, options: 
         plugins.set(bevy::app::TaskPoolPlugin { task_pool_options: options })
     } else {
         plugins
+    };
+    let plugins = match switches.image_sampler {
+        DefaultSampler::Nearest => plugins.set(ImagePlugin::default_nearest()),
+        DefaultSampler::Linear => plugins,
     };
     match assets {
         Some(root) if dev => app.add_plugins(plugins.set(headless::asset_plugin(root))),
