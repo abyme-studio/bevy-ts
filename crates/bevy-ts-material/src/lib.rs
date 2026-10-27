@@ -7,6 +7,7 @@ pub mod instance;
 pub mod kinds;
 pub mod layout;
 pub mod owned;
+pub mod pixel2d;
 pub mod render;
 pub mod scene;
 pub mod wgsl;
@@ -16,6 +17,7 @@ pub use alpha::{Fade, FadeMaterial, MaterialAlpha, MaterialAlphaTargets, standar
 pub use instance::ScriptInstance;
 pub use kinds::MaterialKinds;
 pub use render::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
+pub use pixel2d::{Pixel2dPlugin, Pixel2dSystems, YSort};
 pub use scene::{GltfMaterialFilter, SceneMaterialSet, SceneMaterialTargets, scene_entities};
 pub use world_text::{ComputedWorldText, LaidOut, WorldText, WorldTextMaterial, WorldTextPlugin, WorldTextStyle, WorldTextSystems};
 

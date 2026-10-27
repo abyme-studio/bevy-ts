@@ -497,3 +497,45 @@ fn a_ts_system_on_a_timer_steps_a_sprites_atlas_index() {
     assert_eq!(app.world().resource::<Time<Fixed>>().elapsed(), step * 10, "0.35 s of fixed steps");
     assert_eq!(index(&app), 3);
 }
+
+// Change pixel-art-2d, stage 2: `<YSort>` from TSX, and a bound y drawn at its z the same frame.
+
+const WALKER: &str = r##"import { app, Component, u8, signal, Update, type Query } from "bevy-ts";
+import { Sprite, Transform, YSort } from "bevy-ts/bevy";
+
+export class Step extends Component { static path = "game::Step"; declare on: u8 }
+export const [y, setY] = signal(0);
+export function stepped(q: Query<[Step]>) {
+  q.each((s) => { if (s.on === 1) setY(40); });
+}
+app.addSystems(Update, stepped);
+
+app.scene("s", () => (
+  <entity key="hero">
+    <Sprite custom_size={[16, 16]} />
+    <Transform translation={() => [0, y(), 0]} />
+    <YSort layer={1} offset={-8} />
+  </entity>
+));
+"##;
+
+#[test]
+fn a_ysort_from_tsx_draws_a_bound_y_at_its_z_the_same_frame() {
+    let (mut app, r) = load_game("two-d-ysort", WALKER, |app| {
+        app.add_plugins(bevy_ts_material::Pixel2dPlugin);
+    });
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.update();
+    let e = node(&mut app, "hero");
+    assert_eq!(*app.world().get::<bevy_ts_material::YSort>(e).unwrap(), bevy_ts_material::YSort { layer: 1.0, offset: -8.0 });
+    let z = |app: &App| app.world().get::<GlobalTransform>(e).unwrap().translation();
+    assert_eq!(z(&app).z, bevy_ts_material::pixel2d::y_sort_z(1.0, 0.0, -8.0));
+    let (id, _) = bevy_ts::plugin_api::component_by_name(app.world(), "game::Step").unwrap();
+    let step = app.world_mut().spawn_empty().id();
+    // SAFETY: Step is one u8.
+    unsafe { bevy_ts::commands::insert_bytes(&mut app.world_mut().entity_mut(step), id, &[1]) };
+    app.update();
+    let drawn = z(&app);
+    assert_eq!(drawn.y, 40.0, "the binding moved the hero this frame");
+    assert_eq!(drawn.z, bevy_ts_material::pixel2d::y_sort_z(1.0, 40.0, -8.0), "and its z follows the same frame");
+}

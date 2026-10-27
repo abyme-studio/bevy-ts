@@ -10,14 +10,14 @@
 
 ## 2. Stage 2: y-sort (needs the operator's go: per-frame work, owned `Transform` z)
 
-- [ ] 2.1 `crates/bevy-ts-material/src/pixel2d/`: `Pixel2dPlugin`, reflected `YSort { layer, offset }`, the `Pixel2dSystems` set in `PostUpdate` before `TransformSystems::Propagate`, with a run condition; z from the formula, written with `set_if_neq`; `layer` past 127 fails naming it; one warning past the clamp (design 2)
-- [ ] 2.2 `crates/bevy-ts-tsx/src/lib.rs:523`: `host::frame` `.before(bevy_ts_material::Pixel2dSystems)`
-- [ ] 2.3 Engine adds `Pixel2dPlugin`; `bevy-ts/bevy` types `YSort`
-- [ ] 2.4 `crates/bevy-ts-material/tests/it/pixel2d.rs`: z for given layer, y and offset; the clamp and its warning; layers 1 and 2 at the clamp ends; y 0 and 1 differ at layer 127; layer 200 fails; a child at local z −10⁻⁵ behind; a script's z overwritten; 100 still frames: one z, `Transform` not changed after the first; no `GlobalTransform` write (a moved entity's `GlobalTransform` equals Bevy's propagation of its `Transform`)
-- [ ] 2.5 Render test (`common::render_app()`): two overlapping y-sorted sprites, red below blue, the overlap pixel is red; swap their y, it is blue
-- [ ] 2.6 `crates/bevy-ts-cli/tests/it/two_d.rs`: `<YSort layer={1} offset={-8} />` from TSX writes `YSort { layer: 1.0, offset: -8.0 }`; a binding that moves y draws the new z the same frame
-- [ ] 2.7 `bench/pixel-2d` (design 8), arms `off`, `ysort-still`, `ysort-moving`, timing the pass and propagation apart; `run.sh` in a check slot; results in `bench/pixel-2d/results.md`; the stage reports the numbers against 0.5 ms
-- [ ] 2.8 `examples/shapes-2d`: a row of y-sorted sprites walking past each other; `docs/2d.md`: "Y-sort" section (the formula, its limits, owned z, `layer` not z) and coverage row
+- [x] 2.1 `crates/bevy-ts-material/src/pixel2d/`: `Pixel2dPlugin`, reflected `YSort { layer, offset }`, the `Pixel2dSystems` set in `PostUpdate` before `TransformSystems::Propagate`, with a run condition; z from the formula, written with `set_if_neq`; `layer` past 127 fails naming it; one warning past the clamp (design 2)
+- [x] 2.2 `crates/bevy-ts-tsx/src/lib.rs:523`: `host::frame` `.before(bevy_ts_material::Pixel2dSystems)`
+- [x] 2.3 Engine adds `Pixel2dPlugin`; `bevy-ts/bevy` types `YSort`
+- [x] 2.4 `crates/bevy-ts-material/tests/it/pixel2d.rs`: z for given layer, y and offset; the clamp and its warning; layers 1 and 2 at the clamp ends; y 0 and 1 differ at layer 127; layer 200 fails; a child at local z −10⁻⁵ behind; a script's z overwritten; 100 still frames: one z, `Transform` not changed after the first; no `GlobalTransform` write (a moved entity's `GlobalTransform` equals Bevy's propagation of its `Transform`)
+- [x] 2.5 Render test (`common::render_app()`): two overlapping y-sorted sprites, red below blue, the overlap pixel is red; swap their y, it is blue
+- [x] 2.6 `crates/bevy-ts-cli/tests/it/two_d.rs`: `<YSort layer={1} offset={-8} />` from TSX writes `YSort { layer: 1.0, offset: -8.0 }`; a binding that moves y draws the new z the same frame
+- [x] 2.7 `bench/pixel-2d` (design 8), arms `off`, `ysort-still`, `ysort-moving`, timing the pass and propagation apart; `run.sh` in a check slot; results in `bench/pixel-2d/results.md`; the stage reports the numbers against 0.5 ms
+- [x] 2.8 `examples/shapes-2d`: a row of y-sorted sprites walking past each other; `docs/2d.md`: "Y-sort" section (the formula, its limits, owned z, `layer` not z) and coverage row
 
 ## 3. Stage 3: pixel camera (needs the operator's go: per-frame work)
 

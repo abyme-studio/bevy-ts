@@ -16,7 +16,9 @@ fn every_working_2d_row_names_a_test_that_exists() {
         assert!(!names.is_empty() && names.iter().all(|n| n.contains("::")), "{bevy}: working, but names no test");
         for name in names {
             let (file, test) = name.split_once("::").unwrap();
-            let src = std::fs::read_to_string(format!("{root}/crates/bevy-ts-cli/tests/it/{file}.rs")).unwrap_or_default();
+            // `crate/file::test` names another crate's test.
+            let (krate, file) = file.split_once('/').unwrap_or(("bevy-ts-cli", file));
+            let src = std::fs::read_to_string(format!("{root}/crates/{krate}/tests/it/{file}.rs")).unwrap_or_default();
             assert!(src.contains(&format!("fn {test}()")), "{bevy}: no test {name}");
         }
     }

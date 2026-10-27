@@ -650,6 +650,13 @@ const processes = {
   "image-bytes-types": { cmd: "bash -c 'set -o pipefail; mkdir -p target; (scripts/gen-bevy-types.sh && cd packages/bevy-ts && pnpm install --frozen-lockfile >/dev/null && pnpm check) 2>&1 | tee target/image-bytes-types.log | tail -30'" },
   // Change script-image-bytes: a 1024² RGBA8 image updated from TS against the same copy in Rust.
   "image-bytes-bench": { cmd: "bash -c 'set -o pipefail; bench/script-image-bytes/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tail -20'" },
+  // Change pixel-art-2d: `bevy-ts/bevy` regenerated, the touched crates' unit tests, the pixel-2D,
+  // sampler, sources, 2D, build and play tests, clippy and tsc. PA_ONLY narrows the CLI's tests.
+  "pixel-art-2d-test": {
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; (scripts/gen-bevy-types.sh && cargo test -p bevy-ts-levels --lib && cargo test -p bevy-ts-cli --lib project && cargo test -p bevy-ts-material --no-fail-fast --test it -- ${PM_ONLY:-pixel2d bitmap_text} && cargo test -p bevy-ts-tsx --lib && cargo test -p bevy-ts-cli --no-fail-fast --test it -- ${PA_ONLY:-image_sampler:: asset_sources:: two_d:: two_d_doc:: build:: play:: argv:: mesh_picking:: ui_focus:: ui_widgets::} && cargo clippy -p bevy-ts-material -p bevy-ts-tsx -p bevy-ts-levels -p bevy-ts-cli --all-targets -- -D warnings && (cd packages/bevy-ts && pnpm check)) 2>&1 | grep --line-buffered -v ld64 | tee target/pixel-art-2d-test.log | grep -E -A5 \"^test result|FAILED|panicked|^error|^warning|-->|error TS|stale\" | tail -150'",
+  },
+  // Change pixel-art-2d, design 8: bench/pixel-2d's arms, 3 runs each (8 with RUNS=8), in a check slot.
+  "pixel-2d-bench": { cmd: "bash -c 'set -o pipefail; bench/pixel-2d/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tee -a bench/pixel-2d/results/runs.txt | grep -E \"^arm=|load|error\"'" },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);

@@ -1,10 +1,11 @@
 // Every 2D shape as a `<mesh2d>`, in a grid seen by a `Camera2d` (Bevy's 2d_shapes example),
 // and a row of sprites: plain, tinted, flipped; click one to tint it. Beside them, a sprite sheet
-// a TS system animates (Bevy's sprite_sheet example), and a `<text2d>` counting the clicks. One world unit is one pixel. docs/2d.md
+// a TS system animates (Bevy's sprite_sheet example), a `<text2d>` counting the clicks, and three
+// y-sorted walkers pacing past each other at the right edge. One world unit is one pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
-import { app, Component, FixedUpdate, signal, sliced, Time, Timer, type Mut, type Query, type Res, type u32 } from "bevy-ts";
+import { app, Component, FixedUpdate, signal, sliced, Time, Timer, Update, type f32, type Mut, type Query, type Res, type u32 } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
-import { Camera2d, Sprite, TextureAtlasLayout, Transform } from "bevy-ts/bevy";
+import { Camera2d, Sprite, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
 
 const shapes: Mesh2dProps[] = [
   { shape: "circle", radius: 50 },
@@ -52,6 +53,23 @@ export function animate(time: Res<Time>, sheets: Query<[Mut<Sprite>, Mut<Frames>
 }
 app.addSystems(FixedUpdate, animate);
 
+/** A walker's place in its pacing: walkers out of step pass each other. */
+export class Walker extends Component {
+  phase: f32 = 0;
+}
+
+/** Walkers pace up and down; `YSort` draws the lower one in front as they pass. */
+export function pace(time: Res<Time>, walkers: Query<[Mut<Transform>, Walker]>) {
+  for (const [t, w] of walkers) t.translation.y = Math.sin(time.elapsed_secs * 0.8 + w.phase) * 200;
+}
+app.addSystems(Update, pace);
+
+const walkers = [
+  { key: "walker-a", color: "#f84", phase: 0 },
+  { key: "walker-b", color: "#4f8", phase: 2.1 },
+  { key: "walker-c", color: "#48f", phase: 4.2 },
+];
+
 const click = (key: string) => {
   setClicked((c) => (c === key ? null : key));
   setClicks((n) => n + 1);
@@ -91,6 +109,14 @@ export const Shapes = () => (
       <Transform translation={[-2.5 * STEP, -1.5 * STEP, 0]} />
       <Sprite image="panel.png" custom_size={[120, 72]} image_mode={sliced({ border: 8 })} />
     </entity>
+    {walkers.map(({ key, color, phase }, i) => (
+      <entity key={key} name={key}>
+        <Transform translation={[430 + 10 * i, 0, 0]} />
+        <Sprite image="arrow.png" custom_size={[40, 40]} color={color} />
+        <YSort layer={1} offset={-20} />
+        <Walker phase={phase} />
+      </entity>
+    ))}
     <entity key="clicks" name="clicks">
       {/* Above the shapes: inside a 540-pixel-high view. */}
       <Transform translation={[0, 1.4 * STEP, 0]} />

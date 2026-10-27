@@ -1,0 +1,19 @@
+[package]
+name = "pixel-2d-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# 10,000 sprites through the pixel-art 2D pass (openspec change `pixel-art-2d`, design 8): the
+# pass and Bevy's transform propagation timed apart. Out of the workspace, so the gate never builds
+# it (docs/testing.md, rule 8).
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false, features = ["2d"] }
+bevy-ts-material = { path = "../../crates/bevy-ts-material" }
+
+# As the engine builds Bevy (the workspace's patch).
+[patch.crates-io]
+bevy_render = { path = "../../vendor/bevy_render" }
+
+[profile.release]
+debug = false
