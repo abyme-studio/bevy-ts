@@ -7,9 +7,11 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{BindGroupLayoutDescriptor, BindingType, CachedPipelineState, PipelineCache, PipelineDescriptor, ShaderStages};
 use bevy::render::settings::{RenderCreation, WgpuLimits, WgpuSettings};
 use bevy::render::{Render, RenderApp, RenderPlugin, RenderSystems};
+use bevy::shader::ShaderCacheError;
 use bevy::asset::RenderAssetUsages;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// What the render world saw: each render pipeline's label and its per-stage counts.
 #[derive(Default)]
@@ -51,6 +53,9 @@ fn watch(cache: Res<PipelineCache>, report: Res<Report>) {
         match &p.state {
             CachedPipelineState::Ok(_) if label == "pbr_opaque_mesh_pipeline" => seen.opaque_ok = true,
             CachedPipelineState::Ok(_) if label == "pbr_prepass_pipeline" => seen.prepass_ok = true,
+            // A shader or import not loaded yet is an error Bevy retries (`PipelineCache::process_queue`):
+            // still waiting, not failed. Bevy's embedded shaders load on the asset server's threads.
+            CachedPipelineState::Err(ShaderCacheError::ShaderNotLoaded(_) | ShaderCacheError::ShaderImportNotYetAvailable) => {}
             CachedPipelineState::Err(e) => seen.errors.push(format!("{label}: {e}")),
             _ => {}
         }
@@ -67,7 +72,7 @@ fn texture(images: &mut Assets<Image>, srgb: bool) -> Handle<Image> {
 #[test]
 fn every_texture_fits_wgpus_default_limits() {
     let settings = WgpuSettings { constrained_limits: Some(WgpuLimits::default()), ..default() };
-    let mut app = App::new();
+    let mut app = crate::common::render_app();
     app.add_plugins(
         bevy_ts_cli::headless::default_plugins(true).set(RenderPlugin { render_creation: RenderCreation::Automatic(Box::new(settings)), synchronous_pipeline_compilation: true, ..default() }),
     )
@@ -99,7 +104,9 @@ fn every_texture_fits_wgpus_default_limits() {
     world.spawn((PointLight { shadow_maps_enabled: true, ..default() }, Transform::from_xyz(0.0, 3.0, 0.0)));
     world.spawn((SpotLight { shadow_maps_enabled: true, ..default() }, Transform::from_xyz(2.0, 3.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y)));
 
-    for _ in 0..600 {
+    const BOUND: Duration = Duration::from_secs(180);
+    let start = Instant::now();
+    while start.elapsed() < BOUND {
         app.update();
         let seen = report.0.lock().unwrap();
         assert!(seen.errors.is_empty(), "pipelines failed: {:?}", seen.errors);
@@ -108,7 +115,7 @@ fn every_texture_fits_wgpus_default_limits() {
         }
     }
     let seen = report.0.lock().unwrap();
-    assert!(seen.opaque_ok && seen.prepass_ok, "the opaque and prepass pipelines never compiled; pipelines: {:?}", seen.pipelines);
+    assert!(seen.opaque_ok && seen.prepass_ok, "the opaque and prepass pipelines not compiled within {BOUND:?}; pipelines: {:?}", seen.pipelines);
     let limits = WgpuLimits::default();
     let (tex, smp) = (limits.max_sampled_textures_per_shader_stage, limits.max_samplers_per_shader_stage);
     for (label, vt, vs, ft, fs) in &seen.pipelines {
