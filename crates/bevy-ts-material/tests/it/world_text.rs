@@ -179,6 +179,8 @@ fn a_thousand_labels_share_one_atlas_one_material_and_each_glyph_once() {
     let atlas = world.resource::<WorldTextAtlas>();
     // l, a, b, e and ten digits: a distance field per glyph with ink, the space none.
     assert_eq!(atlas.made, 14);
+    // Placed tallest first, they share the first 256 texels.
+    assert_eq!(atlas.packer.height, bevy_ts_material::world_text::atlas::START_HEIGHT);
     let r8 = world.resource::<Assets<Image>>().iter().filter(|(_, i)| i.texture_descriptor.format == bevy::render::render_resource::TextureFormat::R8Unorm).count();
     assert_eq!(r8, 1, "one atlas image");
     assert_eq!(world.resource::<WorldTextMaterials>().len(), 1);
@@ -290,8 +292,8 @@ fn a_growing_atlas_keeps_every_mesh() {
 #[test]
 fn a_full_atlas_refuses_a_glyph_and_draws_the_rest() {
     let mut app = app();
-    // 64 texels high: `a` opens a shelf, and a taller glyph's shelf does not fit below it.
-    let tiny = WorldTextAtlas::new(&mut app.world_mut().resource_mut::<Assets<Image>>(), 32, 64);
+    // 48 texels high: `a`'s field fits, `|`'s, taller, does not.
+    let tiny = WorldTextAtlas::new(&mut app.world_mut().resource_mut::<Assets<Image>>(), 32, 48);
     app.world_mut().insert_resource(tiny);
     let e = label(&mut app, "ab|", WorldTextStyle::default());
     until(&mut app, "ab drawn", |w| drawn(w, e));
@@ -313,4 +315,34 @@ fn no_wrap_ignores_the_width() {
     let e = app.world_mut().spawn((WorldText::new("one two three four five"), WorldTextStyle { width: Some(1.0), ..default() }, TextLayout::linebreak(LineBreak::NoWrap))).id();
     until(&mut app, "drawn", |w| drawn(w, e));
     assert_eq!(app.world().get::<bevy::text::ComputedTextBlock>(e).unwrap().buffer().len(), 1);
+}
+
+/// Labels spawned in one frame in another order: the same atlas, byte for byte, and each label the
+/// same UVs. Glyphs placed in the order labels were laid out moved letters in the atlas, and so
+/// their edges under MSAA (learn's two states in agent town, whichever records came first).
+#[test]
+fn labels_laid_out_in_another_order_make_the_same_atlas() {
+    let texts = ["Attention", "Learn", "Rim north", "Walker 7", "Planet", "qjxz QJXZ"];
+    let atlas = |order: &[usize]| {
+        let mut app = app();
+        let labels: Vec<(usize, Entity)> = order.iter().map(|&i| (i, label(&mut app, texts[i], WorldTextStyle { size: 0.4, outline: Some((0.1, Color::BLACK)), ..default() }))).collect();
+        until(&mut app, "every label drawn", |w| labels.iter().all(|(_, e)| drawn(w, *e)));
+        let world = app.world();
+        let image = world.resource::<Assets<Image>>().get(&world.resource::<WorldTextAtlas>().image).unwrap().data.clone().unwrap();
+        let mut uvs: Vec<(usize, Vec<[f32; 2]>)> = labels
+            .iter()
+            .map(|&(i, e)| {
+                let mesh = world.resource::<Assets<Mesh>>().get(&world.get::<Mesh3d>(e).unwrap().0).unwrap();
+                let Some(bevy::mesh::VertexAttributeValues::Float32x2(uv)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0) else { panic!("UVs") };
+                (i, uv.clone())
+            })
+            .collect();
+        uvs.sort_by_key(|(i, _)| *i);
+        (image, uvs)
+    };
+    let (a, a_uvs) = atlas(&[0, 1, 2, 3, 4, 5]);
+    let (b, b_uvs) = atlas(&[5, 3, 1, 4, 0, 2]);
+    let differ = a.iter().zip(&b).filter(|(x, y)| x != y).count();
+    assert!(a.len() == b.len() && differ == 0, "atlases differ: {} and {} bytes, {differ} differ", a.len(), b.len());
+    assert_eq!(a_uvs, b_uvs, "a label's UVs differ");
 }

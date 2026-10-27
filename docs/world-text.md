@@ -80,7 +80,12 @@ The code is `crates/bevy-ts-material/src/world_text/`.
   out none (`LaidOut` counts them).
 - **Distance field** (`sdf.rs`, `atlas.rs`): Bevy rasterises each glyph once into its font atlas;
   world text turns that raster into a signed distance field, 6 px past the edge, and keeps it in
-  one shared `R8` atlas. Each distinct glyph is made once, however many labels use it.
+  one shared `R8` atlas. Each distinct glyph is made once, however many labels use it. A frame's
+  changed labels are laid out first; the glyphs new that frame are then placed together, sorted by
+  their raster, and the labels meshed. So the same labels make the same atlas whichever was laid
+  out first, and draw the same pixels. Glyphs first used in different frames are still placed in
+  frame order: for one atlas, and the same pixels every run, a game spawns its labels in one frame.
+  `ReadyHold` alone does not do that: it holds the shot, not when labels spawn.
 - **Mesh** (`mesh.rs`): each label is one mesh, a quad per glyph, its fill colour per vertex, UVs in
   atlas texels.
 - **Material** (`material.rs`, `world_text.wesl`): a `StandardMaterial` base, alpha-to-coverage,

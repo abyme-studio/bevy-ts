@@ -1,7 +1,9 @@
 //! The one SDF atlas all world text shares (design 6): 4096 texels wide, 256 high at first (1 MB),
 //! its height doubled as glyphs fill it, up to 4096 (16 MB). Cells are placed by a shelf packer and
 //! keyed by the Bevy glyph raster they were made from, so each glyph Bevy rasterises becomes a
-//! distance field once. Mesh UVs are in texels, so growing rebuilds no mesh.
+//! distance field once. Mesh UVs are in texels, so growing rebuilds no mesh. A frame's new glyphs
+//! are placed together, sorted by their raster, so the atlas does not depend on the order labels
+//! were laid out in that frame.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
@@ -82,6 +84,10 @@ pub struct WorldTextAtlas {
     pub image: Handle<Image>,
     pub packer: Packer,
     cells: HashMap<Key, Option<Cell>>,
+    /// Glyphs asked for since the last `place`, with their coverage.
+    pending: HashMap<Key, Vec<u8>>,
+    /// Every raster made, by its size and coverage: two glyphs of the same pixels share a cell.
+    rasters: HashMap<(UVec2, Vec<u8>), Option<Cell>>,
     /// Glyph rasters turned into distance fields.
     pub made: usize,
     /// Glyphs refused because the atlas was full; each logged one error.
@@ -107,24 +113,50 @@ impl WorldTextAtlas {
             min_filter: ImageFilterMode::Linear,
             ..default()
         });
-        Self { image: images.add(image), packer: Packer::new(WIDTH, height, max_height), cells: HashMap::default(), made: 0, refused: 0, dirty: false }
+        Self { image: images.add(image), packer: Packer::new(WIDTH, height, max_height), cells: HashMap::default(), pending: HashMap::default(), rasters: HashMap::default(), made: 0, refused: 0, dirty: false }
     }
 
-    /// The cell of the glyph raster at `rect` in Bevy's atlas `texture`, made on first use; `None`
-    /// for a glyph refused because the atlas is full.
-    pub fn cell(&mut self, images: &mut Assets<Image>, texture: AssetId<Image>, rect: URect) -> Option<Cell> {
-        if let Some(c) = self.cells.get(&(texture, rect)) {
-            return *c;
+    /// Asks for the glyph raster at `rect` in Bevy's atlas `texture`; `place` makes it. False when
+    /// Bevy's raster has no CPU copy: the glyph is not kept, and the next layout of its label tries
+    /// again.
+    pub fn want(&mut self, images: &Assets<Image>, texture: AssetId<Image>, rect: URect) -> bool {
+        let key = (texture, rect);
+        if self.cells.contains_key(&key) || self.pending.contains_key(&key) {
+            return true;
         }
-        // Bevy's glyph atlas is RGBA8, the coverage in alpha. Without its CPU copy the glyph is
-        // not cached: the next layout of its label tries again.
+        // Bevy's glyph atlas is RGBA8, the coverage in alpha.
         let Some(alpha) = raster(images, texture, rect) else {
             warn!("world text: Bevy's raster of a glyph ({texture:?}, {rect:?}) has no CPU data; it draws nothing this time");
-            return None;
+            return false;
         };
-        let made = self.make(images, &alpha, rect);
-        self.cells.insert((texture, rect), made);
-        made
+        self.pending.insert(key, alpha);
+        true
+    }
+
+    /// Makes every glyph asked for since the last call, in the order of their rasters (tallest
+    /// first, so shorter ones fill its shelf; then width, then coverage), not the order they were
+    /// asked for.
+    pub fn place(&mut self, images: &mut Assets<Image>) {
+        let mut pending: Vec<_> = self.pending.drain().map(|((t, r), a)| (r.size(), a, t, r)).collect();
+        pending.sort_unstable_by(|a, b| (b.0.y, b.0.x, &a.1).cmp(&(a.0.y, a.0.x, &b.1)));
+        for (size, alpha, texture, rect) in pending {
+            let raster = (size, alpha);
+            let made = match self.rasters.get(&raster) {
+                Some(c) => *c,
+                None => {
+                    let c = self.make(images, &raster.1, rect);
+                    self.rasters.insert(raster, c);
+                    c
+                }
+            };
+            self.cells.insert((texture, rect), made);
+        }
+    }
+
+    /// The cell of the glyph raster at `rect` in Bevy's atlas `texture`, once placed; `None` for one
+    /// not placed or refused because the atlas is full.
+    pub fn cell(&self, texture: AssetId<Image>, rect: URect) -> Option<Cell> {
+        self.cells.get(&(texture, rect)).copied().flatten()
     }
 
     fn make(&mut self, images: &mut Assets<Image>, alpha: &[u8], rect: URect) -> Option<Cell> {

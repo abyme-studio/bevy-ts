@@ -31,6 +31,8 @@ const processes = {
     cmd: "cd bench/dx/rust && cargo check 2>&1 | tee ../results/rust-check.txt",
   },
   build: { cmd: "cargo build --workspace --all-targets" },
+  // Change world-text-pack-order: bevy-ts-material's unit tests, the world-text tests, clippy, in a check slot; full log in target/world-text-order-test.log.
+  "world-text-order-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; NO_COLOR=1 timeout 3600 ~/dev/abyme/scripts/gate-slot run bevy-ts:world-text-order -- bash -c \"cargo test -p bevy-ts-material --lib && cargo test -p bevy-ts-material --test it -- world_text:: world_text_render:: && cargo clippy -p bevy-ts-material --no-deps --all-targets -- -D warnings\" > target/world-text-order-test.log 2>&1; s=$?; grep -E \"^test |test result|panicked|^error|^warning: [a-z]\" target/world-text-order-test.log | grep -v \" ok$\"; exit $s'" },
   // Change material-image-sampler: the script material render, materials, scene, reflect-asset and world-text tests, and clippy, in the gate slot.
   "material-image-sampler-test": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:material-image-sampler -- bash -c \"cargo test -p bevy-ts-material --lib && cargo test -p bevy-ts-material --no-fail-fast --test it -- world_text_render:: scene:: alpha_render:: && cargo test -p bevy-ts-cli --no-fail-fast --test it -- material_params_render:: materials:: scene_material:: reflect_assets:: && cargo clippy -p bevy-ts-material -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/material-image-sampler-test.log | grep -E -A5 \"^error|^warning|-->|test result|FAILED|panicked\" | tail -150'",

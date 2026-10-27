@@ -4,6 +4,10 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- World text places a frame's new glyphs in the atlas sorted by their raster, not in the order
+  labels were laid out. The same labels spawned in one frame in another order draw the same pixels;
+  before, letter edges could differ under MSAA. Glyphs first used in different frames still go in
+  frame order: for the same pixels every run, spawn labels in one frame (`ReadyHold` alone does not).
 - `<bitmapText font>` draws text in an XNA SpriteFont (JSON beside its PNG), one sprite per glyph,
   laid out as MonoGame does (docs/2d.md).
 - `<SpriteClip first last fps mode />` steps a sprite's atlas index (`Repeat`, `Once`, `PingPong`)
