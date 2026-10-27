@@ -147,7 +147,7 @@ fn bad_clock_writes_throw() {
         ("time.setRelativeSpeed(-1)", "VirtualTime.setRelativeSpeed: tried to go back in time"),
         ("time.setRelativeSpeedF64(Infinity)", "VirtualTime.setRelativeSpeedF64: tried to go infinitely fast"),
         ("time.setMaxDelta(0)", "VirtualTime.setMaxDelta: tried to set max delta to zero"),
-        ("time.setMaxDelta(-1)", "VirtualTime.setMaxDelta: setMaxDelta takes seconds, a finite number >= 0; got -1"),
+        ("time.setMaxDelta(-1)", "VirtualTime.setMaxDelta: takes seconds, a finite number >= 0; got -1"),
         ("time.setWrapPeriod(0)", "VirtualTime.setWrapPeriod: division by zero"),
         ("fixed.setTimestep(0)", "FixedTime.setTimestep: attempted to set fixed timestep to zero"),
         ("fixed.setTimestepSeconds(-1)", "FixedTime.setTimestepSeconds: seconds less than or equal to zero"),
@@ -156,7 +156,7 @@ fn bad_clock_writes_throw() {
         ("fixed.setTimestepHz(-5)", "FixedTime.setTimestepHz: Hz less than or equal to zero"),
         ("fixed.setTimestepHz(Infinity)", "FixedTime.setTimestepHz: Hz is infinite"),
         ("fixed.setTimestepHz(0)", "FixedTime.setTimestepHz: seconds is infinite"),
-        ("fixed.discardOverstep(NaN)", "FixedTime.discardOverstep: discardOverstep takes seconds, a finite number >= 0; got NaN"),
+        ("fixed.discardOverstep(NaN)", "FixedTime.discardOverstep: takes seconds, a finite number >= 0; got NaN"),
         ("fixed.setWrapPeriod(0)", "FixedTime.setWrapPeriod: division by zero"),
     ];
     let tries: String = calls.iter().map(|(c, _)| format!("  try {{ {c}; console.log(\"no throw\"); }} catch (e) {{ console.log(`threw ${{(e as Error).message}}`); }}\n")).collect();

@@ -25,8 +25,8 @@ impl Plugin for ScriptTimePlugin {
 }
 
 /// `value` seconds as a `Duration`: a finite number `>= 0` that fits one.
-fn secs(arg: &str, value: f64) -> Result<Duration, String> {
-    Duration::try_from_secs_f64(value).map_err(|_| format!("{arg} takes seconds, a finite number >= 0; got {}", number(value)))
+fn secs(value: f64) -> Result<Duration, String> {
+    Duration::try_from_secs_f64(value).map_err(|_| format!("takes seconds, a finite number >= 0; got {}", number(value)))
 }
 
 /// A number as JS prints it, near enough: `-1`, `0.5`, `1e300`, `NaN`.
@@ -83,7 +83,7 @@ impl VirtualClock<'_> {
     }
 
     pub fn set_max_delta(&mut self, seconds: f64) -> Result<(), String> {
-        let d = secs("setMaxDelta", seconds)?;
+        let d = secs(seconds)?;
         if d.is_zero() {
             return Err("tried to set max delta to zero".into());
         }
@@ -168,7 +168,7 @@ fn relative_speed(ratio: f64) -> Result<(), String> {
 
 /// Bevy's `set_wrap_period` asserts.
 fn wrap_period(seconds: f64) -> Result<Duration, String> {
-    let d = secs("setWrapPeriod", seconds)?;
+    let d = secs(seconds)?;
     if d.is_zero() {
         return Err("division by zero".into());
     }
@@ -184,7 +184,7 @@ pub struct FixedClock<'w> {
 #[export(ts = "FixedTime", module = "bevy-ts/time", stands_for = "ResMut<Time<Fixed>>")]
 impl FixedClock<'_> {
     pub fn set_timestep(&mut self, seconds: f64) -> Result<(), String> {
-        let d = secs("setTimestep", seconds)?;
+        let d = secs(seconds)?;
         if d.is_zero() {
             return Err("attempted to set fixed timestep to zero".into());
         }
@@ -211,7 +211,7 @@ impl FixedClock<'_> {
     }
 
     pub fn discard_overstep(&mut self, seconds: f64) -> Result<(), String> {
-        let d = secs("discardOverstep", seconds)?;
+        let d = secs(seconds)?;
         self.time.discard_overstep(d);
         Ok(())
     }
@@ -283,6 +283,6 @@ mod tests {
         assert_eq!(relative_speed(-0.5).unwrap_err(), "tried to go back in time");
         assert_eq!(relative_speed(f64::NAN).unwrap_err(), "tried to go infinitely fast");
         assert_eq!(wrap_period(0.0).unwrap_err(), "division by zero");
-        assert!(secs("setMaxDelta", -1.0).unwrap_err().starts_with("setMaxDelta takes seconds"));
+        assert!(secs(-1.0).unwrap_err().starts_with("takes seconds"));
     }
 }
