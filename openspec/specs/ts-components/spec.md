@@ -12,9 +12,11 @@ A component SHALL be declared as a plain class extending `Component`, its fields
 export class Mover extends Component { speed: f32 = 1; amplitude: f32 = 2 }
 export class Target extends Component { declare entity: Entity }
 export class Tag extends Component { label: string = "crate"; scores: u32[] = [] }
+type Point = { x: f32; y: f32 }
+export class Path extends Component { declare points: Point[]; declare stops: Entity[] }
 ```
 
-The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, `Timer`, `Stopwatch` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A component field MAY also be `string` (a heap field, Rust's `String`) or `T[]` with `T` one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool` or `string` (a heap field, Rust's `Vec<T>`). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero, `""` for a string and `[]` for a list. Objects, nested lists, lists of vectors or entities and other heap data SHALL fail the load with the file and line.
+The compile step SHALL read each field's name, type and default from syntax (script-runtime), with no schema object at runtime. A field's type SHALL be one of `f32`, `f64`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `bool`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, `Timer`, `Stopwatch` and a union of string literals (an enum); these SHALL be exported as TS types (`f32` is `number`). A field MAY also be `string` (a heap field, Rust's `String`) or `T[]` (a heap field, Rust's `Vec<T>`) with `T` a number kind, `bool`, `string`, `Vec2`, `Vec3`, `Vec4`, `Quat`, `Entity`, a string-literal union, or an object type (a literal, an alias or an interface) whose members are all of the plain types above (a struct item). A field with an initialiser SHALL use it as its default. A field without one SHALL be written `declare name: type` and default to zero, `""` for a string and `[]` for a list. Nested lists, a struct item with a `string` or list member, an object field outside a list and other heap data SHALL fail the load with the file and line.
 
 The class SHALL be the component's handle in queries (`Query<[Mover]>`), its TSX tag (`<Mover speed={2} />`) and, through `Mover.of({ speed: 2 })`, its constructor for commands. Its instance type SHALL be the component's data. A class with no fields is a marker. A class extending `SceneComponent` is a component whose `static scene(props)` builds a scene spawned with it, as Bevy's `#[derive(SceneComponent)]` (tsx, levels).
 
@@ -37,7 +39,7 @@ The component's name in Bevy, the protocol and `.bsn` files SHALL default to a R
 - **THEN** a TS system reads each item back, and a Rust system reads `points` as a `Vec<Vec3>` and `marks` as a `Vec` of a `#[repr(C)]` struct `{ x: f32, y: f32 }`
 
 #### Scenario: A refused heap type
-- **WHEN** a component declares `points: Vec3[]` or `meta: { a: f32 }`
+- **WHEN** a component declares `grid: f32[][]`, `meta: { a: f32 }` or `items: { name: string }[]`
 - **THEN** loading fails with an error naming the class, the field, the file and the line
 
 #### Scenario: A pinned name survives a rename
