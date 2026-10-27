@@ -49,9 +49,9 @@
 
 ## 6. Stage 6: sprite clips
 
-- [ ] 6.1 `pixel2d/`: reflected `SpriteClip { first, last, fps, mode, playing, finished }`; system in `Update` on `Time<Virtual>`; restart on a change of `first`, `last` or `mode`; field and atlas errors (design 6)
-- [ ] 6.2 `pixel2d.rs` tests: Repeat, Once (`finished`), PingPong at 0.45 s; paused time holds; `last` past the tiles names index and count
-- [ ] 6.3 `examples/shapes-2d`: the animated sheet uses `<SpriteClip>`; `docs/2d.md` leads "Atlases" animation with the clip and keeps the timer pattern as the by-hand way; coverage row
+- [x] 6.1 `pixel2d/`: reflected `SpriteClip { first, last, fps, mode, playing, finished }`; system in `Update` on `Time<Virtual>`; restart on a change of `first`, `last` or `mode`; field and atlas errors (design 6)
+- [x] 6.2 `pixel2d.rs` tests: Repeat, Once (`finished`), PingPong at 0.45 s; paused time holds; `last` past the tiles names index and count
+- [x] 6.3 `examples/shapes-2d`: the animated sheet uses `<SpriteClip>`; `docs/2d.md` leads "Atlases" animation with the clip and keeps the timer pattern as the by-hand way; coverage row
 
 ## 7. Stage 7: screen-size sprites (needs the operator's go: per-frame work)
 

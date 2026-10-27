@@ -602,3 +602,25 @@ fn a_click_at_a_snapped_pixel_camera_hits_the_drawn_sprite() {
     let cam = node(&mut app, "cam");
     assert_eq!(app.world().get::<Transform>(cam).unwrap().translation.x, 0.3);
 }
+
+// Change pixel-art-2d, stage 6: `<SpriteClip>` from TSX.
+
+#[test]
+fn a_sprite_clip_from_tsx_steps_its_atlas_index() {
+    let body = format!(
+        "    <entity key=\"walk\"><Sprite image=\"arrow.png\" texture_atlas={{{{ layout: {GRID}, index: 0 }}}} /><SpriteClip first={{0}} last={{3}} fps={{10}} mode=\"PingPong\" /></entity>\n"
+    );
+    let game = scene(&body).replace("import { Anchor, Camera2d,", "import { Anchor, SpriteClip, Camera2d,");
+    let (mut app, r) = load_game("two-d-clip", &game, |app| {
+        app.add_plugins(bevy_ts_material::Pixel2dPlugin);
+    });
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(50)));
+    app.update();
+    let e = node(&mut app, "walk");
+    let clip = *app.world().get::<bevy_ts_material::SpriteClip>(e).unwrap();
+    assert_eq!((clip.first, clip.last, clip.fps, clip.mode, clip.playing), (0, 3, 10.0, bevy_ts_material::ClipMode::PingPong, true));
+    // 0.45 s: frames 0, 1, 2, 3, then 2.
+    updates(&mut app, 9);
+    assert_eq!(app.world().get::<Sprite>(e).unwrap().texture_atlas.as_ref().unwrap().index, 2);
+}

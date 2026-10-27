@@ -1,14 +1,14 @@
 // Every 2D shape as a `<mesh2d>`, in a grid seen by a `Camera2d` (Bevy's 2d_shapes example),
 // and a row of sprites: plain, tinted, flipped; click one to tint it. Beside them, a sprite sheet
-// a TS system animates (Bevy's sprite_sheet example), a `<text2d>` counting the clicks, and three
+// a `<SpriteClip>` animates (Bevy's sprite_animation example), a `<text2d>` counting the clicks, and three
 // y-sorted walkers pacing past each other at the right edge, the first with a screen-size marker
 // over its head. The camera is a pixel camera: keys 1, 2 and 4 zoom it. One world unit is one
 // pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
-import { app, Component, FixedUpdate, signal, sliced, Time, Timer, Update, type f32, type Mut, type Query, type Res, type u32 } from "bevy-ts";
+import { app, Component, signal, sliced, Time, Update, type f32, type Mut, type Query, type Res } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
 import { KeyCode, type Keys } from "bevy-ts/input";
-import { Camera2d, PixelCamera, ScreenSize, Sprite, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
+import { Camera2d, PixelCamera, ScreenSize, Sprite, SpriteClip, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
 
 const shapes: Mesh2dProps[] = [
   { shape: "circle", radius: 50 },
@@ -38,23 +38,6 @@ const [clicked, setClicked] = signal<string | null>(null);
 const [clicks, setClicks] = signal(0);
 /** sheet.png: four 32-pixel tiles in a row, marked 1 to 4. */
 const sheet = TextureAtlasLayout.fromGrid({ tileSize: [32, 32], columns: 4, rows: 1 });
-/** A sprite sheet's frame clock: the atlas index steps every 0.1 s and wraps after `last`. */
-export class Frames extends Component {
-  timer = Timer.fromSeconds(0.1, "Repeating");
-  last: u32 = 3;
-}
-
-/** Bevy's sprite_sheet example: each finished tick moves the sprite to its next tile. */
-export function animate(time: Res<Time>, sheets: Query<[Mut<Sprite>, Mut<Frames>]>) {
-  for (const [sprite, frames] of sheets) {
-    if (!frames.timer.tick(time.delta_secs).just_finished) continue;
-    // A copy of the hole; changing it on a Mut row writes it back.
-    const atlas = sprite.texture_atlas;
-    if (!atlas) continue;
-    atlas.index = atlas.index === frames.last ? 0 : atlas.index + 1;
-  }
-}
-app.addSystems(FixedUpdate, animate);
 
 /** A walker's place in its pacing: walkers out of step pass each other. */
 export class Walker extends Component {
@@ -114,7 +97,7 @@ export const Shapes = () => (
     <entity key="frame" name="sprite sheet">
       <Transform translation={[2.5 * STEP, -1.5 * STEP, 0]} />
       <Sprite image="sheet.png" custom_size={[96, 96]} texture_atlas={{ layout: sheet, index: 0 }} />
-      <Frames />
+      <SpriteClip first={0} last={3} fps={10} mode="Repeat" />
     </entity>
     {/* panel.png is 32 px with an 8 px border: sliced, its corners keep their size as it stretches. */}
     <entity key="panel" name="sliced panel">

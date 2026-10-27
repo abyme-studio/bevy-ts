@@ -4,6 +4,8 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `<SpriteClip first last fps mode />` steps a sprite's atlas index (`Repeat`, `Once`, `PingPong`)
+  on virtual time (docs/2d.md).
 - `<PixelCamera zoom ease />` zooms a `Camera2d` by whole numbers, eased, and draws its view from
   whole screen pixels. It owns the projection's `scale` (docs/2d.md).
 - `<YSort layer offset />` draws a 2D entity by its base y within a layer, and `<ScreenSize />`

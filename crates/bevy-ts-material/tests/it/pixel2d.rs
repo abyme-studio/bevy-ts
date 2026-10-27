@@ -296,3 +296,100 @@ fn screen_size_follows_the_pixel_camera() {
     app.update();
     assert_eq!(scale(&app, marker).truncate(), Vec2::splat(0.25), "the pixel camera rules, and its scale is this frame's");
 }
+
+// Stage 6: sprite clips.
+
+use bevy_ts_material::{ClipMode, SpriteClip};
+
+/// An app on 50 ms steps of virtual time with a sprite on a 4-tile grid playing `clip`.
+fn clip_app(clip: SpriteClip) -> (App, Entity) {
+    let mut app = app();
+    app.add_plugins(AssetPlugin::default()).init_asset::<TextureAtlasLayout>().insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(50)));
+    let layout = app.world_mut().resource_mut::<Assets<TextureAtlasLayout>>().add(TextureAtlasLayout::from_grid(UVec2::splat(16), 4, 1, None, None));
+    let sprite = Sprite { texture_atlas: Some(TextureAtlas { layout, index: 0 }), ..default() };
+    let e = app.world_mut().spawn((sprite, clip)).id();
+    (app, e)
+}
+
+/// Updates until `secs` of virtual time have passed.
+fn run_for(app: &mut App, secs: f32) {
+    let until = app.world().resource::<Time<Virtual>>().elapsed() + Duration::from_millis((secs * 1000.0).round() as u64);
+    while app.world().resource::<Time<Virtual>>().elapsed() < until {
+        app.update();
+    }
+}
+
+fn index(app: &App, e: Entity) -> usize {
+    app.world().get::<Sprite>(e).unwrap().texture_atlas.as_ref().unwrap().index
+}
+
+const WALK: SpriteClip = SpriteClip { first: 0, last: 3, fps: 10.0, mode: ClipMode::Repeat, playing: true, finished: false };
+
+#[test]
+fn a_clip_repeats_holds_once_and_ping_pongs() {
+    // The first update starts the clock; 0.45 s after it.
+    // Frames 0, 1, 2, 3, then 0; 0, 1, 2, 3, 2; and Once holds 3, shown its full time by 0.4 s.
+    for (mode, want, finished) in [(ClipMode::Repeat, 0, false), (ClipMode::PingPong, 2, false), (ClipMode::Once, 3, true)] {
+        let (mut app, e) = clip_app(SpriteClip { mode, ..WALK });
+        app.update();
+        run_for(&mut app, 0.45);
+        assert_eq!(index(&app, e), want, "{mode:?} at 0.45 s");
+        assert_eq!(app.world().get::<SpriteClip>(e).unwrap().finished, finished, "{mode:?}");
+    }
+    let (mut app, e) = clip_app(SpriteClip { mode: ClipMode::Once, ..WALK });
+    app.update();
+    run_for(&mut app, 0.35);
+    assert_eq!(index(&app, e), 3);
+    assert!(!app.world().get::<SpriteClip>(e).unwrap().finished, "on its last frame, not yet finished");
+    run_for(&mut app, 0.65);
+    assert_eq!(index(&app, e), 3, "held at 1 s");
+    assert!(app.world().get::<SpriteClip>(e).unwrap().finished);
+}
+
+#[test]
+fn paused_time_or_playing_false_holds_the_frame_and_a_new_range_restarts() {
+    let (mut app, e) = clip_app(WALK);
+    app.update();
+    run_for(&mut app, 0.15);
+    let held = index(&app, e);
+    assert_eq!(held, 1);
+    app.world_mut().resource_mut::<Time<Virtual>>().pause();
+    for _ in 0..10 {
+        app.update();
+    }
+    assert_eq!(index(&app, e), held, "paused virtual time holds");
+    app.world_mut().resource_mut::<Time<Virtual>>().unpause();
+    app.world_mut().get_mut::<SpriteClip>(e).unwrap().playing = false;
+    for _ in 0..10 {
+        app.update();
+    }
+    assert_eq!(index(&app, e), held, "playing false holds");
+    let mut clip = app.world_mut().get_mut::<SpriteClip>(e).unwrap();
+    clip.playing = true;
+    clip.first = 2;
+    app.update();
+    assert_eq!(index(&app, e), 2, "a change of first starts again there");
+}
+
+#[test]
+fn a_clip_past_its_tiles_or_upside_down_names_what_is_wrong() {
+    for (clip, want) in [
+        (SpriteClip { last: 4, ..WALK }, "SpriteClip.last 4 is past the layout's 4 tiles"),
+        (SpriteClip { first: 3, last: 1, ..WALK }, "SpriteClip.last 1 is below SpriteClip.first 3"),
+        (SpriteClip { fps: 0.0, ..WALK }, "SpriteClip.fps 0 is not above 0"),
+    ] {
+        let (mut app, e) = clip_app(clip);
+        for _ in 0..3 {
+            app.update();
+        }
+        let errors = logged(&app, LogLevel::Error);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains(want), "{}", errors[0]);
+        assert_eq!(index(&app, e), 0, "the frame is left alone");
+    }
+    let mut app = app();
+    app.add_plugins(AssetPlugin::default()).init_asset::<TextureAtlasLayout>();
+    app.world_mut().spawn((Sprite::default(), WALK));
+    app.update();
+    assert!(logged(&app, LogLevel::Error)[0].contains("no texture_atlas"));
+}

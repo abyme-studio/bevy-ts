@@ -4,7 +4,8 @@
 //! scale. The pass in [`Pixel2dSystems`] writes them before Bevy's transform propagation, so
 //! `GlobalTransform` stays Bevy's own and every reader of it (picking, visibility, extraction) sees
 //! one value. Nothing here writes `GlobalTransform`. After propagation, one system snaps the pixel
-//! camera's view to whole screen pixels through its projection's `viewport_origin`.
+//! camera's view to whole screen pixels through its projection's `viewport_origin`. [`SpriteClip`]
+//! steps a sprite's atlas index in `Update`, as Bevy's `sprite_animation` example does.
 
 use bevy::camera::CameraUpdateSystems;
 use bevy::prelude::*;
@@ -110,6 +111,9 @@ impl Plugin for Pixel2dPlugin {
         app.register_type::<YSort>()
             .register_type::<ScreenSize>()
             .register_type::<PixelCamera>()
+            .register_type::<SpriteClip>()
+            .register_type::<ClipMode>()
+            .add_systems(Update, sprite_clips.run_if(any_with_component::<SpriteClip>))
             .init_resource::<RulingPixelCamera>()
             .configure_sets(PostUpdate, Pixel2dSystems.before(TransformSystems::Propagate))
             .add_systems(
@@ -330,4 +334,128 @@ pub fn drawn_from(camera: &Camera, at: &GlobalTransform, projection: &Projection
     let size = camera.logical_viewport_size()?;
     let Projection::Orthographic(o) = projection else { return None };
     Some(at.translation().truncate() - (o.viewport_origin - state.origin) * o.scale * size)
+}
+
+/// How a [`SpriteClip`] runs past its last frame.
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[reflect(Default)]
+pub enum ClipMode {
+    /// From `first` to `last`, then `first` again.
+    #[default]
+    Repeat,
+    /// From `first` to `last`, held there, and `finished` set.
+    Once,
+    /// From `first` to `last` and back, again and again.
+    PingPong,
+}
+
+/// Steps its sprite's `texture_atlas.index` from `first` to `last` at `fps` frames a second of
+/// virtual time, as Bevy's `sprite_animation` example's timer does: a paused game holds the frame.
+/// A change of `first`, `last` or `mode` starts again at `first`.
+#[derive(Component, Reflect, Clone, Copy, Debug, PartialEq)]
+#[reflect(Component, Default)]
+pub struct SpriteClip {
+    pub first: u32,
+    pub last: u32,
+    pub fps: f32,
+    pub mode: ClipMode,
+    /// `false` holds the frame.
+    pub playing: bool,
+    /// Set by the clip when a `Once` clip has shown `last` its full time.
+    pub finished: bool,
+}
+
+impl Default for SpriteClip {
+    fn default() -> Self {
+        Self { first: 0, last: 0, fps: 10.0, mode: ClipMode::Repeat, playing: true, finished: false }
+    }
+}
+
+/// A clip's clock, kept by this module: not reflected.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct SpriteClipState {
+    elapsed: Duration,
+    key: (u32, u32, ClipMode),
+}
+
+/// The atlas index `clip` shows `elapsed` in, and whether a `Once` clip is done.
+pub fn clip_frame(clip: &SpriteClip, elapsed: Duration) -> (u32, bool) {
+    let n = (clip.last - clip.first + 1) as u64;
+    let frame = (elapsed.as_secs_f64() * clip.fps as f64).floor() as u64;
+    let offset = match clip.mode {
+        ClipMode::Repeat => frame % n,
+        ClipMode::Once => frame.min(n - 1),
+        ClipMode::PingPong if n == 1 => 0,
+        ClipMode::PingPong => {
+            let f = frame % (2 * (n - 1));
+            if f < n { f } else { 2 * (n - 1) - f }
+        }
+    };
+    (clip.first + offset as u32, clip.mode == ClipMode::Once && frame >= n)
+}
+
+/// What is wrong with `clip` on `sprite`, if anything; `tiles` is its layout's count, once loaded.
+fn clip_error(clip: &SpriteClip, sprite: &Sprite, tiles: Option<usize>) -> Option<String> {
+    if clip.last < clip.first {
+        return Some(format!("SpriteClip.last {} is below SpriteClip.first {}", clip.last, clip.first));
+    }
+    if clip.fps.is_nan() || clip.fps <= 0.0 {
+        return Some(format!("SpriteClip.fps {} is not above 0", clip.fps));
+    }
+    if sprite.texture_atlas.is_none() {
+        return Some("SpriteClip on a Sprite with no texture_atlas: give it one".into());
+    }
+    match tiles {
+        Some(n) if clip.last as usize >= n => Some(format!("SpriteClip.last {} is past the layout's {n} tiles", clip.last)),
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn sprite_clips(
+    mut commands: Commands,
+    time: Res<Time>,
+    layouts: Option<Res<Assets<TextureAtlasLayout>>>,
+    mut clips: Query<(Entity, &mut SpriteClip, &mut Sprite, Option<&mut SpriteClipState>, Option<&Name>)>,
+    mut script_log: Option<ResMut<ScriptLog>>,
+    generations: Option<Res<bevy_ts::generation::Generations>>,
+    mut told: Local<HashMap<Entity, String>>,
+) {
+    for (e, mut clip, mut sprite, state, name) in &mut clips {
+        let tiles = sprite.texture_atlas.as_ref().and_then(|a| layouts.as_ref()?.get(&a.layout)).map(|l| l.len());
+        if let Some(problem) = clip_error(&clip, &sprite, tiles) {
+            if told.get(&e) != Some(&problem) {
+                log(&mut script_log, &generations, LogLevel::Error, format!("{}: {problem}", named(e, name)));
+                told.insert(e, problem);
+            }
+            continue;
+        }
+        told.remove(&e);
+        let key = (clip.first, clip.last, clip.mode);
+        let elapsed = match state {
+            Some(mut s) if s.key == key => {
+                if clip.playing {
+                    s.elapsed += time.delta();
+                }
+                s.elapsed
+            }
+            Some(mut s) => {
+                *s = SpriteClipState { elapsed: Duration::ZERO, key };
+                Duration::ZERO
+            }
+            None => {
+                commands.entity(e).insert(SpriteClipState { elapsed: Duration::ZERO, key });
+                Duration::ZERO
+            }
+        };
+        let (index, finished) = clip_frame(&clip, elapsed);
+        if clip.finished != finished {
+            clip.finished = finished;
+        }
+        if let Some(atlas) = sprite.texture_atlas.as_ref()
+            && atlas.index != index as usize
+        {
+            sprite.texture_atlas.as_mut().unwrap().index = index as usize;
+        }
+    }
 }
