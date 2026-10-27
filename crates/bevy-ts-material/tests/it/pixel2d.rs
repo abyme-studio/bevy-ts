@@ -149,3 +149,123 @@ fn screen_size_scales_by_the_ruling_cameras_scale_and_owns_it() {
     app.update();
     assert_eq!(scale(&app, double).truncate(), Vec2::splat(2.0));
 }
+
+// Stage 3: the pixel camera.
+
+use bevy::camera::RenderTargetInfo;
+use bevy::time::TimeUpdateStrategy;
+use bevy_ts_material::PixelCamera;
+use bevy_ts_material::pixel2d::{PixelCameraState, drawn_from};
+use std::time::Duration;
+
+/// A `Camera2d` with `pixel`, its target `width` × 540 logical pixels, at `x`; time steps 50 ms.
+fn pixel_camera(app: &mut App, pixel: PixelCamera, width: u32, x: f32) -> Entity {
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(50)));
+    let mut camera = Camera::default();
+    camera.computed.target_info = Some(RenderTargetInfo { physical_size: UVec2::new(width, 540), scale_factor: 1.0 });
+    app.world_mut().spawn((Camera2d, camera, pixel, Transform::from_xyz(x, 0.0, 0.0))).id()
+}
+
+fn ortho(app: &App, e: Entity) -> OrthographicProjection {
+    match app.world().get::<Projection>(e).unwrap() {
+        Projection::Orthographic(o) => o.clone(),
+        p => panic!("{p:?}"),
+    }
+}
+
+/// The x the view is centred on, as Bevy draws it: its area spans `scale × -origin` to
+/// `scale × (width - origin)` about the camera, `origin` being `width × viewport_origin.x`
+/// (`bevy_camera-0.20.0/src/projection.rs:729-735`). Checked against [`drawn_from`].
+fn view_x(app: &App, e: Entity) -> f32 {
+    let w = app.world();
+    let (camera, at) = (w.get::<Camera>(e).unwrap(), w.get::<GlobalTransform>(e).unwrap());
+    let o = ortho(app, e);
+    let width = camera.logical_viewport_size().unwrap().x;
+    let centre = at.translation().x + o.scale * width * (0.5 - o.viewport_origin.x);
+    let drawn = drawn_from(camera, at, w.get::<Projection>(e).unwrap(), w.get::<PixelCameraState>(e).unwrap()).unwrap().x;
+    assert!((centre - drawn).abs() < 1e-4, "drawn_from {drawn}, Bevy's view {centre}");
+    centre
+}
+
+#[test]
+fn a_pixel_camera_zooms_by_whole_numbers_and_eases_between_them() {
+    let mut app = app();
+    let cam = pixel_camera(&mut app, PixelCamera { zoom: 2.0, ease: 0.25 }, 960, 0.0);
+    app.update();
+    assert_eq!(ortho(&app, cam).scale, 0.5, "zoom 2 is scale 1/2 from the first frame");
+    assert_eq!(app.world().get::<Msaa>(cam), Some(&Msaa::Off), "multisampling off");
+    app.world_mut().get_mut::<PixelCamera>(cam).unwrap().zoom = 4.0;
+    app.update();
+    app.update();
+    // 0.1 s into the ease (the frame that saw the change, then one more).
+    let mid = ortho(&app, cam).scale;
+    assert!(mid < 0.5 && mid > 0.25, "strictly between: {mid}");
+    for _ in 0..5 {
+        app.update();
+    }
+    assert_eq!(ortho(&app, cam).scale, 0.25, "exact from 0.25 s on");
+    // It owns the scale.
+    let Projection::Orthographic(o) = &mut *app.world_mut().get_mut::<Projection>(cam).unwrap() else { unreachable!() };
+    o.scale = 3.0;
+    app.update();
+    assert_eq!(ortho(&app, cam).scale, 0.25, "a script's scale is overwritten");
+    // ease 0 jumps.
+    let mut p = app.world_mut().get_mut::<PixelCamera>(cam).unwrap();
+    p.ease = 0.0;
+    p.zoom = 1.0;
+    app.update();
+    assert_eq!(ortho(&app, cam).scale, 1.0);
+}
+
+#[test]
+fn a_zoom_that_is_not_whole_logs_one_error_and_changes_nothing() {
+    let mut app = app();
+    let cam = pixel_camera(&mut app, PixelCamera { zoom: 2.5, ease: 0.0 }, 960, 0.0);
+    app.update();
+    app.update();
+    assert_eq!(ortho(&app, cam).scale, 1.0);
+    let errors = logged(&app, LogLevel::Error);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("PixelCamera.zoom 2.5"), "{}", errors[0]);
+}
+
+#[test]
+fn the_view_is_drawn_from_the_camera_rounded_to_whole_screen_pixels() {
+    let mut app = app();
+    let even = pixel_camera(&mut app, PixelCamera { zoom: 4.0, ease: 0.0 }, 960, 10.3);
+    app.update();
+    app.update();
+    assert!((view_x(&app, even) - 10.25).abs() < 1e-4, "{}", view_x(&app, even));
+    assert_eq!(app.world().get::<Transform>(even).unwrap().translation.x, 10.3, "Transform keeps the script's x");
+    assert_eq!(app.world().get::<GlobalTransform>(even).unwrap().translation().x, 10.3, "and GlobalTransform is Bevy's");
+    // On an odd width the centre falls between pixels: half a step more.
+    app.world_mut().get_mut::<Camera>(even).unwrap().computed.target_info = Some(RenderTargetInfo { physical_size: UVec2::new(961, 540), scale_factor: 1.0 });
+    app.update();
+    assert!((view_x(&app, even) - 10.375).abs() < 1e-4, "{}", view_x(&app, even));
+}
+
+#[test]
+fn a_second_pixel_camera_is_named_once_and_the_first_rules() {
+    let mut app = app();
+    let first = pixel_camera(&mut app, PixelCamera { zoom: 2.0, ease: 0.0 }, 960, 0.0);
+    app.update();
+    let second = pixel_camera(&mut app, PixelCamera { zoom: 4.0, ease: 0.0 }, 960, 0.0);
+    for _ in 0..3 {
+        app.update();
+    }
+    let warnings = logged(&app, LogLevel::Warn);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains(&format!("entity {first}")) && warnings[0].contains(&format!("entity {second}")), "{}", warnings[0]);
+    assert_eq!(ortho(&app, first).scale, 0.5);
+    assert_eq!(ortho(&app, second).scale, 1.0, "the second zooms nothing");
+}
+
+#[test]
+fn screen_size_follows_the_pixel_camera() {
+    let mut app = app();
+    camera(&mut app, 1.0);
+    pixel_camera(&mut app, PixelCamera { zoom: 4.0, ease: 0.0 }, 960, 0.0);
+    let marker = app.world_mut().spawn(bevy_ts_material::ScreenSize::default()).id();
+    app.update();
+    assert_eq!(scale(&app, marker).truncate(), Vec2::splat(0.25), "the pixel camera rules, and its scale is this frame's");
+}

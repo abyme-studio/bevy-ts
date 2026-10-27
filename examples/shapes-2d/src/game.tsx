@@ -2,11 +2,13 @@
 // and a row of sprites: plain, tinted, flipped; click one to tint it. Beside them, a sprite sheet
 // a TS system animates (Bevy's sprite_sheet example), a `<text2d>` counting the clicks, and three
 // y-sorted walkers pacing past each other at the right edge, the first with a screen-size marker
-// over its head. One world unit is one pixel. docs/2d.md
+// over its head. The camera is a pixel camera: keys 1, 2 and 4 zoom it. One world unit is one
+// pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
 import { app, Component, FixedUpdate, signal, sliced, Time, Timer, Update, type f32, type Mut, type Query, type Res, type u32 } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
-import { Camera2d, ScreenSize, Sprite, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
+import { KeyCode, type Keys } from "bevy-ts/input";
+import { Camera2d, PixelCamera, ScreenSize, Sprite, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
 
 const shapes: Mesh2dProps[] = [
   { shape: "circle", radius: 50 },
@@ -65,6 +67,14 @@ export function pace(time: Res<Time>, walkers: Query<[Mut<Transform>, Walker]>) 
 }
 app.addSystems(Update, pace);
 
+/** Keys 1, 2 and 4 zoom the pixel camera, easing there. */
+export function zoomKeys(keys: Keys, cameras: Query<[Mut<PixelCamera>]>) {
+  const zoom = keys.justPressed(KeyCode.Digit1) ? 1 : keys.justPressed(KeyCode.Digit2) ? 2 : keys.justPressed(KeyCode.Digit4) ? 4 : 0;
+  if (zoom === 0) return;
+  for (const [camera] of cameras) camera.zoom = zoom;
+}
+app.addSystems(Update, zoomKeys);
+
 const walkers = [
   { key: "walker-a", color: "#f84", phase: 0 },
   { key: "walker-b", color: "#4f8", phase: 2.1 },
@@ -80,6 +90,7 @@ export const Shapes = () => (
   <>
     <entity name="camera">
       <Camera2d />
+      <PixelCamera zoom={1} />
     </entity>
     {shapes.map((props, i) => {
       const col = i % COLUMNS;

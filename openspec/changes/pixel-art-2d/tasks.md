@@ -21,13 +21,13 @@
 
 ## 3. Stage 3: pixel camera (needs the operator's go: per-frame work)
 
-- [ ] 3.0 Before starting: the operator's answer to design's open question (per-sprite snap or not)
-- [ ] 3.1 `pixel2d/`: reflected `PixelCamera { zoom, ease }`; `zoom` checked whole and at least 1, naming the value; scale `1/zoom` written in `Pixel2dSystems`, cubic ease-out on real time, `ease` 0 jumps (design 3)
-- [ ] 3.2 Camera snap system `.after(TransformSystems::Propagate).before(CameraUpdateSystems)`: round the camera's global x, y to its step, half a step more on odd target sizes, shift `viewport_origin`; no `Transform` or `GlobalTransform` write; a second `PixelCamera` warns once naming both
-- [ ] 3.3 `pixel2d.rs` tests: scale at zoom 2; mid-ease strictly between, exact at the end; camera x 10.3 at zoom 4 gives the `viewport_origin` of 10.25 and `Transform` stays 10.3; odd and even target widths; the warning; a pick at a snapped camera hits the drawn sprite
-- [ ] 3.4 Render tests: at zoom 2 a 16 px sprite covers 32 pixels on whole pixels; a sprite at x 0.3 renders the same pixels as at x 0.5
-- [ ] 3.5 Bench arm `all-moving` with the camera easing between zoom 2 and 4, timing the snap system too
-- [ ] 3.6 `examples/shapes-2d`: keys 1, 2, 4 set the zoom; `docs/2d.md`: "Pixel camera" section and row
+- [x] 3.0 Before starting: the operator's answer to design's open question (per-sprite snap or not)
+- [x] 3.1 `pixel2d/`: reflected `PixelCamera { zoom, ease }`; `zoom` checked whole and at least 1, naming the value; scale `1/zoom` written in `Pixel2dSystems`, cubic ease-out on real time, `ease` 0 jumps (design 3)
+- [x] 3.2 Camera snap system `.after(TransformSystems::Propagate).before(CameraUpdateSystems)`: round the camera's global x, y to its step, half a step more on odd target sizes, shift `viewport_origin`; no `Transform` or `GlobalTransform` write; a second `PixelCamera` warns once naming both
+- [x] 3.3 `pixel2d.rs` tests: scale at zoom 2; mid-ease strictly between, exact at the end; camera x 10.3 at zoom 4 gives the `viewport_origin` of 10.25 and `Transform` stays 10.3; odd and even target widths; the warning; a pick at a snapped camera hits the drawn sprite
+- [x] 3.4 Render tests: at zoom 2 a 16 px sprite covers 32 pixels on whole pixels; a sprite at x 0.3 renders the same pixels as at x 0.5
+- [x] 3.5 Bench arm `all-moving` with the camera easing between zoom 2 and 4, timing the snap system too
+- [x] 3.6 `examples/shapes-2d`: keys 1, 2, 4 set the zoom; `docs/2d.md`: "Pixel camera" section and row
 
 ## 4. Stage 4: nearest by default
 

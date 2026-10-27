@@ -1,11 +1,15 @@
 //! Pixel-art 2D (openspec change `pixel-art-2d`). [`YSort`] draws an entity by its base y within a
 //! layer and owns `Transform` z; [`ScreenSize`] keeps it one size on screen at every zoom and owns
-//! `Transform` scale. The pass in [`Pixel2dSystems`] writes them before Bevy's transform
-//! propagation, so `GlobalTransform` stays Bevy's own and every reader of it (picking, visibility,
-//! extraction) sees one value. Nothing here writes `GlobalTransform`.
+//! `Transform` scale; [`PixelCamera`] zooms a `Camera2d` by whole numbers and owns its projection's
+//! scale. The pass in [`Pixel2dSystems`] writes them before Bevy's transform propagation, so
+//! `GlobalTransform` stays Bevy's own and every reader of it (picking, visibility, extraction) sees
+//! one value. Nothing here writes `GlobalTransform`. After propagation, one system snaps the pixel
+//! camera's view to whole screen pixels through its projection's `viewport_origin`.
 
+use bevy::camera::CameraUpdateSystems;
 use bevy::prelude::*;
 use bevy::transform::TransformSystems;
+use std::time::Duration;
 use bevy_ts::log::{LogLevel, ScriptLog};
 use std::collections::{HashMap, HashSet};
 
@@ -39,8 +43,8 @@ pub fn y_sort_z(layer: f32, y: f32, offset: f32) -> f32 {
 }
 
 /// Keeps the entity one size on screen at every zoom: its `Transform` scale x and y are `scale`
-/// times the ruling camera's orthographic scale (the first `Camera2d` by `Camera.order`, then by
-/// entity), so one image pixel is `scale` screen pixels. Its descendants scale with it. It owns
+/// times the ruling camera's orthographic scale (the [`PixelCamera`]'s, else the first `Camera2d`
+/// by `Camera.order`, then by entity), so one image pixel is `scale` screen pixels. Its descendants scale with it. It owns
 /// `Transform` scale x and y: a write to them is overwritten the same frame; write `scale`.
 #[derive(Component, Reflect, Clone, Copy, Debug, PartialEq)]
 #[reflect(Component, Default)]
@@ -56,7 +60,43 @@ impl Default for ScreenSize {
     }
 }
 
-/// The pass that writes what [`YSort`] and [`ScreenSize`] own, in `PostUpdate` after the TSX reconcile and before
+/// Zooms its `Camera2d` by whole numbers: the orthographic projection's `scale` is `1 / zoom`, so a
+/// texel covers `zoom` screen pixels. A change of `zoom` moves the scale there over `ease` seconds
+/// of real time with a cubic ease-out (`ease` 0 jumps), so a paused game still zooms. It owns the
+/// projection's `scale` and turns its `Msaa` off: a write to either is overwritten. Its view is drawn from the camera's position
+/// rounded to whole screen pixels; the camera's `Transform` keeps the script's value.
+#[derive(Component, Reflect, Clone, Copy, Debug, PartialEq)]
+#[reflect(Component, Default)]
+pub struct PixelCamera {
+    /// Screen pixels per texel: a whole number from 1.
+    pub zoom: f32,
+    /// Seconds a change of `zoom` takes.
+    pub ease: f32,
+}
+
+impl Default for PixelCamera {
+    fn default() -> Self {
+        Self { zoom: 1.0, ease: 0.25 }
+    }
+}
+
+/// A pixel camera's ease and snap, kept by this module: not reflected.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PixelCameraState {
+    from: f32,
+    to: f32,
+    since: Duration,
+    /// The script's `viewport_origin`, and the snapped one last written over it.
+    origin: Vec2,
+    written: Option<Vec2>,
+}
+
+/// The cubic ease-out from 0 to 1.
+fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+}
+
+/// The pass that writes what [`YSort`], [`ScreenSize`] and [`PixelCamera`] own, in `PostUpdate` after the TSX reconcile and before
 /// `TransformSystems::Propagate`. It writes a field only when its value changes, so a still entity
 /// is not propagated again.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -69,11 +109,20 @@ impl Plugin for Pixel2dPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<YSort>()
             .register_type::<ScreenSize>()
+            .register_type::<PixelCamera>()
+            .init_resource::<RulingPixelCamera>()
             .configure_sets(PostUpdate, Pixel2dSystems.before(TransformSystems::Propagate))
             .add_systems(
                 PostUpdate,
-                (screen_size.run_if(any_with_component::<ScreenSize>), y_sort.run_if(any_with_component::<YSort>)).chain().in_set(Pixel2dSystems),
-            );
+                (
+                    pixel_camera.run_if(any_with_component::<PixelCamera>),
+                    screen_size.run_if(any_with_component::<ScreenSize>),
+                    y_sort.run_if(any_with_component::<YSort>),
+                )
+                    .chain()
+                    .in_set(Pixel2dSystems),
+            )
+            .add_systems(PostUpdate, snap_pixel_camera.after(TransformSystems::Propagate).before(CameraUpdateSystems).run_if(any_with_component::<PixelCamera>));
     }
 }
 
@@ -127,20 +176,18 @@ fn y_sort(
     }
 }
 
-/// The orthographic scale of the camera that rules screen size: the first `Camera2d` by
-/// `Camera.order`, then by entity.
-pub fn ruling_scale<'a>(cameras: impl Iterator<Item = (Entity, &'a Camera, &'a Projection)>) -> Option<f32> {
-    cameras
-        .filter_map(|(e, c, p)| match p {
-            Projection::Orthographic(o) => Some(((c.order, e), o.scale)),
-            _ => None,
-        })
-        .min_by_key(|(k, _)| *k)
-        .map(|(_, s)| s)
+fn ortho_scale(p: &Projection) -> Option<f32> {
+    match p {
+        Projection::Orthographic(o) => Some(o.scale),
+        _ => None,
+    }
 }
 
-fn screen_size(cameras: Query<(Entity, &Camera, &Projection), With<Camera2d>>, mut sized: Query<(&ScreenSize, &mut Transform)>) {
-    let Some(camera) = ruling_scale(cameras.iter()) else { return };
+fn screen_size(cameras: Query<(Entity, &Camera, &Projection), With<Camera2d>>, ruling: Res<RulingPixelCamera>, mut sized: Query<(&ScreenSize, &mut Transform)>) {
+    // The ruling pixel camera, else the first Camera2d by order, then by entity.
+    let pixel = ruling.0.and_then(|e| cameras.get(e).ok()).and_then(|(_, _, p)| ortho_scale(p));
+    let first = || cameras.iter().filter_map(|(e, c, p)| Some(((c.order, e), ortho_scale(p)?))).min_by_key(|(k, _)| *k).map(|(_, s)| s);
+    let Some(camera) = pixel.or_else(first) else { return };
     for (s, mut t) in &mut sized {
         let scale = s.scale * camera;
         if t.scale.x != scale || t.scale.y != scale {
@@ -148,4 +195,116 @@ fn screen_size(cameras: Query<(Entity, &Camera, &Projection), With<Camera2d>>, m
             t.scale.y = scale;
         }
     }
+}
+
+/// The `PixelCamera` that rules, the first added; the others are ignored, with one warning.
+#[derive(Resource, Default)]
+pub struct RulingPixelCamera(pub Option<Entity>);
+
+/// The scale a pixel camera's projection has now, from its state at real time `now`.
+fn eased(state: &PixelCameraState, ease: f32, now: Duration) -> f32 {
+    if ease <= 0.0 {
+        return state.to;
+    }
+    let t = (now.saturating_sub(state.since)).as_secs_f32() / ease;
+    if t >= 1.0 { state.to } else { state.from + (state.to - state.from) * ease_out(t) }
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn pixel_camera(
+    mut commands: Commands,
+    mut cameras: Query<(Entity, &PixelCamera, &mut Projection, Option<&mut PixelCameraState>, Option<&mut Msaa>, Option<&Name>)>,
+    added: Query<Entity, Added<PixelCamera>>,
+    mut ruling: ResMut<RulingPixelCamera>,
+    time: Res<Time<Real>>,
+    mut script_log: Option<ResMut<ScriptLog>>,
+    generations: Option<Res<bevy_ts::generation::Generations>>,
+    mut told: Local<(Option<(Entity, Entity)>, HashMap<Entity, u32>)>,
+) {
+    if ruling.0.is_none_or(|e| cameras.get(e).is_err()) {
+        ruling.0 = added.iter().min().or_else(|| cameras.iter().map(|c| c.0).min());
+    }
+    let Some(ruler) = ruling.0 else { return };
+    if let Some(other) = cameras.iter().map(|c| c.0).find(|e| *e != ruler)
+        && told.0 != Some((ruler, other))
+    {
+        told.0 = Some((ruler, other));
+        let message = format!("two PixelCameras, entity {ruler} and entity {other}: entity {ruler}, the first added, rules; the other zooms nothing");
+        log(&mut script_log, &generations, LogLevel::Warn, message);
+    }
+    let Ok((e, pixel, mut projection, state, msaa, name)) = cameras.get_mut(ruler) else { return };
+    // Multisampling would blend a sub-pixel sprite's edge pixels: a pixel is filled when its centre
+    // is inside the quad, or not at all.
+    match msaa {
+        Some(mut m) if *m != Msaa::Off => *m = Msaa::Off,
+        Some(_) => {}
+        None => {
+            commands.entity(e).insert(Msaa::Off);
+        }
+    }
+    let Projection::Orthographic(ortho) = &mut *projection else { return };
+    if !(pixel.zoom >= 1.0 && pixel.zoom.fract() == 0.0) {
+        if told.1.insert(e, pixel.zoom.to_bits()) != Some(pixel.zoom.to_bits()) {
+            let message = format!("{}: PixelCamera.zoom {} is not a whole number from 1", named(e, name), pixel.zoom);
+            log(&mut script_log, &generations, LogLevel::Error, message);
+        }
+        return;
+    }
+    told.1.remove(&e);
+    let (now, to) = (time.elapsed(), 1.0 / pixel.zoom);
+    let scale = match state {
+        None => {
+            commands.entity(e).insert(PixelCameraState { from: to, to, since: now, origin: ortho.viewport_origin, written: None });
+            to
+        }
+        Some(mut state) => {
+            if state.to != to {
+                state.from = eased(&state, pixel.ease, now);
+                state.to = to;
+                state.since = now;
+            }
+            eased(&state, pixel.ease, now)
+        }
+    };
+    if ortho.scale != scale {
+        ortho.scale = scale;
+    }
+}
+
+/// The ruling pixel camera's view drawn from its position rounded to whole screen pixels: its
+/// step is its scale in world units, with half a step more on an axis whose size in pixels is odd,
+/// so texel edges at whole world units land on pixel edges. Shifts `viewport_origin` by the
+/// difference, over the projection's size; writes neither `Transform` nor `GlobalTransform`.
+pub fn snap_pixel_camera(ruling: Res<RulingPixelCamera>, mut cameras: Query<(&Camera, &GlobalTransform, &mut Projection, &mut PixelCameraState), With<PixelCamera>>) {
+    let Some((camera, at, mut projection, mut state)) = ruling.0.and_then(|e| cameras.get_mut(e).ok()) else { return };
+    let Some(size) = camera.logical_viewport_size() else { return };
+    let Projection::Orthographic(ortho) = &*projection else { return };
+    // A script's own viewport_origin is the base the snap shifts.
+    if state.written != Some(ortho.viewport_origin) {
+        state.origin = ortho.viewport_origin;
+    }
+    let step = ortho.scale;
+    let snap = |x: f32, pixels: f32| {
+        let half = if (pixels.round() as i64) % 2 == 1 { 0.5 } else { 0.0 };
+        ((x / step - half).round() + half) * step
+    };
+    let p = at.translation().truncate();
+    let snapped = Vec2::new(snap(p.x, size.x), snap(p.y, size.y));
+    // Bevy draws x from `-viewport_origin.x × width × scale` about the camera: a larger origin
+    // moves the view left, so drawing from `snapped` adds `(p - snapped)` over the view's size.
+    let origin = state.origin + (p - snapped) / (step * size);
+    state.written = Some(origin);
+    if ortho.viewport_origin != origin
+        && let Projection::Orthographic(o) = &mut *projection
+    {
+        o.viewport_origin = origin;
+    }
+}
+
+/// Where a pixel camera's view is drawn from: its `GlobalTransform` x and y with its projection's
+/// shift of `viewport_origin` taken out. For tests and tools.
+pub fn drawn_from(camera: &Camera, at: &GlobalTransform, projection: &Projection, state: &PixelCameraState) -> Option<Vec2> {
+    let size = camera.logical_viewport_size()?;
+    let Projection::Orthographic(o) = projection else { return None };
+    Some(at.translation().truncate() - (o.viewport_origin - state.origin) * o.scale * size)
 }

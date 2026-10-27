@@ -54,7 +54,7 @@
 - **THEN** the scale is strictly between 0.5 and 0.25 at 0.1 s and exactly 0.25 from 0.25 s on
 
 ### Requirement: A pixel camera snaps its view to whole screen pixels
-With a `PixelCamera`, a system after `TransformSystems::Propagate` and before Bevy's `CameraUpdateSystems` SHALL round the camera's global x and y to its screen-pixel step (its current scale, in world units), with half a step more on an axis whose target size in pixels is odd, and SHALL shift the projection's `viewport_origin` so the view is drawn from the rounded point. It SHALL write neither the camera's `Transform` nor its `GlobalTransform`. Sprites SHALL keep their positions: at a whole zoom with nearest sampling, each texel covers whole screen pixels. Two `PixelCamera`s SHALL log one warning naming both; the first added SHALL rule.
+With a `PixelCamera`, a system after `TransformSystems::Propagate` and before Bevy's `CameraUpdateSystems` SHALL round the camera's global x and y to its screen-pixel step (its current scale, in world units), with half a step more on an axis whose target size in pixels is odd, and SHALL shift the projection's `viewport_origin` so the view is drawn from the rounded point. It SHALL write neither the camera's `Transform` nor its `GlobalTransform`. Sprites SHALL keep their positions: at a whole zoom with nearest sampling, each texel covers whole screen pixels. The `PixelCamera` SHALL turn its camera's `Msaa` off, so a pixel is filled when its centre is inside a sprite, or not at all. Two `PixelCamera`s SHALL log one warning naming both; the first added SHALL rule.
 
 #### Scenario: A sub-pixel camera
 - **WHEN** at zoom 4 the camera's global x is 10.3

@@ -2,13 +2,15 @@
 //! propagation and `Pixel2dPlugin`: no renderer, since the pass and propagation are what it adds.
 //! Arms: `off` (no pixel-2D component, the pass skipped), `ysort-still` (every sprite y-sorted,
 //! none moving), `ysort-moving` (every sprite y-sorted and moving each frame), `all-moving`
-//! (`ysort-moving`, a tenth with `ScreenSize`, under a `Camera2d` whose scale changes each frame).
-//! Prints one line:
-//! the pass and propagation per frame, median and p95, over 600 frames after 120 warm-up.
+//! (`ysort-moving`, a tenth with `ScreenSize`, under a moving `PixelCamera` easing between zoom 2
+//! and 4). Prints one line: the pass, propagation and the camera snap per frame, median and p95,
+//! over 600 frames after 120 warm-up.
 
+use bevy::camera::{CameraUpdateSystems, RenderTargetInfo};
 use bevy::prelude::*;
 use bevy::transform::TransformSystems;
-use bevy_ts_material::{Pixel2dPlugin, Pixel2dSystems, ScreenSize, YSort};
+use bevy_ts_material::pixel2d::snap_pixel_camera;
+use bevy_ts_material::{PixelCamera, Pixel2dPlugin, Pixel2dSystems, ScreenSize, YSort};
 use std::time::Instant;
 
 const SPRITES: usize = 10_000;
@@ -20,7 +22,9 @@ struct Marks {
     start: Option<Instant>,
     pass: Vec<f64>,
     propagate: Vec<f64>,
+    snap: Vec<f64>,
     mid: Option<Instant>,
+    end: Option<Instant>,
 }
 
 #[derive(Resource)]
@@ -39,12 +43,13 @@ fn walk(moving: Res<Moving>, time: Res<Time>, mut q: Query<(&Walker, &mut Transf
     }
 }
 
-/// The camera's scale between 1/2 and 1/4 and back, so every `ScreenSize` changes each frame.
-fn zoom(time: Res<Time>, mut cams: Query<&mut Projection, With<Camera2d>>) {
-    for mut p in &mut cams {
-        if let Projection::Orthographic(o) = &mut *p {
-            o.scale = 0.375 + 0.125 * time.elapsed_secs().sin();
-        }
+/// The pixel camera between zoom 2 and 4 every half second, easing, and moving, so every
+/// `ScreenSize` changes and the snap shifts most frames.
+fn zoom(time: Res<Time>, mut cams: Query<(&mut PixelCamera, &mut Transform)>) {
+    let t = time.elapsed_secs();
+    for (mut p, mut tf) in &mut cams {
+        p.zoom = if (t * 2.0) as u32 % 2 == 0 { 2.0 } else { 4.0 };
+        tf.translation.x = t * 37.3;
     }
 }
 
@@ -61,7 +66,14 @@ fn mid(mut m: ResMut<Marks>) {
 
 fn end(mut m: ResMut<Marks>) {
     let s = m.mid.take().unwrap();
-    m.propagate.push(s.elapsed().as_secs_f64() * 1e3);
+    let now = Instant::now();
+    m.propagate.push((now - s).as_secs_f64() * 1e3);
+    m.end = Some(now);
+}
+
+fn snapped(mut m: ResMut<Marks>) {
+    let s = m.end.take().unwrap();
+    m.snap.push(s.elapsed().as_secs_f64() * 1e3);
 }
 
 fn main() {
@@ -78,7 +90,15 @@ fn main() {
         .init_resource::<Marks>()
         .insert_resource(Moving(moving))
         .add_systems(Update, (walk, zoom.run_if(move || all)))
-        .add_systems(PostUpdate, (start.before(Pixel2dSystems), mid.after(Pixel2dSystems).before(TransformSystems::Propagate), end.after(TransformSystems::Propagate)));
+        .add_systems(
+            PostUpdate,
+            (
+                start.before(Pixel2dSystems),
+                mid.after(Pixel2dSystems).before(TransformSystems::Propagate),
+                end.after(TransformSystems::Propagate).before(snap_pixel_camera),
+                snapped.after(snap_pixel_camera).after(CameraUpdateSystems),
+            ),
+        );
     let world = app.world_mut();
     for i in 0..SPRITES {
         let (x, y) = ((i % 100) as f32 * 16.0, (i / 100) as f32 * 16.0);
@@ -92,7 +112,9 @@ fn main() {
         e.with_child(Transform::from_xyz(0.0, -8.0, -1e-5));
     }
     if all {
-        world.spawn(Camera2d);
+        let mut camera = Camera::default();
+        camera.computed.target_info = Some(RenderTargetInfo { physical_size: UVec2::new(1280, 720), scale_factor: 1.0 });
+        world.spawn((Camera2d, camera, PixelCamera { zoom: 2.0, ease: 0.25 }));
     }
     for _ in 0..WARMUP {
         app.update();
@@ -101,6 +123,7 @@ fn main() {
         let mut m = app.world_mut().resource_mut::<Marks>();
         m.pass.clear();
         m.propagate.clear();
+        m.snap.clear();
     }
     for _ in 0..FRAMES {
         app.update();
@@ -112,10 +135,12 @@ fn main() {
         v[v.len() * p / 100]
     };
     println!(
-        "arm={arm} sprites={SPRITES} pass_median_ms={:.3} pass_p95_ms={:.3} propagate_median_ms={:.3} propagate_p95_ms={:.3}",
+        "arm={arm} sprites={SPRITES} pass_median_ms={:.3} pass_p95_ms={:.3} propagate_median_ms={:.3} propagate_p95_ms={:.3} snap_median_ms={:.3} snap_p95_ms={:.3}",
         at(&m.pass, 50),
         at(&m.pass, 95),
         at(&m.propagate, 50),
         at(&m.propagate, 95),
+        at(&m.snap, 50),
+        at(&m.snap, 95),
     );
 }

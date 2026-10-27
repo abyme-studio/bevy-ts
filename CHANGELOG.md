@@ -4,6 +4,8 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `<PixelCamera zoom ease />` zooms a `Camera2d` by whole numbers, eased, and draws its view from
+  whole screen pixels. It owns the projection's `scale` (docs/2d.md).
 - `<YSort layer offset />` draws a 2D entity by its base y within a layer, and `<ScreenSize />`
   keeps one size on screen at every zoom. Each owns what it writes, `Transform` z and scale: a
   script's write is overwritten (docs/2d.md).

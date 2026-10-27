@@ -69,3 +69,43 @@ fn a_screen_size_marker_covers_16_pixels_at_zoom_1_and_4() {
         });
     }
 }
+
+/// The first red x of the middle row, and how many red pixels it has.
+fn red_span(image: &Image) -> Option<(u32, u32)> {
+    let first = (0..W).find(|x| is(image.get_color_at(*x, H / 2).unwrap().to_srgba(), Srgba::RED))?;
+    Some((first, red_run(image)))
+}
+
+#[test]
+fn at_zoom_2_a_16_px_sprite_covers_32_whole_pixels_wherever_it_is() {
+    let _gpu = GPU.lock().unwrap_or_else(|e| e.into_inner());
+    let mut app = app_with(|p| p.add(Pixel2dPlugin));
+    let world = app.world_mut();
+    let mut target = Image::new_target_texture(W, H, TextureFormat::Rgba8UnormSrgb, None);
+    target.asset_usage = bevy::asset::RenderAssetUsages::default();
+    let target = world.resource_mut::<Assets<Image>>().add(target);
+    world.spawn((
+        Camera2d,
+        Camera { clear_color: ClearColorConfig::Custom(Color::WHITE), ..default() },
+        Tonemapping::None,
+        RenderTarget::Image(target.clone().into()),
+        bevy_ts_material::PixelCamera { zoom: 2.0, ease: 0.0 },
+    ));
+    let sprite = world.spawn((Sprite::from_color(Srgba::RED, Vec2::splat(16.0)), Transform::from_xyz(0.5, 0.0, 0.0))).id();
+    let mut at_half = None;
+    until_drawn(&mut app, &target, |_| Ok(()), |_, img| match red_span(img) {
+        Some((x, 32)) => {
+            at_half = Some(x);
+            Ok(())
+        }
+        s => Err(format!("at x 0.5: {s:?}")),
+    });
+    app.world_mut().get_mut::<Transform>(sprite).unwrap().translation.x = 0.3;
+    until_drawn(&mut app, &target, |_| Ok(()), |w, img| {
+        assert_eq!(w.get::<Transform>(sprite).unwrap().translation.x, 0.3);
+        match red_span(img) {
+            s if s == Some((at_half.unwrap(), 32)) => Ok(()),
+            s => Err(format!("at x 0.3: {s:?}, not the pixels at 0.5 ({at_half:?}, 32)")),
+        }
+    });
+}

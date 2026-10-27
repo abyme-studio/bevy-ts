@@ -574,3 +574,31 @@ fn a_screen_size_marker_at_zoom_4_is_clicked_over_its_drawn_area() {
     click(&mut app, centre + Vec2::new(6.0, 0.0));
     assert_eq!(clicks(&app), vec![format!("clicked {}", e.to_bits())]);
 }
+
+// Change pixel-art-2d, stage 3: a click at a snapped pixel camera hits what is drawn.
+
+#[test]
+fn a_click_at_a_snapped_pixel_camera_hits_the_drawn_sprite() {
+    // At zoom 4 the camera at x 0.3 draws from 0.25: the 4-unit sprite at 0 spans screen -9 to 7
+    // px about the centre, where unsnapped it would span -9.2 to 6.8.
+    let body = concat!(
+        "    <entity key=\"cam\"><Camera2d /><PixelCamera zoom={4} ease={0} /><Transform translation={[0.3, 0, 0]} /></entity>\n",
+        "    <entity key=\"s\" onPointerClick={({ entity }) => console.log(`clicked ${entity}`)}><Sprite custom_size={[4, 4]} /></entity>\n",
+    );
+    let game = scene(body).replace("import { Anchor, Camera2d,", "import { Anchor, PixelCamera, Transform, Camera2d,");
+    let (mut app, r) = load_game("2d-pick-pixel-camera", &game, |app| {
+        app.add_plugins(bevy_ts_material::Pixel2dPlugin);
+    });
+    assert_eq!(r.status, ReloadStatus::Applied, "{:?}", r.errors);
+    app.world_mut().resource_mut::<SpritePickingSettings>().picking_mode = SpritePickingMode::BoundingBox;
+    bevy_ts_viewport::spawn_windowless_primary(app.world_mut(), "two_d", (SIZE.0, SIZE.1, 1.0), ());
+    updates(&mut app, 3);
+    let centre = Vec2::new(SIZE.0 as f32 / 2.0, SIZE.1 as f32 / 2.0);
+    let clicks = |app: &App| messages(app).into_iter().filter(|m| m.starts_with("clicked")).count();
+    click(&mut app, centre + Vec2::new(-9.1, 0.0));
+    assert_eq!(clicks(&app), 0, "left of the drawn sprite");
+    click(&mut app, centre + Vec2::new(6.9, 0.0));
+    assert_eq!(clicks(&app), 1, "inside the drawn sprite");
+    let cam = node(&mut app, "cam");
+    assert_eq!(app.world().get::<Transform>(cam).unwrap().translation.x, 0.3);
+}
