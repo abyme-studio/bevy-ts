@@ -86,8 +86,8 @@ test binary links `libbevy_dylib` instead of a copy of Bevy, and a touched crate
 Only a build of tests or examples sees dev-dependencies, so `cargo build -p bevy-ts-cli`,
 `cargo build --release`, the release CLI, project engines and what `bevy-ts build` writes link Bevy
 statically. `scripts/dylib-check.sh` checks each with `otool -L`, and `release.yml` fails a release
-whose engine links the dylib. It holds on any host; it is checked on macOS only (CI runs no Rust
-tests).
+whose engine links the dylib. It holds on any host; it is checked on macOS only, where CI's rust job
+runs the workspace tests.
 
 A release bench is a release build, so it links Bevy statically too and times what ships. It runs
 as `cargo static test --release …` (or `cargo static run --release --example …`): the `static` alias
