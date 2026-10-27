@@ -14,3 +14,14 @@ jobs:
         run: scripts/gen-protocol.sh --check
       - name: TS types
         run: cd packages/bevy-ts && pnpm check
+  rust:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      # Workspace-wide, so feature unification (serde_json preserve_order via deno_core) is the one CI sees.
+      - name: Rust tests
+        run: cargo test --workspace
+      - name: Rust lints
+        run: cargo clippy --workspace --all-targets -- -D warnings

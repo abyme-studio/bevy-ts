@@ -654,10 +654,31 @@ pub fn split_props(world: &World, kind: &str, props: &Map<String, Value>) -> Opt
     Some((key, instance, b.clone()))
 }
 
+/// The instance cache key for `props`: JSON with every object's keys sorted, through nested
+/// objects and arrays, so equal props give one key whatever the map's order (serde_json keeps
+/// insertion order once any crate in the build turns on `preserve_order`).
+fn instance_key(props: &Map<String, Value>) -> String {
+    fn sorted(v: &Value) -> Value {
+        match v {
+            Value::Object(m) => {
+                let mut entries: Vec<_> = m.iter().collect();
+                entries.sort_by(|a, b| a.0.cmp(b.0));
+                Value::Object(entries.into_iter().map(|(k, v)| (k.clone(), sorted(v))).collect())
+            }
+            Value::Array(a) => Value::Array(a.iter().map(sorted).collect()),
+            other => other.clone(),
+        }
+    }
+    let mut entries: Vec<_> = props.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    let top: Map<String, Value> = entries.into_iter().map(|(k, v)| (k.clone(), sorted(v))).collect();
+    serde_json::to_string(&top).unwrap_or_default()
+}
+
 /// The instance for `kind` with `props`: equal props share one asset, as `<material>` does. Fails
 /// for a kind that is not live, or a texture ref that is stale or of another type.
 pub fn instance(world: &mut World, kind: &str, props: &Map<String, Value>) -> Result<Handle<ScriptMaterial>, String> {
-    let key = serde_json::to_string(props).unwrap_or_default();
+    let key = instance_key(props);
     let kinds = world.resource::<MaterialKinds>();
     let k = kinds.live.get(kind).ok_or_else(|| format!("no material {kind}"))?;
     if let Some((h, _)) = k.instances.get(&key) {
@@ -719,6 +740,15 @@ mod tests {
     fn equal_refs_give_one_instance_key() {
         let a = props(serde_json::json!({ "$asset": 3, "type": "bevy_image::image::Image" }));
         let b = props(serde_json::json!({ "type": "bevy_image::image::Image", "$asset": 3 }));
-        assert_eq!(serde_json::to_string(&a).unwrap(), serde_json::to_string(&b).unwrap());
+        assert_eq!(instance_key(&a), instance_key(&b));
+    }
+
+    #[test]
+    fn instance_key_ignores_key_order_at_every_depth() {
+        let a = props(serde_json::json!({ "a": 1, "list": [{ "x": 1, "y": 2 }], "o": { "p": 1, "q": { "r": 1, "s": 2 } } }));
+        let b = props(serde_json::json!({ "o": { "q": { "s": 2, "r": 1 }, "p": 1 }, "list": [{ "y": 2, "x": 1 }], "a": 1 }));
+        assert_eq!(instance_key(&a), instance_key(&b));
+        let c = props(serde_json::json!({ "a": 1, "list": [{ "x": 1, "y": 3 }], "o": { "p": 1, "q": { "r": 1, "s": 2 } } }));
+        assert_ne!(instance_key(&a), instance_key(&c));
     }
 }
