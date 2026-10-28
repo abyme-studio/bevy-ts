@@ -185,6 +185,11 @@ jobs:
         id: ndk
         with: { ndk-version: r28c }
       - run: cargo install cargo-ndk --locked
+      # bindgen parses V8's libc++, which needs libclang 19 (the runner ships 18), as rusty_v8's CI does.
+      - name: libclang 19
+        run: |
+          sudo apt-get -qq update && sudo apt-get -qq install -y libclang-19-dev clang-19
+          echo "LIBCLANG_PATH=/usr/lib/llvm-19/lib" >> "$GITHUB_ENV"
       - name: V8 version
         id: v8
         run: echo "v8=$(awk '$0 == "name = \"v8\"" { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)" >> "$GITHUB_OUTPUT"
