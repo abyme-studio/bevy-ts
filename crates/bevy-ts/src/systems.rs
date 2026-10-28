@@ -1442,20 +1442,35 @@ fn hash_bytes(b: &[u8]) -> u64 {
 
 /// A table's relationship target lists as one `u32` array: `len + 1` row offsets into the array
 /// itself, then each row's entities as (index, generation) pairs, the frame's entity encoding.
+/// Sized once, then each row is one copy: on a little-endian target an `Entity`'s memory is its
+/// `to_bits`, index then generation.
 fn pack_lists(lists: &[std::cell::UnsafeCell<Vec<Entity>>], out: &mut Vec<u32>) {
+    // SAFETY: exclusive stage; nothing writes the column while it is packed.
+    let rows = || lists.iter().map(|cell| unsafe { &*cell.get() }.as_slice());
+    let head = lists.len() + 1;
+    let total = head + 2 * rows().map(<[Entity]>::len).sum::<usize>();
     out.clear();
-    out.resize(lists.len() + 1, 0);
-    for (r, cell) in lists.iter().enumerate() {
-        out[r] = out.len() as u32;
-        // SAFETY: exclusive stage; nothing writes the column while it is packed.
-        for e in unsafe { &*cell.get() } {
-            let bits = e.to_bits();
-            out.push(bits as u32);
-            out.push((bits >> 32) as u32);
+    out.resize(total, 0);
+    let (offsets, pairs) = out.split_at_mut(head);
+    let mut at = 0;
+    for (r, row) in rows().enumerate() {
+        offsets[r] = (head + at) as u32;
+        let to = &mut pairs[at..at + 2 * row.len()];
+        #[cfg(target_endian = "little")]
+        // SAFETY: `Entity` is `repr(C, align(8))`, two `u32`s, index first on little-endian, and
+        // each half is its `to_bits` half; `to` holds exactly `2 * row.len()` `u32`s.
+        unsafe {
+            std::ptr::copy_nonoverlapping(row.as_ptr().cast::<u32>(), to.as_mut_ptr(), to.len());
         }
+        #[cfg(not(target_endian = "little"))]
+        for (pair, e) in to.chunks_exact_mut(2).zip(row) {
+            let bits = e.to_bits();
+            pair[0] = bits as u32;
+            pair[1] = (bits >> 32) as u32;
+        }
+        at += to.len();
     }
-    let end = out.len() as u32;
-    out[lists.len()] = end;
+    offsets[lists.len()] = total as u32;
 }
 
 /// Per-runtime scratch kept between runs so little allocates per frame once warm.
@@ -2394,6 +2409,18 @@ impl TsSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn packed_lists_are_offsets_then_each_entitys_bits() {
+        // Generations other than the first, so a swapped or dropped half shows.
+        let [b, c, d] = [(1, 3), (0x1234, 7), (9, 0xABCD)].map(|(index, generation): (u64, u64)| Entity::from_bits(index | generation << 32));
+        let lists = [vec![b, c], vec![], vec![d]].map(std::cell::UnsafeCell::new);
+        let mut out = vec![7; 3];
+        pack_lists(&lists, &mut out);
+        let pair = |e: Entity| [e.to_bits() as u32, (e.to_bits() >> 32) as u32];
+        let want: Vec<u32> = [4, 8, 8, 10].into_iter().chain(pair(b)).chain(pair(c)).chain(pair(d)).collect();
+        assert_eq!(out, want);
+    }
 
     #[test]
     fn a_writing_param_names_its_type_short_generics_too() {

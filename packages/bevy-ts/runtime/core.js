@@ -3079,7 +3079,8 @@ class TargetList {
     return out;
   }
   *[Symbol.iterator]() {
-    yield* this.toArray();
+    const o = this[VIEW_KEY.u32], r = this[ROW];
+    for (let k = o[r], end = o[r + 1]; k < end; k += 2) yield o[k] + o[k + 1] * 4294967296;
   }
   toJSON() {
     return this.toArray();
