@@ -21,7 +21,8 @@ The repo takes the slot itself, so nothing has to remember to:
   `pipefail`). abyme holds a check slot while a heavy process runs, through gate-slot, so what it
   runs takes none of its own. An entry that wraps itself in gate-slot is left alone: a long-running
   server (`cube`, `rapier`, `thrusters`, `skeleton`) wraps only its `cargo build` step, so it does
-  not hold a slot for as long as it runs.
+  not hold a slot for as long as it runs. Every other run on a slot lives 30 minutes at most
+  (`limit`); an entry that needs longer sets its own and says why (the cold-build benches).
 - **Scripts.** Each script in `scripts/` that runs cargo sources `scripts/slot.sh` first, which
   runs it again under `gate-slot run bevy-ts:<script>`. It runs as it is when `ABYME_GATE_HELD` is
   set (a heavy process, or land's check, called it) or when there is no gate-slot (CI, another machine).
@@ -33,16 +34,30 @@ The repo takes the slot itself, so nothing has to remember to:
 heavy and in bash, or wraps itself in a `bevy-ts:` slot; against a fake gate-slot, each cargo
 script asks for its own slot, and `ABYME_GATE_HELD` or a missing gate-slot skips it.
 
-## The gate
+## Scoped tests
 
-`scripts/affected-gate.sh` is the check land runs on each batch. It runs `scripts/native-gate.sh`'s
-steps for only what changed since `LAND_BASE`, by default the merge base with main.
+The rule (operator, 2026-10-28): a branch runs the tests of what it changed, and then lands.
 
-Who runs what (operator, 2026-10-23): a run whose purpose is landing belongs to land, which checks
-the batch, and does not sit in the check slots' queue. While a branch is in progress, its build role
-runs the tests of the crates it touched, through gate-slot. To land, it runs no gate: `abyme call land
-add`, then it acts on land's event (`landed`, `conflict`, or `red` with the check's log). A team may
-still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
+- Run `scoped`: `abyme call processes start name=scoped`. It runs `scripts/scoped-test.sh`: `cargo
+  test` and clippy on the crates whose files the branch changed since its merge base with
+  origin/main, uncommitted and untracked files included, and `pnpm check` when `packages/` changed.
+  No dependents and no workspace run. Its env, for one run (`env:='{...}'`): `CRATES` names the
+  crates instead, `TESTS` runs each crate's unit tests and only those filters of its `tests/it`
+  (`"relationships:: saves::"`), `LINT=0` skips clippy. `scripts/scoped-test.sh --plan` prints
+  what it would run. Its log is `target/scoped.log`.
+- `bevy-ts-cli`'s whole `tests/it` is long: a change there names `TESTS`.
+- Generated files have their own entries: `gen-bevy-types`, `gen-protocol`. `npm-test` runs the
+  package's vitest suite.
+- No per-team gate entry in `.abyme/processes.ts`: pass `env` to `scoped`. No full-workspace run,
+  load-flake sweep or hour-long gate before landing. `.abyme/land.ts` checks nothing.
+- Never rerun a failed run unchanged. Read its log, change something, then run it again.
+- A red main is fixed forward, by whoever's change it names, never reverted.
+
+## Reproducing a red batch
+
+`scripts/affected-gate.sh` (the `affected-gate` process) runs `scripts/native-gate.sh`'s steps for
+only what changed since `LAND_BASE`, by default the merge base with main. Run it by hand only to
+reproduce a failure on main; it is wider than `scoped`.
 
 - **Crates.** A changed crate brings every workspace crate that depends on it, through any kind of
   dependency (`cargo metadata`). Clippy and `cargo test -p` run on that set. A crate's integration
@@ -60,28 +75,27 @@ still run `scripts/affected-gate.sh` by hand to reproduce a red batch.
   `examples/` also brings the crates whose tests run them.
 - **Scripts.** A script runs its own step and `slot.test.ts`, not everything: `gen-protocol.sh` the
   protocol check, `gen-bevy-types.sh` bevy-ts/bevy, `affected-gate.sh` and `native-gate.sh` the
-  gate's test. Benches (`target-bench.sh` among them), other teams' gates, the release's scripts
+  gate's test. Benches (`target-bench.sh` among them), `scoped-test.sh`, the release's scripts
   (`npm-*`, `pack-npm.sh`) and tools run by hand (`prune-tests.sh`, `linux-fonts.sh`) run no gate
   step, so `slot.test.ts` alone. A script no rule names runs everything.
-- **Nothing** for `docs/`, `README.md`, `.claude/`, `.github/`, `.gitignore`, `bench/` and the rest of
-  `.abyme/`.
+- **Nothing** for `docs/`, `README.md`, `.claude/`, `.github/`, `.gitignore`, `bench/`, the rest of
+  `.abyme/` and `scripts/gate-stats.mjs`.
 - **Everything** for `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, `.cargo/`, `protocol/`, and
   any path no rule claims. `--full` forces it: `scripts/native-gate.sh` is that.
 
 `scripts/affected-gate.sh --plan` prints the crates and steps and runs nothing; it takes no slot.
 It exits 0 when every step it ran passed, and 75 when it could not start: no cargo or jq, or a
-`LAND_BASE` that is not a commit. Under land that is at once: land's check runs with
-`ABYME_GATE_HELD` set, so it waits for no slot. Started by hand, the `affected-gate` process is heavy
-and gets its slot first, so a bad `LAND_BASE` exits 75 only once the slot is free.
+`LAND_BASE` that is not a commit. Started as a process it is heavy and gets its slot first, so a
+bad `LAND_BASE` exits 75 only once the slot is free.
 Each step's whole output is `target/affected-gate/<step>.log`. A step that fails is also kept as
-`target/affected-gate/failed-<UTC time>-<step>.log`, named in the gate's last line, so a flake can
-be traced after land's rerun of a red check passes; the newest 10 are kept.
-`deno test -A --no-check scripts/affected-gate.test.ts` checks the rules on a fixture workspace.
+`target/affected-gate/failed-<UTC time>-<step>.log`, named in the gate's last line; the newest 10
+are kept. `deno test -A --no-check scripts/affected-gate.test.ts` checks the rules on a fixture
+workspace. The `affected-gate` process sets `pipefail`, so its `tee` never turns a red gate green.
 
-`.abyme/land.ts` names it as the land plugin's batch check (`check: "affected-gate"`, the process of
-`.abyme/processes.ts`): land runs it on each batch stacked on main, with `LAND_BASE` set to main
-before the batch. Exit 0 lands the batch, 75 sends it back unsplit, and any other exit is red.
-Its `full: { check: "native-gate" }` runs the whole gate on main's tip when `.abyme/triggers.ts`
-calls `land verify` at 04:30 each day; a red tip's first red landing is found and reverted. The
-`native-gate` process, like every gate in `.abyme/processes.ts`, sets `pipefail`, so its `tee` never
-turns a red gate green.
+## Slot use
+
+`node scripts/gate-stats.mjs [hours]` reads gate-slot's history (`$ABYME_GATE/history.jsonl`,
+`/tmp/abyme-heavy` by default) and prints, per repository over the last `hours` (72): its runs, how
+many failed, the slot hours they held and their share of all slot hours. `--repo bevy-ts` splits one
+repository by run name. On 2026-10-28 bevy-ts held 64% of 316 slot hours in 72 h, and 38% of its
+runs failed.

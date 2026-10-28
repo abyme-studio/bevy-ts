@@ -70,7 +70,7 @@ Deno.test("a script under a held slot, or with no gate-slot, takes none", async 
 
 Deno.test("a gate that pipes its output exits with the gate's status, not tee's", async () => {
   // land reads a check's exit code: a pipe without pipefail turns a red gate green.
-  for (const name of ["native-gate", "affected-gate", "levels-gate", "systems-gate", "test", "clippy"]) {
+  for (const name of ["affected-gate", "scoped"]) {
     const { cmd } = (processes as Record<string, { cmd: string }>)[name];
     // Heavy, in bash, as gated() writes it: the operator's fish has no pipefail.
     const p = (processes as Record<string, { cmd: string; heavy?: boolean }>)[name];

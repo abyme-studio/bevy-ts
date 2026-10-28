@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# land's check on each batch (.abyme/land.ts): native-gate.sh's steps for only what
+# The check that reproduces a red batch, by hand: native-gate.sh's steps for only what
 # changed since LAND_BASE (default: the merge base with main), as docs/check-slots.md lists.
 # Clippy and the tests run for the changed crates and every workspace crate that depends on them.
 # --full runs every step on the whole workspace (native-gate.sh). --plan prints what would run.
@@ -38,13 +38,13 @@ claim() {
     scripts/slot.sh | scripts/slot.test.ts | .abyme/processes.ts) want slot; return ;;
     scripts/gen-protocol.sh) want protocol slot; return ;;
     scripts/gen-bevy-types.sh) want bevy slot; return ;;
-    # Benches, other teams' gates, the release's scripts and tools run by hand (pruning target/, the
+    # Benches, the scoped tests, the release's scripts and tools run by hand (pruning target/, the
     # Linux font run in docker): no gate step runs them.
-    scripts/animation-bench.sh | scripts/preview-bench.sh | scripts/sccache-bench.sh | scripts/target-bench.sh | scripts/levels-gate.sh \
-      | scripts/systems-gate.sh | scripts/viewport-gate.sh | scripts/npm-await.sh | scripts/npm-lib.sh \
+    scripts/animation-bench.sh | scripts/preview-bench.sh | scripts/sccache-bench.sh | scripts/target-bench.sh | scripts/scoped-test.sh \
+      | scripts/npm-await.sh | scripts/npm-lib.sh \
       | scripts/npm-publish.sh | scripts/pack-npm.sh | scripts/prune-tests.sh | scripts/linux-fonts.sh) want slot; return ;;
     scripts/*.sh) want slot; full=$f; return ;;
-    docs/* | README.md | .claude/* | .github/* | .gitignore | bench/* | .abyme/*) return ;;
+    docs/* | README.md | .claude/* | .github/* | .gitignore | bench/* | .abyme/* | scripts/gate-stats.mjs) return ;;
     openspec/*) want openspec; return ;;
     examples/*) seeds+=(bevy-ts-cli bevy-ts-animation bevy-ts-levels bevy-ts-viewport); want npm; return ;;
   esac

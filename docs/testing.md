@@ -51,3 +51,9 @@ How a new test is written here. Where tests live and what they cost to build is
 A release bench runs as `cargo static test --release …`, so it links Bevy statically and times what
 ships; a plain `cargo test --release` of `tests/it` does not compile (docs/build-cache.md, Bevy as a
 dylib for tests).
+
+## Running them
+
+A branch runs the tests of what it changed: the `scoped` process, `TESTS` naming the `tests/it`
+filters it touched (docs/check-slots.md, "Scoped tests"). Never a workspace run before landing,
+never a failed run again unchanged. A red main is fixed forward.
