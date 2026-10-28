@@ -173,7 +173,22 @@ Quiet, 2026-10-28 (load 4 to 11 through the run, 22 after it), 8 runs, on the re
 
 - Quiet, the packing's medians are 1.5, 10.3 and 42.8 ns/row against a gate of 5, 8 and 20: inside
   at 1 entity, over at 4 and 16, with a tight spread. It costs about 2.6 ns per entity, not 1.
-  At 16 entities a row's packing is about one host call (32 to 41 ns).
+  At 16 entities a row's packing is about one host call (32 to 41 ns). The cause was two
+  capacity-checked pushes per entity.
+
+After `pack_lists` sizes its array once and copies each row's entities as they lie in memory
+(their `to_bits` on a little-endian target), quiet (load 10 at the start, 23 at the end), 8 runs:
+
+| entities per row | target over the marker (packing), ns/row | inline column over the marker | packed JS read | inline JS read |
+|---|---|---|---|---|
+| 1 | 4.8, 1.4, 4.7, 4.9, 4.9, 5.1, 4.9, 5.0 | 7.8, 2.9, 7.7, 7.7, 7.8, 7.9, 7.8, 7.8 | 8.6, 6.4, 8.5, 8.8, 9.0, 8.8, 8.9, 9.0 | -4.2, -2.8, -4.3, -4.0, -4.1, -4.2, -4.3, -4.3 |
+| 4 | 7.3, 4.1, 7.3, 7.3, 7.5, 7.6, 7.5, 7.5 | 29.5, 17.5, 29.5, 29.6, 29.9, 29.8, 29.8, 29.8 | 50.8, 30.8, 50.6, 50.5, 50.9, 50.4, 51.7, 50.7 | 18.6, 12.1, 19.5, 19.2, 18.1, 17.6, 18.5, 18.4 |
+| 16 | 12.7, 13.0, 12.6, 12.7, 12.7, 12.4, 12.6, 12.9 | 119.8, 120.0, 119.2, 101.8, 119.7, 119.4, 119.2, 79.7 | 236.3, 227.6, 228.6, 217.1, 232.0, 234.5, 232.0, 198.2 | 120.8, 103.7, 112.2, 114.8, 112.5, 112.6, 111.9, 104.0 |
+
+- The packing's medians are 4.9, 7.4 and 12.7 ns/row against a gate of 5, 8 and 20: inside at
+  every size. About 4.5 ns per row plus 0.5 ns per entity; at 16 entities, a third of a host call.
+  The per-row cost rose from 1.5 to 4.9 at 1 entity (the extra pass that sizes the array) and is
+  still inside the gate.
 - Naming a target costs 2.5 to 3 times less than naming the same entities as an inline column.
 - The JS read through `TargetList.at` costs about 2 to 3 ns per entity more than reading inline
   fields.
