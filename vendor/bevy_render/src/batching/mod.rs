@@ -207,10 +207,18 @@ pub fn sort_binned_render_phase<BPI>(
         phase.batchable_meshes.sort_unstable_keys();
         phase.unbatchable_meshes.sort_unstable_keys();
         phase.non_mesh_items.sort_unstable_keys();
-        if stable.is_some() {
+        // Bins in the order of their first entity's key, then their own key:
+        // bin keys are allocation ids, which follow load timing.
+        if let Some(stable) = &stable {
             for bin in phase.batchable_meshes.values_mut() {
-                bin.sort();
+                bin.sort(stable);
             }
+            phase
+                .batchable_meshes
+                .sort_by_cached_key(|_, bin| bin.entities().keys().next().map(|e| stable.order(*e)));
+            phase.unbatchable_meshes.sort_by_cached_key(|_, bin| {
+                bin.entities.keys().map(|e| stable.order(*e)).min()
+            });
         }
     }
 }

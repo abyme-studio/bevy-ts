@@ -110,8 +110,12 @@ not asked for yet) stepped time too, so the steps stop at 60. And every camera d
 `NoIndirectDrawing`: Bevy's GPU culling places each instance with an atomic add, so which of two
 instances at the same depth is drawn last changes from frame to frame (a leaf of one tree over
 another's, in a few pixels). Without it, a batch draws its instances in the order they were queued,
-which changes with load, so the render world also gets `StableBinOrder` (vendor/bevy_render/PATCH.md):
-each batch draws in entity order, the same on every run. So the shot is the same picture, byte for byte, at any machine load.
+and batches in the order of ids handed out as assets load (pipeline, material, mesh), which all
+change with load. So every entity with an `Aabb` gets a key, a hash of where its bounds are and the
+asset path of its mesh or sprite image, and the render world holds the keys as `StableBinOrder`
+(vendor/bevy_render/PATCH.md): batches, their instances and sprites at one depth draw in key
+order, the same on every run. Two entities with the same bounds and no asset path fall back to
+entity order. So the shot is the same picture, byte for byte, at any machine load.
 `BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the same clock and drawing; a
 `bevy-ts/screenshot` without it can differ in such pixels.
 

@@ -72,7 +72,8 @@ impl Gates {
 
 impl AssetReader for SlowReader {
     async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
-        if let Some(n) = path.to_str().and_then(|p| p.strip_prefix('m')?.strip_suffix(".wesl")?.parse::<usize>().ok()) {
+        let gated = |prefix: char, ext: &str| path.to_str().and_then(|p| p.strip_prefix(prefix)?.strip_suffix(ext)?.parse::<usize>().ok());
+        if let Some(n) = gated('m', ".wesl").or_else(|| gated('g', ".gltf")) {
             self.shaders.wait(n).await;
         }
         while !self.open.load(Ordering::Relaxed) {
@@ -288,11 +289,13 @@ fn stacked_instances_at_one_depth_are_the_same_every_shot() {
     }
 }
 
-/// A bin's instances queued in a scrambled order, as a frame that queues some a frame late does:
-/// with Bevy's [`StableBinOrder`], which [`ReadyPlugin`] keeps under the fixed step, the bin sorts
-/// them by entity, the same order every run; without it they stay in queue order.
+/// Two bins, their instances queued in a scrambled order and keyed in another, as a frame whose
+/// assets loaded in another order does: with Bevy's [`StableBinOrder`], which [`ReadyPlugin`] fills
+/// under the fixed step, bins draw in the order of their first key and each bin's instances in key
+/// order; without it, bins in bin key order and instances in queue order.
 #[test]
-fn a_bin_draws_in_entity_order_with_stable_bin_order() {
+fn bins_draw_in_key_order_with_stable_bin_order() {
+    use bevy::asset::uuid::Uuid;
     use bevy::core_pipeline::core_3d::{Opaque3d, Opaque3dBatchSetKey, Opaque3dBinKey};
     use bevy::ecs::system::RunSystemOnce;
     use bevy::render::batching::gpu_preprocessing::GpuPreprocessingMode;
@@ -303,32 +306,33 @@ fn a_bin_draws_in_entity_order_with_stable_bin_order() {
     use bevy::render::sync_world::MainEntity;
     use bevy::render::view::RetainedViewEntity;
 
+    let bin = |n: u128| Opaque3dBinKey { asset_id: AssetId::<Mesh>::Uuid { uuid: Uuid::from_u128(n) }.untyped() };
+    // (bin, queue order, key): bin 1 sorts first by its key, bin 2 by its smallest instance key.
+    let queued = [(1, 30), (2, 50), (1, 10), (2, 5), (1, 20), (2, 40)];
     let run = |stable: bool| {
         let mut world = World::new();
         let view = RetainedViewEntity::new(MainEntity::from(world.spawn_empty().id()), None, 0);
-        let spawned: Vec<Entity> = (0..8).map(|_| world.spawn_empty().id()).collect();
-        let queued: Vec<Entity> = [3, 0, 6, 1, 7, 2, 5, 4].map(|i| spawned[i]).into();
+        let entities: Vec<Entity> = queued.iter().map(|_| world.spawn_empty().id()).collect();
         let mut phases = ViewBinnedRenderPhases::<Opaque3d>::default();
         phases.prepare_for_new_frame(view, GpuPreprocessingMode::PreprocessingOnly);
         let batch_set = Opaque3dBatchSetKey { pipeline: CachedRenderPipelineId::new(0), draw_function: DrawFunctionId(0), material_bind_group_index: None, slabs: MeshSlabs::default(), lightmap_slab: None };
-        let bin = Opaque3dBinKey { asset_id: AssetId::<Mesh>::default().untyped() };
         let phase = phases.get_mut(&view).unwrap();
-        for (i, &e) in queued.iter().enumerate() {
-            phase.add(batch_set.clone(), bin.clone(), (e, MainEntity::from(e)), InputUniformIndex(i as u32), BinnedRenderPhaseType::BatchableMesh);
+        // Queued last entity first, so neither queue nor entity order is key order.
+        for (i, (&(b, _), &e)) in queued.iter().zip(&entities).enumerate().rev() {
+            phase.add(batch_set.clone(), bin(b), (e, MainEntity::from(e)), InputUniformIndex(i as u32), BinnedRenderPhaseType::BatchableMesh);
         }
         world.insert_resource(phases);
         if stable {
-            world.insert_resource(StableBinOrder);
+            let keys = queued.iter().zip(&entities).map(|(&(_, key), &e)| (MainEntity::from(e), key)).collect();
+            world.insert_resource(StableBinOrder(keys));
         }
         world.run_system_once(sort_binned_render_phase::<Opaque3d>).unwrap();
-        let order: Vec<Entity> = world.resource::<ViewBinnedRenderPhases<Opaque3d>>()[&view].batchable_meshes[0].entities().keys().map(|m| m.id()).collect();
-        (queued, order)
+        let phases = world.resource::<ViewBinnedRenderPhases<Opaque3d>>();
+        let key_of = |m: &MainEntity| queued[entities.iter().position(|e| *e == m.id()).unwrap()].1;
+        phases[&view].batchable_meshes.iter().map(|((_, b), bin)| (b.asset_id, bin.entities().keys().map(key_of).collect::<Vec<_>>())).collect::<Vec<_>>()
     };
-    let (mut queued, order) = run(true);
-    queued.sort();
-    assert_eq!(order, queued, "with StableBinOrder, entity order");
-    let (queued, order) = run(false);
-    assert_eq!(order, queued, "without it, queue order");
+    assert_eq!(run(true), vec![(bin(2).asset_id, vec![5, 40, 50]), (bin(1).asset_id, vec![10, 20, 30])], "with StableBinOrder, key order");
+    assert_eq!(run(false), vec![(bin(1).asset_id, vec![20, 10, 30]), (bin(2).asset_id, vec![40, 5, 50])], "without it, Bevy's order");
 }
 
 /// A PNG of 4 x 4 RGBA pixels, one colour.
@@ -604,4 +608,201 @@ fn a_pipeline_that_never_compiles_fails_the_env_shot() {
     assert!(!method.exists(), "the method saved a file");
     let left: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).filter(|n| n != "assets").collect();
     assert!(left.is_empty(), "files left: {left:?}");
+}
+
+/// One quad of a glTF primitive in the plane z = 0: its centre, half size and vertex colour, and
+/// whether its material is alpha mask.
+struct Quad {
+    at: [f32; 2],
+    half: f32,
+    rgba: [f32; 4],
+    mask: bool,
+}
+
+/// A glTF of one mesh, a primitive per quad, unlit, as `<name>.gltf` and `<name>.bin`.
+fn quads_gltf(dir: &Path, name: &str, quads: &[Quad]) {
+    std::fs::create_dir_all(dir).unwrap();
+    let mut bin: Vec<u8> = Vec::new();
+    let (mut views, mut accessors, mut primitives) = (Vec::new(), Vec::new(), Vec::new());
+    let mut view = |bin: &mut Vec<u8>, bytes: Vec<u8>| {
+        views.push(json!({"buffer": 0, "byteOffset": bin.len(), "byteLength": bytes.len()}));
+        bin.extend(bytes);
+        views.len() - 1
+    };
+    for q in quads {
+        let ([x, y], h) = (q.at, q.half);
+        let corners = [[x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h]];
+        let floats = |vs: Vec<f32>| vs.into_iter().flat_map(f32::to_le_bytes).collect::<Vec<u8>>();
+        let p = view(&mut bin, floats(corners.iter().flat_map(|[a, b]| [*a, *b, 0.0]).collect()));
+        let n = view(&mut bin, floats([0.0, 0.0, 1.0].repeat(4)));
+        let c = view(&mut bin, floats(q.rgba.repeat(4)));
+        let i = view(&mut bin, [0u16, 1, 2, 0, 2, 3].into_iter().flat_map(u16::to_le_bytes).collect());
+        let first = accessors.len();
+        accessors.push(json!({"bufferView": p, "componentType": 5126, "count": 4, "type": "VEC3", "min": [x - h, y - h, 0.0], "max": [x + h, y + h, 0.0]}));
+        accessors.push(json!({"bufferView": n, "componentType": 5126, "count": 4, "type": "VEC3"}));
+        accessors.push(json!({"bufferView": c, "componentType": 5126, "count": 4, "type": "VEC4"}));
+        accessors.push(json!({"bufferView": i, "componentType": 5123, "count": 6, "type": "SCALAR"}));
+        primitives.push(json!({"attributes": {"POSITION": first, "NORMAL": first + 1, "COLOR_0": first + 2}, "indices": first + 3, "material": usize::from(q.mask)}));
+    }
+    std::fs::write(dir.join(format!("{name}.bin")), &bin).unwrap();
+    let unlit = json!({"KHR_materials_unlit": {}});
+    let gltf = json!({
+        "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+        "extensionsUsed": ["KHR_materials_unlit"],
+        "materials": [{"extensions": unlit}, {"alphaMode": "MASK", "alphaCutoff": 0.5, "extensions": unlit}],
+        "meshes": [{"primitives": primitives}],
+        "buffers": [{"uri": format!("{name}.bin"), "byteLength": bin.len()}],
+        "bufferViews": views, "accessors": accessors,
+    });
+    std::fs::write(dir.join(format!("{name}.gltf")), gltf.to_string()).unwrap();
+}
+
+/// Two quads in one plane, one red and one blue, at the same place: every pixel is at one depth in
+/// both, so the one drawn last decides its colour. Entities spawn red first; `blue_first` adds the
+/// blue mesh asset first, so the mesh `AssetId`s, and the bin order they key, flip.
+fn mesh_tie_shot(name: &str, blue_first: bool) -> Vec<u8> {
+    let dir = shots_dir(name);
+    let path = dir.join("tie.png");
+    let (_game, mut app) = engine(name, &path, 30);
+    app.insert_resource(FixedStep).add_systems(Startup, move |mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {
+        let material = materials.add(StandardMaterial { base_color: Color::WHITE, unlit: true, ..default() });
+        let quad = |c: [f32; 4]| Mesh::from(Rectangle::new(2.5, 2.5)).with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, vec![c; 4]);
+        let [red, blue] = [[1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]].map(quad);
+        let (red, blue) = if blue_first {
+            let blue = meshes.add(blue);
+            (meshes.add(red), blue)
+        } else {
+            (meshes.add(red), meshes.add(blue))
+        };
+        commands.spawn((Mesh3d(red), MeshMaterial3d(material.clone())));
+        commands.spawn((Mesh3d(blue), MeshMaterial3d(material)));
+    });
+    start(&mut app);
+    apply_script(&mut app);
+    until_shot(&mut app, &path);
+    png(&path).data.expect("the shot's pixels")
+}
+
+#[derive(Resource)]
+struct Scenes(Vec<Handle<bevy::world_serialization::WorldAsset>>);
+
+/// Shoots the glTFs `g0.gltf`.. that `assets` writes into the folder it is given, read from a slow disk and spawned in that order at
+/// `places`. With `first`, its read is released first and the others once its scene has loaded;
+/// with `None` all go at once, the order left to the IO threads. `setup` adds the rest of the scene.
+fn gltf_shot(name: &str, assets: impl FnOnce(&Path), places: &[Vec3], first: Option<usize>, work: Duration, setup: impl FnOnce(&mut App)) -> Vec<u8> {
+    let dir = shots_dir(name);
+    let path = dir.join("shot.png");
+    let folder = dir.join("assets");
+    assets(&folder);
+    let count = places.len();
+    let gates = Gates::held(count);
+    match first {
+        Some(n) => gates.release(n),
+        None => (0..count).for_each(|n| gates.release(n)),
+    }
+    let (_game, mut app) = engine_with(name, &path, 30, Some(Slow::shaders(folder, gates.clone())));
+    let places = places.to_vec();
+    app.insert_resource(FixedStep)
+        .add_systems(Startup, move |mut commands: Commands, server: Res<AssetServer>| {
+            let scenes: Vec<_> = (0..places.len()).map(|n| server.load(format!("slow://g{n}.gltf#Scene0"))).collect();
+            for (scene, at) in scenes.iter().zip(&places) {
+                commands.spawn((WorldAssetRoot(scene.clone()), Transform::from_translation(*at)));
+            }
+            commands.insert_resource(Scenes(scenes));
+        })
+        .add_systems(Update, move || std::thread::sleep(work));
+    setup(&mut app);
+    start(&mut app);
+    apply_script(&mut app);
+    let mut released = first.is_none();
+    until(&mut app, &format!("{} written", path.display()), |app| {
+        if !released {
+            let server = app.world().resource::<AssetServer>();
+            let first = first.unwrap();
+            if app.world().get_resource::<Scenes>().is_some_and(|s| server.is_loaded_with_dependencies(&s.0[first])) {
+                (0..count).for_each(|n| gates.release(n));
+                released = true;
+            }
+        }
+        std::fs::metadata(&path).is_ok_and(|m| m.len() > 0) && !app.world().contains_resource::<ShotWhenReady>()
+    });
+    for _ in 0..5 {
+        app.update();
+    }
+    png(&path).data.expect("the shot's pixels")
+}
+
+/// The red and blue quads of [`mesh_tie_shot`] as two glTFs, `g0` red and `g1` blue.
+fn tie_gltfs(assets: &Path) {
+    quads_gltf(assets, "g0", &[Quad { at: [0.0, 0.0], half: 1.25, rgba: [1.0, 0.0, 0.0, 1.0], mask: false }]);
+    quads_gltf(assets, "g1", &[Quad { at: [0.0, 0.0], half: 1.25, rgba: [0.0, 0.0, 1.0, 1.0], mask: false }]);
+}
+
+fn differ(a: &[u8], b: &[u8]) -> usize {
+    a.iter().zip(b).filter(|(x, y)| x != y).count()
+}
+
+#[test]
+fn a_tie_at_one_depth_follows_no_load_order() {
+    let red = mesh_tie_shot("tie-red-mesh-first", false);
+    let blue = mesh_tie_shot("tie-blue-mesh-first", true);
+    assert!(red == blue, "the mesh asset order decided the tie: {} of {} bytes differ", differ(&red, &blue), red.len());
+    let at = [Vec3::ZERO, Vec3::ZERO];
+    let red = gltf_shot("tie-red-gltf-first", tie_gltfs, &at, Some(0), Duration::ZERO, |_| {});
+    let blue = gltf_shot("tie-blue-gltf-first", tie_gltfs, &at, Some(1), Duration::ZERO, |_| {});
+    assert!(red == blue, "the glTF load order decided the tie: {} of {} bytes differ", differ(&red, &blue), red.len());
+}
+
+#[test]
+fn a_gltf_race_gives_one_shot() {
+    let at = [Vec3::ZERO, Vec3::ZERO];
+    let shots: Vec<Vec<u8>> = (0..10).map(|i| gltf_shot(&format!("tie-race-{i}"), tie_gltfs, &at, None, Duration::ZERO, |_| {})).collect();
+    for (i, shot) in shots.iter().enumerate().skip(1) {
+        assert!(shots[0] == *shot, "race {i} differs from race 0 in {} of {} bytes", differ(&shots[0], shot), shot.len());
+    }
+}
+
+/// Agent town's civ forest in small: three tree glTFs, each an opaque trunk and an alpha-mask
+/// foliage primitive in its own colour, every foliage redrawn in one shared leaf material, the
+/// foliage overlapping in one plane; and two half-transparent sprites at one z, drawn over it by a
+/// 2D camera.
+fn town_assets(assets: &Path) {
+    for (n, rgba) in [[0.1, 0.6, 0.1, 1.0], [0.2, 0.8, 0.3, 1.0], [0.5, 0.7, 0.1, 1.0]].into_iter().enumerate() {
+        let trunk = Quad { at: [0.0, -0.9], half: 0.15, rgba: [0.4, 0.25, 0.1, 1.0], mask: false };
+        quads_gltf(assets, &format!("g{n}"), &[trunk, Quad { at: [0.0, 0.2], half: 0.8, rgba, mask: true }]);
+    }
+    for (n, rgba) in [[200, 40, 40, 255], [40, 40, 200, 255]].into_iter().enumerate() {
+        std::fs::write(assets.join(format!("s{n}.png")), png_of(rgba)).unwrap();
+    }
+}
+
+fn town_shot(name: &str, work: Duration) -> Vec<u8> {
+    let places = [Vec3::new(-0.6, 0.0, 0.0), Vec3::ZERO, Vec3::new(0.6, 0.0, 0.0)];
+    gltf_shot(name, town_assets, &places, None, work, |app| {
+        app.add_systems(Startup, |mut commands: Commands, server: Res<AssetServer>| {
+            commands.spawn((Camera2d, Camera { order: 1, clear_color: ClearColorConfig::None, ..default() }));
+            for (n, x) in [-60.0, 60.0].into_iter().enumerate() {
+                let sprite = Sprite { image: server.load(format!("slow://s{n}.png")), color: Color::srgba(1.0, 1.0, 1.0, 0.5), custom_size: Some(Vec2::splat(200.0)), ..default() };
+                commands.spawn((sprite, Transform::from_xyz(x, -150.0, 0.0)));
+            }
+        })
+        .add_systems(Update, |mut commands: Commands, added: Query<(Entity, &MeshMaterial3d<StandardMaterial>), Added<MeshMaterial3d<StandardMaterial>>>, mut materials: ResMut<Assets<StandardMaterial>>, mut leaf: Local<Option<Handle<StandardMaterial>>>| {
+            for (e, material) in &added {
+                if materials.get(&material.0).is_some_and(|m| matches!(m.alpha_mode, AlphaMode::Mask(_))) {
+                    let leaf = leaf.get_or_insert_with(|| materials.add(StandardMaterial { base_color: Color::WHITE, alpha_mode: AlphaMode::Mask(0.5), unlit: true, ..default() }));
+                    commands.entity(e).insert(MeshMaterial3d(leaf.clone()));
+                }
+            }
+        });
+    })
+}
+
+#[test]
+fn a_town_like_scene_is_the_same_every_shot() {
+    let shots: Vec<Vec<u8>> = (0..10).map(|i| town_shot(&format!("town-{i}"), Duration::from_millis(if i % 2 == 1 { 30 } else { 0 }))).collect();
+    let colours = shots[0].chunks(4).map(|p| [p[0], p[1], p[2]]).collect::<HashSet<_>>().len();
+    assert!(colours > 6, "the trees and sprites are in the shot: {colours} colours");
+    for (i, shot) in shots.iter().enumerate().skip(1) {
+        assert!(shots[0] == *shot, "shot {i} differs from shot 0 in {} of {} bytes", differ(&shots[0], shot), shot.len());
+    }
 }

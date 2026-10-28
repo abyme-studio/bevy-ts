@@ -34,19 +34,39 @@ The method is in `openspec/changes/archive/*-macos-async-pipelines/design.md`, M
 
 ## Stable bin order
 
-`src/render_phase/mod.rs` adds the resource `StableBinOrder` and `RenderBin::sort`;
-`src/batching/mod.rs`'s `sort_binned_render_phase` takes `Option<Res<StableBinOrder>>` and, while
-it is there, sorts each batchable bin's entities by `MainEntity` (only when they are not sorted
-already). Without it nothing changes, so an app that never inserts it pays nothing.
-`bevy-ts-remote`'s `ReadyPlugin` keeps it in the render world under `FixedStep`.
+`src/render_phase/mod.rs` adds the resource `StableBinOrder(MainEntityHashMap<u64>)`, a key per
+main entity, with `StableBinOrder::order`, and `RenderBin::sort`. While the resource is there:
 
-Why: under `NoIndirectDrawing` (which `FixedStep` gives every camera) a batchable bin draws its
-instances in the order they entered the bin, an `IndexMap` in insertion order. An entity whose
-pipeline was ready on its first frame is queued in sorted visible order; one that was not comes
-back a frame later from a `HashSet` of pending queues, in hash order. Which happens is timing, so
-which of two instances at one depth is drawn last changed between runs: the `bevy-ts-cli` test
-`stacked_instances_at_one_depth_are_the_same_every_shot` failed on CI's rust job (352701 of 2073600
-bytes). `a_bin_draws_in_entity_order_with_stable_bin_order` tests the patch.
+- `src/batching/mod.rs`'s `sort_binned_render_phase` sorts each batchable bin's entities by key,
+  then `MainEntity` (only when they are not sorted already), and orders `batchable_meshes` and
+  `unbatchable_meshes` by each bin's smallest key, then the bin's own key (a stable sort after
+  Bevy's). That covers `Opaque3d`, `AlphaMask3d` and their prepasses.
+- `src/render_phase/mod.rs`'s `sort_phase_system` orders a sorted phase's keyed items by key, then
+  `MainEntity`, before `SortedPhaseItem::sort`; items with no key keep their order, after them.
+  `Transparent2d` and `Transparent3d` sort with Bevy's stable `sort_by_key`, so items at one depth
+  keep that order.
+
+An entity with no key sorts after every keyed one. Without the resource nothing changes, so an
+app that never inserts it pays nothing. `bevy-ts-remote`'s `ReadyPlugin` fills it under `FixedStep`
+from its `StableKey`s: a hash of the world-space AABB and the mesh's or sprite image's asset path.
+
+Why: under `NoIndirectDrawing` (which `FixedStep` gives every camera), with `depth_compare:
+GreaterEqual`, the last of two draws at one depth wins the pixel. Bevy orders bins by
+`(BatchSetKey, BinKey)`, all allocation ids (pipeline id, material slot, mesh `AssetId`), and a
+glTF reserves its sub-assets' ids from its load task, so the bin order followed which glTF finished
+loading first: agent town's civ shots flipped a few leaf pixels between runs (research doc
+`leaf-flips.md`, team leaf-flips). Inside a bin, instances drew in the order they were queued,
+which follows when each one's pipeline was ready: `stacked_instances_at_one_depth_are_the_same_every_shot`
+failed on CI's rust job (352701 of 2073600 bytes).
+
+A known limit: inside an unbatchable bin, entities draw in `MainEntityHashMap` order, the hash of
+their entity ids, and `buffer_indices` is tied to that order, so the patch leaves it. An unbatchable
+mesh (no storage buffers, or a mesh that cannot batch) at one depth as another in its bin can still
+flip.
+
+`bins_draw_in_key_order_with_stable_bin_order` tests the patch; `a_tie_at_one_depth_follows_no_load_order`,
+`a_gltf_race_gives_one_shot` and `a_town_like_scene_is_the_same_every_shot` (all in `bevy-ts-cli`'s
+`screenshot_ready`) test the shots.
 
 ## A Bevy bump
 

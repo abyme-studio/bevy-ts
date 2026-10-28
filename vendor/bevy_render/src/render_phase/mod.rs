@@ -170,11 +170,24 @@ where
 }
 
 /// While this resource is in the render world, `sort_binned_render_phase` sorts
-/// each batchable bin's entities by [`MainEntity`], so instances at one depth
-/// draw in the same order on every run, not in the order they were queued,
-/// which changes with timing.
-#[derive(Resource, Default, Clone, Copy, Debug)]
-pub struct StableBinOrder;
+/// each batchable bin's entities, and the bins themselves, by these keys, and
+/// `sort_phase_system` orders a sorted phase's items by them before its own
+/// sort. So items at one depth draw in the same order on every run, not in the
+/// order of allocation ids or of queueing, which change with timing. A key is
+/// one per main entity, the same on every run; an entity without one sorts
+/// after every keyed one.
+#[derive(Resource, Default, Clone, Debug)]
+pub struct StableBinOrder(pub MainEntityHashMap<u64>);
+
+impl StableBinOrder {
+    /// The order of `entity`: by key, then [`MainEntity`]; without a key, last.
+    pub fn order(&self, entity: MainEntity) -> (bool, u64, MainEntity) {
+        match self.0.get(&entity) {
+            Some(key) => (false, *key, entity),
+            None => (true, 0, entity),
+        }
+    }
+}
 
 /// All entities that share a mesh and a material and can be batched as part of
 /// a [`BinnedRenderPhase`].
@@ -2288,16 +2301,27 @@ impl<P: CachedRenderPipelinePhaseItem> RenderCommand<P> for SetItemPipeline {
 
 /// This system sorts the [`PhaseItem`]s of all [`SortedRenderPhase`]s of this
 /// type.
+///
+/// While [`StableBinOrder`] is in the render world, the items are first ordered
+/// by its keys, so a phase that sorts with a stable sort keeps that order among
+/// items with one sort key. Items without a key keep their order, after the
+/// keyed ones.
 pub fn sort_phase_system<I>(
     views: Query<&ExtractedView>,
     mut render_phases: ResMut<ViewSortedRenderPhases<I>>,
+    stable: Option<Res<StableBinOrder>>,
 ) where
     I: SortedPhaseItem,
 {
+    let stable = stable.filter(|stable| !stable.0.is_empty());
     for view in &views {
         let Some(phase) = render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
+        if let Some(stable) = &stable {
+            let order = |main: MainEntity| stable.0.get(&main).map(|key| (*key, main));
+            phase.items.sort_by_cached_key(|(_, main), _| (order(*main).is_none(), order(*main)));
+        }
         phase.recalculate_sort_keys(view);
         phase.sort();
     }
@@ -2339,10 +2363,11 @@ impl RenderBin {
         self.entities.is_empty()
     }
 
-    /// Sorts the bin's entities by [`MainEntity`], if they are not already.
-    pub(crate) fn sort(&mut self) {
-        if !self.entities.keys().is_sorted() {
-            self.entities.sort_unstable_keys();
+    /// Sorts the bin's entities by [`StableBinOrder::order`], if they are not
+    /// already.
+    pub(crate) fn sort(&mut self, stable: &StableBinOrder) {
+        if !self.entities.keys().is_sorted_by_key(|e| stable.order(*e)) {
+            self.entities.sort_by_cached_key(|e, _| stable.order(*e));
         }
     }
 

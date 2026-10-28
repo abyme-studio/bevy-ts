@@ -22,7 +22,14 @@ use bevy::remote::{BrpError, BrpResult};
 use bevy::render::render_resource::PipelineCache;
 use bevy::render::view::NoIndirectDrawing;
 use bevy::render::view::screenshot::{Captured, Capturing, Screenshot, ScreenshotCaptured, save_to_disk};
+use bevy::camera::primitives::Aabb;
+use bevy::camera::visibility::VisibilitySystems;
+use bevy::platform::hash::FixedHasher;
 use bevy::render::render_phase::StableBinOrder;
+use bevy::render::sync_world::MainEntity;
+use bevy::sprite::Sprite;
+use bevy::transform::TransformSystems;
+use std::hash::BuildHasher;
 use bevy::render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems};
 use bevy::time::{TimeSystems, TimeUpdateStrategy};
 use bevy::world_serialization::{DynamicWorldRoot, WorldAssetRoot, WorldInstance, WorldInstanceSpawner};
@@ -226,8 +233,9 @@ struct HandleTypes(HashMap<TypeId, bool>);
 /// too, and the shot's clock must not count it. Every camera spawned under it gets Bevy's
 /// `NoIndirectDrawing`: GPU culling places each instance with an atomic add, so the order of a
 /// batch's instances, and which of two at the same depth is drawn last, changes from frame to
-/// frame. And the render world gets [`StableBinOrder`], so those instances draw in entity order on
-/// every run ([`stable_bin_order`]). Under `BEVY_TS_SCREENSHOT` or `BEVY_TS_FIXED_STEP=1`.
+/// frame. And every entity with an `Aabb` gets a [`StableKey`], which the render world holds as
+/// [`StableBinOrder`], so items at one depth draw in the same order on every run
+/// ([`stable_bin_order`]). Under `BEVY_TS_SCREENSHOT` or `BEVY_TS_FIXED_STEP=1`.
 #[derive(Resource)]
 pub struct FixedStep;
 
@@ -266,6 +274,13 @@ impl Plugin for ReadyPlugin {
                 }
             })
             .add_systems(First, (note_frame, count_ready).chain().before(TimeSystems))
+            .add_systems(
+                PostUpdate,
+                stable_keys
+                    .run_if(resource_exists::<FixedStep>)
+                    .after(TransformSystems::Propagate)
+                    .after(VisibilitySystems::CalculateBounds),
+            )
             // After Update: Bevy marks a shot `Captured` there and despawns it next `First`.
             .add_systems(PostUpdate, shoot_when_ready.run_if(resource_exists::<ShotWhenReady>));
     }
@@ -290,15 +305,63 @@ impl Plugin for ReadyPlugin {
     }
 }
 
-/// Keeps [`StableBinOrder`] in the render world while [`FixedStep`] is in the main world: without
-/// GPU culling, a bin's instances draw in the order they were queued, and an instance whose
-/// pipeline was not ready on its first frame is queued a frame later, so which of two at one depth
-/// is drawn last changes with load.
-fn stable_bin_order(fixed: Extract<Option<Res<FixedStep>>>, stable: Option<Res<StableBinOrder>>, mut commands: Commands) {
-    match (fixed.is_some(), stable.is_some()) {
-        (true, false) => commands.insert_resource(StableBinOrder),
-        (false, true) => commands.remove_resource::<StableBinOrder>(),
-        _ => {}
+/// Under [`FixedStep`], where an entity with an `Aabb` is and what it draws, hashed: the same on
+/// every run, where its entity id and its mesh's `AssetId` follow which load finished first.
+/// [`stable_bin_order`] hands the keys to the render world, which draws items at one depth in
+/// their order.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StableKey(pub u64);
+
+type KeyChanged = Or<(Changed<GlobalTransform>, Changed<Aabb>, Changed<Mesh3d>, Changed<Mesh2d>, Changed<Sprite>, Without<StableKey>)>;
+
+/// Sets [`StableKey`]: `FixedHasher` over the world-space AABB's centre and half extents, as `f32`
+/// bits, then the asset path of the entity's mesh or sprite image when it has one. A script places
+/// its entities on the fixed step, so the bits are the same every run; two primitives of one glTF
+/// node differ by their AABB or their path (`#Mesh0/Primitive1`).
+#[allow(clippy::type_complexity)]
+fn stable_keys(
+    mut entities: Query<(Entity, &GlobalTransform, &Aabb, Option<&Mesh3d>, Option<&Mesh2d>, Option<&Sprite>, Option<&mut StableKey>), KeyChanged>,
+    assets: Option<Res<AssetServer>>,
+    mut commands: Commands,
+) {
+    for (entity, transform, aabb, mesh3d, mesh2d, sprite, key) in &mut entities {
+        let affine = transform.affine();
+        let centre = affine.transform_point3a(aabb.center);
+        let m = affine.matrix3;
+        let half = m.x_axis.abs() * aabb.half_extents.x + m.y_axis.abs() * aabb.half_extents.y + m.z_axis.abs() * aabb.half_extents.z;
+        let asset = mesh3d.map(|m| m.id().untyped()).or(mesh2d.map(|m| m.id().untyped())).or(sprite.map(|s| s.image.id().untyped()));
+        let path = asset.zip(assets.as_ref()).and_then(|(id, assets)| assets.get_path(id));
+        let bits = centre.to_array().map(f32::to_bits);
+        let extents = half.to_array().map(f32::to_bits);
+        let hash = FixedHasher.hash_one((bits, extents, path));
+        match key {
+            Some(mut key) => {
+                key.set_if_neq(StableKey(hash));
+            }
+            None => {
+                commands.entity(entity).insert(StableKey(hash));
+            }
+        }
+    }
+}
+
+/// Keeps [`StableBinOrder`] in the render world while [`FixedStep`] is in the main world, with
+/// every entity's [`StableKey`]: bin keys, entity ids and the order instances are queued all follow
+/// load timing, so without it which of two items at one depth is drawn last changes with load.
+fn stable_bin_order(
+    fixed: Extract<Option<Res<FixedStep>>>,
+    keys: Extract<Query<(Entity, &StableKey)>>,
+    stable: Option<ResMut<StableBinOrder>>,
+    mut commands: Commands,
+) {
+    match (fixed.is_some(), stable) {
+        (true, Some(mut stable)) => {
+            stable.0.clear();
+            stable.0.extend(keys.iter().map(|(e, k)| (MainEntity::from(e), k.0)));
+        }
+        (true, None) => commands.insert_resource(StableBinOrder(keys.iter().map(|(e, k)| (MainEntity::from(e), k.0)).collect())),
+        (false, Some(_)) => commands.remove_resource::<StableBinOrder>(),
+        (false, None) => {}
     }
 }
 

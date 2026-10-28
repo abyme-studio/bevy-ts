@@ -1,0 +1,21 @@
+[package]
+name = "stable-bin-order-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# A civ-like fixed-step shot (openspec change `stable-bin-order-key`, task 5.1): shot time and the
+# render world's `PhaseSort` set per frame. Out of the workspace, so the gate never builds it
+# (docs/testing.md, rule 8). Built against this checkout's crates: the arm without the patch is
+# the same crate in a checkout of main.
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false, features = ["2d", "3d", "png"] }
+bevy-ts-remote = { path = "../../crates/bevy-ts-remote" }
+serde_json = "1"
+
+# As the engine builds Bevy (the workspace's patch).
+[patch.crates-io]
+bevy_render = { path = "../../vendor/bevy_render" }
+
+[profile.release]
+debug = false

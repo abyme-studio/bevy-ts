@@ -25,7 +25,7 @@ sort as in Bevy 0.20.
 
 #### Scenario: glTF load order
 - **WHEN** the two quads are two glTFs, shot once with the red file's read released first and once with the blue first
-- **THEN** the two PNGs have identical pixels, and match the shots of the mesh asset order
+- **THEN** the two PNGs have identical pixels
 
 #### Scenario: A glTF race
 - **WHEN** the two glTF quads are shot 10 times with both reads released at once
