@@ -32,7 +32,7 @@
 - [x] 5.1 A target as query data: per matched table, fill a reused `u32` offsets array (`len + 1`) and an entity array in the `Entity` column encoding; place them in the frame where a column goes
 - [x] 5.2 JS: a read-only list view per row (`length`, index, iterator) over `subarray`; `Option<Target>`; `With`/`Without`/`Changed`/`Added` on a target
 - [x] 5.3 Tests: a list of 0, 1 and many entries; a table with mixed rows; a list changed by a flush between two runs; `Changed<LikedBy>` after a source insert
-- [ ] 5.4 Bench line (`--ignored`, release): 10,000 rows × 1, 4 and 16 entities, packed read against an inline array; record in `docs/research/custom-relationships.md`
+- [x] 5.4 Bench line (`--ignored`, release): 10,000 rows × 1, 4 and 16 entities, packed read against an inline array; record in `docs/research/custom-relationships.md`
 
 ## 6. Hot reload (`crates/bevy-ts/src/components.rs` `commit`)
 
