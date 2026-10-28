@@ -684,6 +684,9 @@ const processes = {
   "custom-relationships-rerun": {
     cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"scripts/gen-protocol.sh --check && cargo test -p bevy-ts-cli --no-fail-fast --test it -- ui_gallery:: relationships:: && cargo test -p bevy-ts-material --no-fail-fast --test it -- alpha_render::\" 2>&1 | grep -v ld64 | tee target/custom-relationships-rerun.log | grep -E \"^error|-->|test result|FAILED|panicked|stale\"'",
   },
+  "custom-relationships-pack": {
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"cargo test -p bevy-ts --lib packed_lists && cargo test -p bevy-ts-cli --no-fail-fast --test it -- relationships:: && cargo clippy -p bevy-ts -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/custom-relationships-pack.log | grep -E \"^error|^warning|-->|test result|FAILED|panicked\"'",
+  },
 } satisfies ProcessFile;
 
 const runsCargo = (cmd: string) => /\bcargo\b|scripts\/[\w-]+\.sh/.test(cmd);
