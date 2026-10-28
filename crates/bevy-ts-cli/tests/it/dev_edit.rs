@@ -139,8 +139,12 @@ mod arena {
 
         let r = post(port, "bevy-ts/viewport_mode", json!({ "mode": "play" })).unwrap();
         assert_eq!((r["mode"].as_str(), r["started"].as_bool()), (Some("play"), Some(true)));
-        frames(&viewer, &mut seen, 30);
-        assert!(enemies(port).iter().any(|t| t[1].abs() > 1e-3), "the enemies bob once the game runs: {:?}", enemies(port));
+        // A loaded machine slows the game by any amount: wait for the bob, not for a count of frames.
+        let t0 = Instant::now();
+        while !enemies(port).iter().any(|t| t[1].abs() > 1e-3) {
+            assert!(t0.elapsed() < BOUND, "the enemies never bobbed once the game ran: {:?}", enemies(port));
+            frames(&viewer, &mut seen, 5);
+        }
         ticking.store(false, Ordering::Relaxed);
         ticker.join().unwrap();
         let log = std::fs::read_to_string(&log).unwrap();
