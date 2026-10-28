@@ -218,8 +218,8 @@ lowest the recipe proves. The locked `v8` is 150.4.0. What the build needs:
 - deno_core#738 doesn't reproduce: rusty_v8 turned relative vtables off in its own `.gn` in PR
   #1581 (2024), so no GN argument is needed.
 - deno_core 0.412 doesn't compile for Android as published: `uv_compat/tty.rs` has no
-  `errno_location` for it. A 3-line fix (bionic's `__errno`) is carried as a `[patch.crates-io]`
-  and sent upstream.
+  `errno_location` for it. A 3-line fix (bionic's `__errno`) is carried as a `[patch.crates-io]`,
+  not sent upstream (operator, 2026-10-28).
 - The link needs compiler-rt's builtins (V8 calls `__clear_cache`): the NDK's
   `libclang_rt.builtins-aarch64-android.a` as a link argument.
 - From a Mac, V8 needs a recipe rusty_v8 no longer keeps (its Android CI stopped in 2024): a git
@@ -249,8 +249,8 @@ keep. Not needed now that V8 runs.
 
 ## Risks / Trade-offs
 
-- [deno_core needs a patch to compile for Android] → carried as `[patch.crates-io]` and sent
-  upstream; dropped when a release has it.
+- [deno_core needs a patch to compile for Android] → carried as `[patch.crates-io]`, not sent
+  upstream (operator, 2026-10-28); each deno_core upgrade re-applies or drops it.
 - [Bevy 0.20 won't recreate its surface on a new handle] → confirmed from source, not yet on a
   device; despawn and respawn the window as the fallback.
 - [V8 builds take 47 min at `-j4`] → a persistent cache; abyme fetches published engines and never

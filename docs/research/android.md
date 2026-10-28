@@ -35,7 +35,7 @@ example, which passes a number on purpose to show the error path. No crash, noth
   #[cfg(target_os = "android")]
   fn errno_location() -> *mut c_int { unsafe extern "C" { fn __errno() -> *mut c_int; } unsafe { __errno() } }
   ```
-  Carry it as a `[patch.crates-io]` and send it upstream.
+  Carry it as a `[patch.crates-io]` (carried, not sent upstream: operator, 2026-10-28).
 - Linking needs compiler-rt's builtins: V8's `cpu-arm64.cc` calls `__clear_cache`. Pass
   `-C link-arg=$NDK/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/19/lib/linux/libclang_rt.builtins-aarch64-android.a`.
 

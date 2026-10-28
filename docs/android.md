@@ -76,7 +76,8 @@ fat LTO, stripped, unwinding kept for the engine's panic guard).
   `docs/research/android.md`, and caches `librusty_v8.a` under `~/.cache/bevy-ts/v8-android/`.
   Later builds link the cache.
 - deno_core 0.412 does not compile for Android as published (bionic's errno). The script patches a
-  copy (`scripts/android-patches/`) in for its build only and puts `Cargo.lock` back after.
+  copy (`scripts/android-patches/`) in for its build only and puts `Cargo.lock` back after. The patch
+  is carried here, not sent upstream (operator, 2026-10-28): a deno_core upgrade re-checks it.
 - CI builds the library on every push and checks its JNI exports (`ci.yml`, `android`).
 
 `bench/android-smoke/run.sh` plays a game on a headless arm64 emulator through a minimal Java host,

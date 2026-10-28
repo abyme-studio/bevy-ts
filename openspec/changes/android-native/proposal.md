@@ -76,7 +76,7 @@ the process environment, has no TLS, and links V8 from a prebuilt that has no An
 - Needs the operator's go:
   - **V8 from source in the build.** 47 min a clean build at `-j4` on the Mac, cached after; a
     patched V8 checkout to build from a Mac; NDK r28 and API 29, above abyme's `minSdk` 26; a
-    patched deno_core until upstream takes the fix. The alternative is QuickJS-ng (no JIT, 1 MB).
+    patched deno_core, the patch carried here and not sent upstream. The alternative is QuickJS-ng (no JIT, 1 MB).
   - **A TLS crate.** `futures-rustls` with `ring` and `webpki-roots`, in `bevy-ts` on every
     target. New dependencies.
   - **The header rule.** Decided (lead@abyme for the operator, 2026-10-24): headers go over `wss:`
