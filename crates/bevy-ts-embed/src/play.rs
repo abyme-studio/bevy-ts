@@ -235,14 +235,13 @@ pub fn read_scripts(folder: &Path, game: &GameFile) -> Result<ModuleSet, String>
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<Result<_, _>>()?;
     entries.sort_by_key(|e| e.file_name());
+    // Every folder, dot-folders too: the build wrote all of scripts/, and a project's generated
+    // modules can sit in one (agent town's `.valley/maps.ts`).
     for e in entries {
         let path = e.path();
-        let hidden = e.file_name().to_string_lossy().starts_with('.');
         if e.file_type()?.is_dir() {
-            if !hidden {
-                walk(&path, out)?;
-            }
-        } else if !hidden && path.extension().is_some_and(|x| SCRIPT_EXTENSIONS.iter().any(|s| x == *s)) {
+            walk(&path, out)?;
+        } else if path.extension().is_some_and(|x| SCRIPT_EXTENSIONS.iter().any(|s| x == *s)) {
             out.push(path);
         }
     }

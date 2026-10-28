@@ -22,13 +22,18 @@ if (!existsSync(join(town, "node_modules"))) {
   execFileSync("bash", ["-c", `git -C "${checkout}" archive HEAD | tar -x -C "${town}"`], { stdio: "inherit" });
   execFileSync("pnpm", ["install", "--frozen-lockfile"], { cwd: town, stdio: "inherit" });
 }
+// What `pnpm dev` makes before it plays (the valley's maps), when this commit has it.
+const scripts = JSON.parse(readFileSync(join(town, "package.json"), "utf8")).scripts ?? {};
+if (scripts["valley-maps"]) execFileSync("pnpm", ["valley-maps"], { cwd: town, stdio: "inherit" });
 const here = import.meta.dirname;
 const { replay, ownEnv } = await import(join(town, "test/replay.mjs"));
 const { FRAME_AGENTS } = await import(join(town, "test/frame.mjs"));
 
 // A copy, as the frame test makes, so nothing is written into agent town's checkout.
 const dir = mkdtempSync(join(tmpdir(), `bevy-ts-smoke-${world}-`));
-for (const p of ["src", "assets", "package.json", "tsconfig.json", "bevy-ts.json"]) cpSync(join(town, p), join(dir, p), { recursive: true });
+for (const p of ["src", "assets", ".valley", "package.json", "tsconfig.json", "bevy-ts.json"]) {
+  if (existsSync(join(town, p))) cpSync(join(town, p), join(dir, p), { recursive: true });
+}
 symlinkSync(join(town, "node_modules"), join(dir, "node_modules"));
 
 let abymed;
@@ -52,7 +57,7 @@ const run = spawn(join(here, "run.sh"), [name], {
     SMOKE_PROJECT: dir,
     ...(world === "learn" && { SMOKE_ENTRY: "src/learn/game.ts" }),
     SMOKE_ENV: JSON.stringify({ ABYME_URL: url }),
-    SETTLE: process.env.SETTLE ?? "20",
+    SETTLE: process.env.SETTLE ?? "60", // SwiftShader compiles the world's shaders slowly
   },
 });
 const code = await new Promise((r) => run.on("exit", (c) => r(c ?? 1)));

@@ -52,7 +52,9 @@ apk=$build/smoke.apk
 
 # The game, built by this checkout's engine; only its game/ folder goes to the phone.
 out=$cache/game-$game
-~/dev/abyme/scripts/gate-slot run bevy-ts:android-smoke -- cargo build -q -p bevy-ts-cli
+# Its linker warnings (tens of kB) go to a file: a large stderr through gate-slot has stalled it.
+~/dev/abyme/scripts/gate-slot run bevy-ts:android-smoke -- bash -c 'cargo build -q -p bevy-ts-cli 2> target/android-smoke-cli.log' \
+  || { grep -v ld64 target/android-smoke-cli.log >&2; exit 1; }
 project=${SMOKE_PROJECT:-examples/$game}
 ./target/debug/bevy-ts build "$project" --out "$out" ${SMOKE_ENTRY:+--entry "$SMOKE_ENTRY"} >/dev/null
 env64=$(printf '%s' "${SMOKE_ENV:-{\}}" | base64 | tr -d '\n')
@@ -72,11 +74,17 @@ trap '"$adb" -s $serial emu kill >/dev/null 2>&1 || true; wait $emu 2>/dev/null 
 until_ok() {
   local deadline=$((SECONDS + $2))
   until eval "$1"; do
-    (( SECONDS < deadline )) || { echo "smoke: $3: not within $2 s" >&2; "$adb" -s $serial logcat -d -s bevy-ts-smoke:V bevy-ts:V RustStdoutStderr:V DEBUG:V AndroidRuntime:E > "$results/logcat-failed.txt" 2>&1 || true; exit 1; }
+    (( SECONDS < deadline )) || { echo "smoke: $3: not within $2 s" >&2; app_log > "$results/logcat-failed.txt"; exit 1; }
     sleep 1
   done
 }
 log() { "$adb" -s $serial logcat -d -s bevy-ts-smoke:I 2>/dev/null; }
+# Everything the app logged, Bevy's own lines too (tagged by module, so not by one tag), and crashes.
+# By the pid seen at start: the app may be gone by then.
+app_pid=
+app_log() {
+  { [[ -n "$app_pid" ]] && "$adb" -s $serial logcat -d --pid="$app_pid"; "$adb" -s $serial logcat -d -s DEBUG:V AndroidRuntime:E; } 2>&1 || true
+}
 logged() { log | grep -q -- "$1"; }
 count() { log | grep -c -- "$1" || true; }
 # A loaded emulator shows "System UI isn't responding", over the game and in the way of a tap.
@@ -96,10 +104,12 @@ copied=$("$adb" -s $serial shell run-as $pkg stat -c %s files/libbevy_ts_android
 tar -C "$out/game" -cf "$cache/game.tar" .
 "$adb" -s $serial push -q "$cache/game.tar" /data/local/tmp/game.tar >/dev/null
 "$adb" -s $serial shell "cat /data/local/tmp/game.tar | run-as $pkg sh -c 'mkdir -p files/games/$game && tar -C files/games/$game -xf -'"
+"$adb" -s $serial logcat -G 16M >/dev/null 2>&1 || true
 "$adb" -s $serial logcat -c
 
 # Play: started from the library in filesDir.
 "$adb" -s $serial shell am start -W -n $pkg/.SmokeActivity --es game "$game" --es env64 "$env64" >/dev/null
+app_pid=$("$adb" -s $serial shell pidof $pkg | tr -d '\r')
 until_ok 'logged "\"event\":\"started\"" || logged "failed"' 180 "started"
 logged "failed" && { log; exit 1; }
 say "$(log | grep -o 'loaded .*' | head -1)"
@@ -133,7 +143,7 @@ say "resumed on a new surface"
 "$adb" -s $serial shell am start -n $pkg/.SmokeActivity --ez quit true >/dev/null
 until_ok 'logged "\"event\":\"exited\"" && logged "closed"' 60 "exited"
 say "$(log | grep -o 'event {"event":"exited".*' | tail -1)"
-"$adb" -s $serial logcat -d -s bevy-ts-smoke:V bevy-ts:V RustStdoutStderr:V AndroidRuntime:E > "$results/$game-logcat.txt" 2>&1 || true
+app_log > "$results/$game-logcat.txt"
 
 size=$(wc -c < "$so")
 gz=$(gzip -9c "$so" | wc -c)

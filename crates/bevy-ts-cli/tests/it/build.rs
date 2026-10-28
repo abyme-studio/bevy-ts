@@ -200,6 +200,26 @@ fn a_linked_package_ships_and_plays_without_node_modules() {
     wait_for(&rx, &["connected over v1"], LAUNCH);
 }
 
+/// A module a project generates into a dot-folder ships and plays: the built game reads every
+/// folder of scripts/.
+#[test]
+fn a_module_in_a_dot_folder_ships_and_plays() {
+    let base = common::TestDir::new("build-dot-folder");
+    common::write(&base, "app/package.json", r#"{"name": "dotted", "type": "module"}"#);
+    common::write(&base, "app/.gen/maps.ts", "export const MAPS: number = 8;\n");
+    common::write(&base, "app/src/game.ts", "import { MAPS } from \"../.gen/maps.ts\";\nconsole.log(`maps ${MAPS}`);\n");
+    let out = base.join("dist");
+    let (code, events) = build(&[base.join("app").to_str().unwrap(), "--json", "--out", out.to_str().unwrap()]);
+    assert_eq!(code, Some(0), "{events:#?}");
+    let game = out.join("game");
+    assert!(game.join("scripts/.gen/maps.ts").is_file());
+    let file: bevy_ts_cli::play::GameFile = serde_json::from_str(&std::fs::read_to_string(game.join("game.json")).unwrap()).unwrap();
+    assert_eq!(bevy_ts_cli::play::read_scripts(&game, &file).unwrap().modules.len(), 2);
+
+    let (_engine, rx) = play(&game);
+    wait_for(&rx, &["maps 8"], LAUNCH);
+}
+
 #[test]
 fn switches_are_baked_into_game_json_and_played() {
     use bevy::input_focus::directional_navigation::{DirectionalNavigationMap, DirectionalNavigationPlugin};
