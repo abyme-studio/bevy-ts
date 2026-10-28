@@ -723,6 +723,9 @@ registers a reflected message or event with `ts_message`/`ts_event` (above);
 `plugin_api::write_message` forwards a message without `Reflect` into a TS message type of the
 same name.
 `bevy-ts types` writes the modules' declarations to `native-modules.d.ts` beside `native.d.ts`.
+The engine's own modules (`bevy-ts/ready`, `bevy-ts/input`, ...) come from the plugins of
+`ScriptPlugins` (`crates/bevy-ts-cli/src/cli.rs`), which the run's app and `bevy-ts types` both add:
+a plugin that ships a module goes there, or `bevy-ts types` does not declare it.
 
 `rapier3d` adds `RapierPhysicsPlugin` in `FixedUpdate`, exposes `rapier:sync-backend`,
 `rapier:step` and `rapier:writeback`, exports `ReadRapierContext`, and ships `bevy-ts/rapier`:

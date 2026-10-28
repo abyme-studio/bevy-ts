@@ -28,19 +28,7 @@ pub fn types_app(engine: &Engine, extra: impl Plugin) -> App {
     crate::audio::asset_half(&mut app);
     let fake = bevy_ts::fake::FakeHandle::default();
     app.add_plugins(BevyTsPlugin::new(move || Box::new(fake.backend())))
-        .add_plugins(bevy_ts_tsx::TsxPlugin)
-        .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
-        .add_plugins(bevy_ts_material::WorldTextPlugin)
-        .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
-        .add_plugins(crate::camera::CamerasPlugin)
-        .add_plugins(crate::gizmos::GizmosPlugin)
-        .add_plugins(crate::input::ScriptInputPlugin)
-        .add_plugins(crate::audio::ScriptAudioPlugin)
-        .add_plugins(crate::time::ScriptTimePlugin)
-        .add_plugins(crate::rust_events::RustEventsPlugin)
-        .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
-        .add_plugins(crate::session::ScriptSessionPlugin)
-        .add_plugins(crate::assets::ScriptAssetsPlugin)
+        .add_plugins(crate::cli::ScriptPlugins)
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);
     app

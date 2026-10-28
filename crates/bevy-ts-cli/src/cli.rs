@@ -221,6 +221,31 @@ pub enum Display {
     Viewport,
 }
 
+/// Every plugin that gives scripts a built-in module (`bevy-ts/ready`) or element: the run's app and
+/// `bevy-ts types` both add this group, so the generated types declare every module a game can
+/// import.
+pub struct ScriptPlugins;
+
+impl PluginGroup for ScriptPlugins {
+    fn build(self) -> bevy::app::PluginGroupBuilder {
+        bevy::app::PluginGroupBuilder::start::<Self>()
+            .add(bevy_ts_tsx::TsxPlugin)
+            .add(bevy_ts_material::ScriptMaterialPlugin)
+            .add(bevy_ts_material::WorldTextPlugin)
+            .add(bevy_ts_animation::PlayAnimationPlugin)
+            .add(crate::input::ScriptInputPlugin)
+            .add(crate::audio::ScriptAudioPlugin)
+            .add(crate::time::ScriptTimePlugin)
+            .add(crate::camera::CamerasPlugin)
+            .add(crate::gizmos::GizmosPlugin)
+            .add(crate::rust_events::RustEventsPlugin)
+            .add(crate::diagnostics::ScriptDiagnosticsPlugin)
+            .add(crate::session::ScriptSessionPlugin)
+            .add(crate::ready::ScriptReadyPlugin)
+            .add(crate::assets::ScriptAssetsPlugin)
+    }
+}
+
 /// Bevy's default plugins, bevy-ts and tsx, then `extra` (the project's plugins), so they can
 /// order against `BevyTsSet` and see bevy-ts's resources. `assets` is Bevy's asset root, the
 /// project's `assets/` under `bevy-ts dev`; `None` keeps Bevy's default. `dev` runs bevy-ts in dev
@@ -301,24 +326,11 @@ pub fn base_app_with_sources(
     }
     crate::audio::audio_output(&mut app, display, audio);
     app.add_plugins(BevyTsPlugin::new(bevy_ts_v8::factory(options)).dev(dev))
-        .add_plugins(bevy_ts_tsx::TsxPlugin)
-        .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
-        .add_plugins(bevy_ts_material::WorldTextPlugin)
+        .add_plugins(ScriptPlugins)
         .add_plugins(bevy_ts_material::Pixel2dPlugin)
         .add_plugins(bevy_ts_material::BitmapTextPlugin)
-        .add_plugins(bevy_ts_animation::PlayAnimationPlugin)
-        .add_plugins(crate::input::ScriptInputPlugin)
-        .add_plugins(crate::audio::ScriptAudioPlugin)
-        .add_plugins(crate::time::ScriptTimePlugin)
         .add_plugins(bevy_ts_levels::engine::LevelsPlugin)
-        .add_plugins(crate::camera::CamerasPlugin)
-        .add_plugins(crate::gizmos::GizmosPlugin)
-        .add_plugins(crate::rust_events::RustEventsPlugin)
-        .add_plugins(crate::diagnostics::ScriptDiagnosticsPlugin)
-        .add_plugins(crate::session::ScriptSessionPlugin)
-        .add_plugins(crate::ready::ScriptReadyPlugin)
         .add_plugins(bevy_ts_remote::screenshot::ReadyPlugin)
-        .add_plugins(crate::assets::ScriptAssetsPlugin)
         .add_systems(PostUpdate, warn_mesh_handlers.run_if(not(resource_exists::<MeshPickingSettings>)))
         .insert_resource(engine.identity.clone())
         .add_plugins(extra);

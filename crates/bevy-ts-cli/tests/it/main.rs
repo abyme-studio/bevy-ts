@@ -99,6 +99,7 @@ mod tsx_scale;
 mod tsx_sites;
 mod two_d;
 mod two_d_doc;
+mod types_modules;
 mod typescript;
 mod ui_drag;
 mod ui_events;
