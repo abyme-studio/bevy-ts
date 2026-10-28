@@ -10,10 +10,13 @@ export CARGO_TARGET_DIR="$PWD/../../target/stable-bin-order-bench"
 mkdir -p results
 exec ~/dev/abyme/scripts/gate-slot run bevy-ts:stable-bin-order-bench -- bash -c "
   set -euo pipefail
-  cargo build -q --release --manifest-path Cargo.toml && cp \$CARGO_TARGET_DIR/release/stable-bin-order-bench \$CARGO_TARGET_DIR/patch
-  cargo build -q --release --manifest-path $base/bench/stable-bin-order/Cargo.toml && cp \$CARGO_TARGET_DIR/release/stable-bin-order-bench \$CARGO_TARGET_DIR/base
+  cargo build -q --release --manifest-path Cargo.toml || exit 1
+  cp \$CARGO_TARGET_DIR/release/stable-bin-order-bench \$CARGO_TARGET_DIR/patch
+  cargo build -q --release --manifest-path $base/bench/stable-bin-order/Cargo.toml || exit 1
+  cp \$CARGO_TARGET_DIR/release/stable-bin-order-bench \$CARGO_TARGET_DIR/base
   for i in \$(seq $runs); do
     for arm in patch base; do
-      echo \"arm=\$arm run=\$i load=\$(sysctl -n vm.loadavg | awk '{print \$2}') \$(\$CARGO_TARGET_DIR/\$arm 2>/dev/null | tail -1)\"
+      out=\$(\$CARGO_TARGET_DIR/\$arm 2>/dev/null | tail -1) || exit 1
+      echo \"arm=\$arm run=\$i load=\$(sysctl -n vm.loadavg | awk '{print \$2}') \$out\"
     done
   done"
