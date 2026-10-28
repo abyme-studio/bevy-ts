@@ -434,15 +434,15 @@ mod drawn {
         app.world_mut().spawn(Screenshot::image(target)).observe(move |c: On<ScreenshotCaptured>| {
             *into.lock().unwrap() = Some(c.image.clone());
         });
-        for _ in 0..60 {
-            app.update();
-            if let Some(image) = shot.lock().unwrap().take() {
-                let errors: Vec<_> = logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Error).map(|e| e.message).collect();
-                assert!(errors.is_empty(), "{errors:?}");
-                return image;
-            }
-        }
-        panic!("no screenshot");
+        // The screenshot comes back from the render thread, which a loaded machine slows by any amount.
+        let mut image = None;
+        until(&mut app, &format!("{name}: the screenshot never arrived"), |_| {
+            image = shot.lock().unwrap().take();
+            image.is_some()
+        });
+        let errors: Vec<_> = logs(&app).into_iter().filter(|e| e.level == bevy_ts::log::LogLevel::Error).map(|e| e.message).collect();
+        assert!(errors.is_empty(), "{errors:?}");
+        image.unwrap()
     }
 
     /// The colour at a fraction of the view's width and height.

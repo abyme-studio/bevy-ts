@@ -67,13 +67,13 @@ fn screenshot(app: &mut App) -> Image {
     app.world_mut().spawn(Screenshot::image(image)).observe(move |c: On<ScreenshotCaptured>| {
         *slot.lock().unwrap() = Some(c.image.clone());
     });
-    for _ in 0..60 {
-        app.update();
-        if let Some(i) = shot.lock().unwrap().take() {
-            return i;
-        }
-    }
-    panic!("no screenshot within 60 frames");
+    // The screenshot comes back from the render thread, which a loaded machine slows by any amount.
+    let mut image = None;
+    until(app, "the screenshot never arrived", |_| {
+        image = shot.lock().unwrap().take();
+        image.is_some()
+    });
+    image.unwrap()
 }
 
 #[test]
