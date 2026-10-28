@@ -118,7 +118,10 @@ fn a_frame_lands_in_the_viewers_surface() {
     assert_eq!(seen.surfaces.len(), 3, "three surfaces of one ring");
     let s = seen.surfaces.values().next().unwrap();
     assert!(s.width() >= 2560 && s.height() >= 1440, "ring is at least 2560x1440, got {}x{}", s.width(), s.height());
-    assert!(seen.frames.len() as u64 > updates / 2, "most updates produce a frame");
+    // An update that finds every slot still held by the viewer is skipped, by design; on a loaded
+    // machine the viewer lags and many are. The rest, the updates that had a slot, must mostly show.
+    let offered = updates - skipped;
+    assert!(seen.frames.len() as u64 > offered / 2, "most updates that had a free slot produce a frame: {} frames of {offered} offered ({updates} updates, {skipped} skipped)", seen.frames.len());
     assert!(seen.frames.iter().all(|f| (f.3, f.4) == (2560, 1440)), "frames carry the window's pixel size");
     assert_eq!(seen.mixed, 0, "no frame mixes two patterns");
     // A frame never names a slot twice in a row.
