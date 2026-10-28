@@ -45,6 +45,8 @@ const processes = {
   // The npm package's vitest suite (examples, `new`), against the debug engine for the TS transform.
   "npm-test": { cmd: "bash -c 'set -o pipefail; cargo build -p bevy-ts-cli && cd packages/bevy-ts && pnpm install --frozen-lockfile && BEVY_TS_BINARY=$PWD/../../target/debug/bevy-ts pnpm test 2>&1 | tee ../../target/npm-test.log | tail -40'" },
   "diagnostics-bench": { cmd: "set -o pipefail; cargo build --release -p bevy-ts-cli && cp target/release/bevy-ts target/diagnostics-bench && node bench/diagnostics/bench.mjs after target/diagnostics-bench 2>&1 | tee -a target/diagnostics-bench.log" },
+  // Change stable-bin-order-key, task 5.1: both arms, in a slot run.sh takes itself; $RUNS per arm.
+  "stable-bin-order-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/stable-bin-order/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tee -a target/stable-bin-order-bench.txt | grep -E \"^arm=|error|panicked\"'" },
   "arena-walk": { cmd: "cargo static test --release -p bevy-ts-cli --test it arena_walk:: -- --nocapture 2>&1 | grep --line-buffered -v ld64 | tee target/arena-walk.log | grep -E '^[0-9] |test |panicked'" },
   "check-track-location": { cmd: "CARGO_TARGET_DIR=target/track-location cargo check -p bevy-ts --features track_location --all-targets" },
   release: { cmd: "cargo build --release -p bevy-ts-cli" },
