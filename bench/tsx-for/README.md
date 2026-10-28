@@ -18,4 +18,4 @@ node bench/tsx-for/bench.mjs after target/tsx-for-after
 node bench/tsx-for/summary.mjs before after
 ```
 
-The `tsx-for-before` and `tsx-for-after` processes in `.abyme/processes.ts` do the same.
+Run each arm's build through `~/dev/abyme/scripts/gate-slot run bevy-ts:tsx-for -- …` (docs/check-slots.md).

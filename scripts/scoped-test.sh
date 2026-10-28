@@ -37,12 +37,15 @@ for c in $crates; do ps+=(-p "$c"); done
 status=0
 if ((${#ps[@]})); then
   if [[ -n ${TESTS:-} ]]; then
-    cargo test "${ps[@]}" --lib --no-fail-fast || status=1
-    its=()
+    # Unit tests: a crate's lib, or its bins when it has no lib (bevy-ts-protocol-gen).
+    libs=(); bins=(); its=()
     for c in $crates; do
       dir=$(grep -l "^name *= *\"$c\"" crates/*/Cargo.toml | head -1); dir=${dir%/Cargo.toml}
+      if [[ -f $dir/src/lib.rs ]]; then libs+=(-p "$c"); else bins+=(-p "$c"); fi
       [[ -d $dir/tests/it ]] && its+=(-p "$c")
     done
+    ((${#libs[@]})) && { cargo test "${libs[@]}" --lib --no-fail-fast || status=1; }
+    ((${#bins[@]})) && { cargo test "${bins[@]}" --bins --no-fail-fast || status=1; }
     # shellcheck disable=SC2086 # TESTS is a list of filters
     ((${#its[@]})) && { cargo test "${its[@]}" --no-fail-fast --test it -- $TESTS || status=1; }
   else

@@ -91,8 +91,7 @@ docs/testing.md rule 8: a new bench lives in `bench/`, which the workspace exclu
 `bevy-ts`, `bevy-ts-cli`, `bevy-ts-v8` by path; `run.sh [runs]` builds release into the
 workspace target and appends each run with `uptime` to `results/runs.txt`) and
 `bench/world-saves/run.sh` (runs inside a check slot via `scripts/slot.sh`). Run it as a process
-in `.abyme/processes.ts`, as `rust-events-bench` does (`gate-slot run … bench/rust-events/run.sh
-${RUNS:-3}`). Arms per docs/reflection.md's bench (1,000 rows, median of 200 frames less an empty
+in `.abyme/processes.ts` that calls `gate-slot run … bench/rust-events/run.sh ${RUNS:-3}`. Arms per docs/reflection.md's bench (1,000 rows, median of 200 frames less an empty
 system): a column read, a string field hit, a miss, a write. Its existing numbers are the
 baseline: column 10 ns/row, hole hit 45, miss 176, write 3236 (docs/reflection.md:194). The
 existing reflected bench is still in `tests/it/reflect_bench.rs`; the new one goes to `bench/`.
