@@ -7,6 +7,8 @@ cd "$(dirname "$0")"
 runs=${1:-3}
 base=${BASE:-/tmp/leaf-flips-base}
 export CARGO_TARGET_DIR="$PWD/../../target/stable-bin-order-bench"
+# No sccache: its server drops under a loaded machine's builds, and a bench builds its own target.
+export RUSTC_WRAPPER=""
 mkdir -p results
 exec ~/dev/abyme/scripts/gate-slot run bevy-ts:stable-bin-order-bench -- bash -c "
   set -euo pipefail
