@@ -31,9 +31,18 @@ v8_cache=$cache/v$v8
 work=$cache/work
 mkdir -p "$work"
 
-# Cargo.lock is put back whatever happens: the patches below are for this build only.
+# Cargo.lock is put back whatever happens: the patches below are for this build only. A V8 just
+# built from source is kept for every later build of this version, even when the link after it fails.
+gn_out=target/aarch64-linux-android/android/gn_out
 cp Cargo.lock "$work/Cargo.lock.saved"
-trap 'cp "$work/Cargo.lock.saved" Cargo.lock' EXIT
+on_exit() {
+  cp "$work/Cargo.lock.saved" Cargo.lock
+  if [[ -z "${RUSTY_V8_ARCHIVE:-}" && -f "$gn_out/obj/librusty_v8.a" && -f "$gn_out/src_binding.rs" ]]; then
+    mkdir -p "$v8_cache"
+    cp "$gn_out/obj/librusty_v8.a" "$gn_out/src_binding.rs" "$v8_cache/"
+  fi
+}
+trap on_exit EXIT
 
 # deno_core with Android's errno (bionic's __errno), until upstream takes it.
 deno_src=$work/deno_core-$deno
@@ -102,12 +111,6 @@ fi
 cargo ndk -t arm64-v8a -P 29 build "${patches[@]}" -j "$jobs" --profile android -p bevy-ts-android
 
 so=target/aarch64-linux-android/android/libbevy_ts_android.so
-if [[ -z "${RUSTY_V8_ARCHIVE:-}" ]]; then
-  # Keep the V8 just built for every later build of this version.
-  gn_out=target/aarch64-linux-android/android/gn_out
-  mkdir -p "$v8_cache"
-  cp "$gn_out/obj/librusty_v8.a" "$gn_out/src_binding.rs" "$v8_cache/"
-fi
 out=dist/aarch64-linux-android
 rm -rf "$out" && mkdir -p "$out/dev/bevyts"
 cp "$so" "$out/"
