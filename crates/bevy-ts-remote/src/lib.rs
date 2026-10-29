@@ -9,6 +9,7 @@
 pub mod protocol;
 pub mod editor;
 mod entities;
+pub mod order_dump;
 pub mod screenshot;
 pub mod stall;
 mod values;

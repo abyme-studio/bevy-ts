@@ -29,7 +29,9 @@ use bevy::render::render_phase::StableBinOrder;
 use bevy::render::sync_world::MainEntity;
 use bevy::sprite::Sprite;
 use bevy::transform::TransformSystems;
-use std::hash::BuildHasher;
+use bevy::ecs::component::ComponentId;
+use bevy::ecs::system::SystemChangeTick;
+use std::hash::{BuildHasher, Hash, Hasher};
 use bevy::render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems};
 use bevy::time::{TimeSystems, TimeUpdateStrategy};
 use bevy::world_serialization::{DynamicWorldRoot, WorldAssetRoot, WorldInstance, WorldInstanceSpawner};
@@ -268,6 +270,7 @@ impl Plugin for ReadyPlugin {
             .init_resource::<UpdateFrame>()
             .init_resource::<ReadyTimeout>()
             .init_resource::<ReadyHold>()
+            .add_plugins(crate::order_dump::OrderDumpPlugin)
             .add_observer(|add: On<Add<Camera>>, fixed: Option<Res<FixedStep>>, mut commands: Commands| {
                 if fixed.is_some() {
                     commands.entity(add.entity).insert(NoIndirectDrawing);
@@ -312,36 +315,153 @@ impl Plugin for ReadyPlugin {
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StableKey(pub u64);
 
-type KeyChanged = Or<(Changed<GlobalTransform>, Changed<Aabb>, Changed<Mesh3d>, Changed<Mesh2d>, Changed<Sprite>, Without<StableKey>)>;
-
-/// Sets [`StableKey`]: `FixedHasher` over the world-space AABB's centre and half extents, as `f32`
-/// bits, then the asset path of the entity's mesh or sprite image when it has one. A script places
-/// its entities on the fixed step, so the bits are the same every run; two primitives of one glTF
-/// node differ by their AABB or their path (`#Mesh0/Primitive1`).
-#[allow(clippy::type_complexity)]
-fn stable_keys(
-    mut entities: Query<(Entity, &GlobalTransform, &Aabb, Option<&Mesh3d>, Option<&Mesh2d>, Option<&Sprite>, Option<&mut StableKey>), KeyChanged>,
-    assets: Option<Res<AssetServer>>,
-    mut commands: Commands,
-) {
-    for (entity, transform, aabb, mesh3d, mesh2d, sprite, key) in &mut entities {
-        let affine = transform.affine();
-        let centre = affine.transform_point3a(aabb.center);
-        let m = affine.matrix3;
-        let half = m.x_axis.abs() * aabb.half_extents.x + m.y_axis.abs() * aabb.half_extents.y + m.z_axis.abs() * aabb.half_extents.z;
-        let asset = mesh3d.map(|m| m.id().untyped()).or(mesh2d.map(|m| m.id().untyped())).or(sprite.map(|s| s.image.id().untyped()));
-        let path = asset.zip(assets.as_ref()).and_then(|(id, assets)| assets.get_path(id));
-        let bits = centre.to_array().map(f32::to_bits);
-        let extents = half.to_array().map(f32::to_bits);
-        let hash = FixedHasher.hash_one((bits, extents, path));
-        match key {
-            Some(mut key) => {
-                key.set_if_neq(StableKey(hash));
+/// Sets [`StableKey`] on each entity with an `Aabb`: `FixedHasher` over its whole transform and its
+/// local AABB, as `f32` bits, the asset path of its mesh or sprite image when it has one, and its
+/// [`materials`]. A script places its entities on the fixed step, so the bits are the same every
+/// run. Two primitives of one glTF node differ by their AABB or their path (`#Mesh0/Primitive1`),
+/// one mesh turned by θ and by θ + 180° by their transform, two materials on one mesh by theirs. An
+/// entity is keyed again only when one of those components changed since the last run.
+fn stable_keys(world: &World, ticks: SystemChangeTick, mut kinds: Local<HashMap<ComponentId, bool>>, mut commands: Commands) {
+    let Some(aabb) = world.component_id::<Aabb>() else { return };
+    let registry = world.get_resource::<AppTypeRegistry>().map(|r| r.read());
+    let tracked: Vec<ComponentId> =
+        [world.component_id::<GlobalTransform>(), Some(aabb), world.component_id::<Mesh3d>(), world.component_id::<Mesh2d>(), world.component_id::<Sprite>()].into_iter().flatten().collect();
+    for archetype in world.archetypes().iter().filter(|a| !a.is_empty() && a.contains(aabb)) {
+        let watched: Vec<ComponentId> = match &registry {
+            Some(registry) => tracked.iter().copied().chain(archetype.iter_components().filter(|id| is_material(world, registry, *id, &mut kinds))).collect(),
+            None => tracked.clone(),
+        };
+        for e in archetype.entities() {
+            let entity = world.entity(e.id());
+            let old = entity.get::<StableKey>();
+            let changed = |id: &ComponentId| entity.get_change_ticks_by_id(*id).is_some_and(|t| t.is_changed(ticks.last_run(), ticks.this_run()));
+            if old.is_some() && !watched.iter().any(changed) {
+                continue;
             }
-            None => {
-                commands.entity(entity).insert(StableKey(hash));
+            let key = StableKey(key_of(world, registry.as_deref(), entity, &mut kinds));
+            if old != Some(&key) {
+                commands.entity(e.id()).insert(key);
             }
         }
+    }
+}
+
+/// [`stable_keys`]'s hash of `entity`.
+fn key_of(world: &World, registry: Option<&TypeRegistry>, entity: EntityRef, kinds: &mut HashMap<ComponentId, bool>) -> u64 {
+    let affine = entity.get::<GlobalTransform>().map(|t| t.affine().to_cols_array().map(f32::to_bits));
+    let local = entity.get::<Aabb>().map(|a| (Vec3::from(a.center).to_array().map(f32::to_bits), Vec3::from(a.half_extents).to_array().map(f32::to_bits)));
+    let asset = entity
+        .get::<Mesh3d>()
+        .map(|m| m.id().untyped())
+        .or(entity.get::<Mesh2d>().map(|m| m.id().untyped()))
+        .or(entity.get::<Sprite>().map(|s| s.image.id().untyped()));
+    let path = asset.zip(world.get_resource::<AssetServer>()).and_then(|(id, assets)| assets.get_path(id));
+    let materials = registry.map(|r| materials(world, r, entity, kinds)).unwrap_or_default();
+    FixedHasher.hash_one((affine, local, path, materials))
+}
+
+/// Whether component `id` is one of Bevy's `MeshMaterial3d<M>` or `MeshMaterial2d<M>`, cached in
+/// `kinds`.
+fn is_material(world: &World, registry: &TypeRegistry, id: ComponentId, kinds: &mut HashMap<ComponentId, bool>) -> bool {
+    *kinds.entry(id).or_insert_with(|| {
+        let ty = world.components().get_info(id).and_then(|i| i.type_id());
+        ty.and_then(|ty| registry.get(ty)).is_some_and(|r| {
+            let path = r.type_info().type_path();
+            path.contains("::MeshMaterial3d<") || path.contains("::MeshMaterial2d<")
+        })
+    })
+}
+
+/// The materials `entity` draws with: for each of Bevy's `MeshMaterial3d<M>` and
+/// `MeshMaterial2d<M>` on it, the component's type path and a hash of its asset ([`hash_value`]),
+/// by type path. The same on every run, where the asset's `AssetId` follows load timing. `kinds`
+/// caches which components are materials.
+pub(crate) fn materials(world: &World, registry: &TypeRegistry, entity: EntityRef, kinds: &mut HashMap<ComponentId, bool>) -> Vec<(&'static str, u64)> {
+    let server = world.get_resource::<AssetServer>();
+    let mut out = Vec::new();
+    for id in entity.archetype().iter_components() {
+        if !is_material(world, registry, id, kinds) {
+            continue;
+        }
+        let Some(ty) = world.components().get_info(id).and_then(|i| i.type_id()) else { continue };
+        let Some(path) = registry.get(ty).map(|r| r.type_info().type_path()) else { continue };
+        let Some(value) = registry.get_type_data::<ReflectComponent>(ty).and_then(|r| r.reflect(entity)) else { continue };
+        let mut handles = Vec::new();
+        collect(registry, value.as_partial_reflect(), &mut handles);
+        let mut state = FixedHasher.build_hasher();
+        for handle in handles {
+            match server.and_then(|s| s.get_path(handle.id())) {
+                Some(p) => p.to_string().hash(&mut state),
+                None => match registry.get_type_data::<ReflectAsset>(handle.type_id()).and_then(|a| a.get(world, handle.id())) {
+                    Some(asset) => hash_value(registry, server, asset.as_partial_reflect(), &mut state),
+                    None => "missing".hash(&mut state),
+                },
+            }
+        }
+        out.push((path, state.finish()));
+    }
+    out.sort();
+    out
+}
+
+/// Hashes `value`'s reflected fields into `state`: floats by their bits, a handle by its asset's
+/// path (an asset with none hashes as `None`, not by its `AssetId`), a map's or set's entries in
+/// any order. An opaque value with no reflected hash hashes its `Debug` text.
+fn hash_value(registry: &TypeRegistry, server: Option<&AssetServer>, value: &dyn PartialReflect, state: &mut impl Hasher) {
+    if let Some(v) = value.try_as_reflect()
+        && let Some(handle) = registry.get_type_data::<ReflectHandle>(v.as_any().type_id())
+    {
+        let path = handle.downcast_handle_untyped(v.as_any()).and_then(|h| server?.get_path(h.id())).map(|p| p.to_string());
+        path.hash(state);
+        return;
+    }
+    let unordered = |entries: Vec<&dyn PartialReflect>, state: &mut _| {
+        let mut hashes: Vec<u64> = entries
+            .into_iter()
+            .map(|e| {
+                let mut s = FixedHasher.build_hasher();
+                hash_value(registry, server, e, &mut s);
+                s.finish()
+            })
+            .collect();
+        hashes.sort_unstable();
+        hashes.hash(state);
+    };
+    match value.reflect_ref() {
+        ReflectRef::Struct(s) => s.iter_fields().for_each(|(name, f)| {
+            name.hash(state);
+            hash_value(registry, server, f, state);
+        }),
+        ReflectRef::TupleStruct(s) => s.iter_fields().for_each(|f| hash_value(registry, server, f, state)),
+        ReflectRef::Tuple(t) => t.iter_fields().for_each(|f| hash_value(registry, server, f, state)),
+        ReflectRef::List(l) => {
+            l.len().hash(state);
+            l.iter().for_each(|f| hash_value(registry, server, f, state));
+        }
+        ReflectRef::Array(a) => a.iter().for_each(|f| hash_value(registry, server, f, state)),
+        ReflectRef::Map(m) => {
+            let mut entries = Vec::new();
+            m.iter().for_each(|(k, v)| entries.extend([k, v]));
+            unordered(entries, state);
+        }
+        ReflectRef::Set(s) => unordered(s.iter().collect(), state),
+        ReflectRef::Enum(e) => {
+            e.variant_name().hash(state);
+            e.iter_fields().for_each(|f| hash_value(registry, server, f.value(), state));
+        }
+        ReflectRef::Opaque(v) => {
+            if let Some(f) = v.try_downcast_ref::<f32>() {
+                f.to_bits().hash(state);
+            } else if let Some(f) = v.try_downcast_ref::<f64>() {
+                f.to_bits().hash(state);
+            } else if let Some(h) = v.reflect_hash() {
+                h.hash(state);
+            } else {
+                format!("{v:?}").hash(state);
+            }
+        }
+        #[allow(unreachable_patterns)]
+        _ => {}
     }
 }
 
@@ -654,6 +774,7 @@ pub fn capture(world: &mut World, path: impl Into<PathBuf>) -> Entity {
     let target = world.get_resource::<ScreenshotTarget>().map_or(RenderTarget::Window(Default::default()), |t| t.0.clone());
     let asked = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
     let shot = Shot { path: path.clone(), asked, since: Instant::now(), frame: frame(world), size: None };
+    crate::order_dump::ask(world, &path);
     world
         .spawn((Screenshot(target), shot))
         .observe(save_atomically(path))

@@ -111,13 +111,24 @@ not asked for yet) stepped time too, so the steps stop at 60. And every camera d
 instances at the same depth is drawn last changes from frame to frame (a leaf of one tree over
 another's, in a few pixels). Without it, a batch draws its instances in the order they were queued,
 and batches in the order of ids handed out as assets load (pipeline, material, mesh), which all
-change with load. So every entity with an `Aabb` gets a key, a hash of where its bounds are and the
-asset path of its mesh or sprite image, and the render world holds the keys as `StableBinOrder`
-(vendor/bevy_render/PATCH.md): batches, their instances and sprites at one depth draw in key
-order, the same on every run. Two entities with the same bounds and no asset path fall back to
-entity order. So the shot is the same picture, byte for byte, at any machine load.
+change with load. So every entity with an `Aabb` gets a key, a hash of its whole transform, its
+bounds, the asset path of its mesh or sprite image, and its materials' fields. The render world
+holds the keys as `StableBinOrder` (vendor/bevy_render/PATCH.md): batches, their instances,
+unbatchable meshes (skinned ones) and sprites at one depth draw in key order, the same on every
+run. Two entities alike in all of that, such as two meshes made in code with the same bounds,
+fall back to entity order. So the shot is the same picture, byte for byte, at any machine load.
 `BEVY_TS_FIXED_STEP=1` gives a run driven over the protocol the same clock and drawing; a
 `bevy-ts/screenshot` without it can differ in such pixels.
+
+When two runs' shots still differ, `BEVY_TS_ORDER_DUMP=1` writes what each shot's frame drew
+beside it, as `<shot>.order.txt`. Its lines are each active camera's transform as f32 bits, and
+every entity with bounds, with its key and a hash of each material's fields. Then, per camera
+view, Opaque3d, AlphaMask3d and both prepasses, bin by bin in draw order, plus Transparent3d's
+items, each named by key. A `-` is an item with no key, and a `*` a key two items share. Entity
+ids follow load timing, so they come after a tab: `diff <(cut -f1 a.order.txt) <(cut -f1
+b.order.txt)` names what changed. A draw-order line points at the order, a camera line at the
+camera's fit, and a material line at the values the game wrote. Without the variable, none of
+it is in the app.
 
 Bevy cannot see data a game waits for that is not an asset: a reply over a WebSocket, say. Its
 frames look ready, so time steps before the data comes, and how many steps depends on the load. A
