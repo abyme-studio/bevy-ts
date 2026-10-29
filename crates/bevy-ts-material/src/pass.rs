@@ -303,6 +303,9 @@ fn rebuild(world: &mut World, generation: u64, decl: PassDecl, old: Option<PassK
                 let suffix = if draws(world, old.handle()) { "; the previous pass keeps drawing" } else { "" };
                 log_errors(world, generation, with_suffix(errors, suffix));
                 old.slot = slot;
+                if moved {
+                    old.reported = None;
+                }
                 if moved && let Some(s) = old.source.clone() {
                     install(world, &mut old, s);
                 }
