@@ -3,7 +3,8 @@
 //! variable none of it is in the app. One line per fact; a line's entity ids, which follow load
 //! timing, come after a tab, so `cut -f1` drops them before a diff.
 //!
-//! The main world writes the cameras and every drawn entity's materials; the render world, after
+//! The main world writes the cameras and every drawn entity's materials after the shot is asked
+//! for (in `RemoteLast` when there is a [`RemotePlugin`], else `Last`); the render world, after
 //! its phases are sorted, writes each camera view's phases in draw order. Items are named by their
 //! [`StableKey`] (from [`StableBinOrder`], so only under [`FixedStep`](crate::screenshot::FixedStep)):
 //! `-` is an item with no key, a `*` after a key one that another item in the phase shares.
@@ -14,6 +15,7 @@ use bevy::core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
 use bevy::core_pipeline::prepass::{AlphaMask3dPrepass, Opaque3dPrepass};
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
+use bevy::remote::{RemoteLast, RemotePlugin, RemoteSystems};
 use bevy::render::camera::ExtractedCamera;
 use bevy::render::render_phase::{BinnedPhaseItem, StableBinOrder, ViewBinnedRenderPhases, ViewSortedRenderPhases};
 use bevy::render::sync_world::MainEntity;
@@ -77,8 +79,14 @@ impl Plugin for OrderDumpPlugin {
         app.add_systems(First, |mut dump: ResMut<OrderDump>| {
             dump.asked = None;
             dump.lines.clear();
-        })
-        .add_systems(Last, main_lines.run_if(|dump: Res<OrderDump>| dump.asked.is_some()));
+        });
+        // After the last ask: `bevy-ts/screenshot` captures in `RemoteLast`, after `Last`.
+        let lines = main_lines.run_if(|dump: Res<OrderDump>| dump.asked.is_some());
+        if app.is_plugin_added::<RemotePlugin>() {
+            app.add_systems(RemoteLast, lines.after(RemoteSystems::ProcessRequests));
+        } else {
+            app.add_systems(Last, lines);
+        }
         let Some(render) = app.get_sub_app_mut(RenderApp) else { return };
         render
             .add_systems(ExtractSchedule, |dump: Extract<Res<OrderDump>>, mut commands: Commands| {

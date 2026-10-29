@@ -416,7 +416,8 @@ fn a_looping_clip_on_a_slow_gltf_is_the_same_at_any_load() {
 }
 
 /// `bevy-ts/screenshot` waits as the env shot does: asked while a texture's read is held, it
-/// answers only after the read, and its PNG shows the texture.
+/// answers only after the read, and its PNG shows the texture. Its order dump has the main
+/// world's lines too, though the method asks after `Last`.
 #[test]
 fn the_method_waits_for_a_texture_on_a_slow_disk() {
     let dir = shots_dir("ready-method-texture");
@@ -435,6 +436,7 @@ fn the_method_waits_for_a_texture_on_a_slow_disk() {
             let material = materials.add(StandardMaterial { base_color: Color::WHITE, base_color_texture: Some(texture), unlit: true, ..default() });
             commands.spawn((Mesh3d(meshes.add(Cuboid::new(3.0, 3.0, 0.5))), MeshMaterial3d(material)));
         });
+    app.insert_resource(OrderDump::default());
     bevy_ts_remote::add_methods(&mut app);
     start(&mut app);
     apply_script(&mut app);
@@ -458,6 +460,10 @@ fn the_method_waits_for_a_texture_on_a_slow_disk() {
     assert_eq!(answer["path"], json!(path));
     let pixel = centre(&path);
     assert!((pixel.to_srgba().to_vec3() - SCENE.to_srgba().to_vec3()).length() < 0.05, "the texture, not {pixel:?}");
+    let dump = std::fs::read_to_string(OrderDump::path(&path)).expect("the method's order dump");
+    for line in ["camera order=0 transform=", "entity key=", "view order=0 transform=", "  Opaque3d bins="] {
+        assert!(dump.contains(line), "no {line:?} in the dump:\n{dump}");
+    }
 }
 
 /// Materials drawing one flat colour each with the fragment shader `slow://m<N>.wesl`: each its own
