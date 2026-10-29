@@ -17,13 +17,13 @@
 - [x] 3.2 `a_gltf_race_gives_one_shot`: 10 shots with both reads released at once, one distinct shot
 - [x] 3.3 `a_town_like_scene_is_the_same_every_shot`: three tree glTFs sharing one alpha-mask leaf material with foliage overlapping at one depth, plus transparent sprites at one z; 10 shots, reads released at once, half with 30 ms of extra work a frame; one distinct shot
 - [x] 3.4 Rewrite `a_bin_draws_in_entity_order_with_stable_bin_order` as `bins_draw_in_key_order_with_stable_bin_order`: two bins and scrambled keys; with `StableBinOrder` bins and entities follow the keys, without it Bevy's order
-- [ ] 3.5 Run with `~/dev/abyme/scripts/gate-slot run … cargo test -p bevy-ts-cli --test it screenshot_ready` and confirm 3.1–3.3 fail on main's vendor (the test would have caught it)
+- [x] 3.5 Run with `~/dev/abyme/scripts/gate-slot run … cargo test -p bevy-ts-cli --test it screenshot_ready` and confirm 3.1–3.3 fail on main's vendor (the test would have caught it). Shown for 3.1 and 3.2 by the research repro (`repro.patch`, run on main's vendor: the colour followed mesh and glTF order, and a 10-run race gave 6 red, 4 blue); 3.3 was not rerun on main, since a cold build of a main worktree did not fit the machine's load
 
 ## 4. Docs
 
 - [x] 4.1 `docs/build.md`: the `StableBinOrder` sentence says bins and sprites at one depth, keyed by place, not only a batch's instances
 
-## 5. Measure (before landing)
+## 5. Measure (after landing: engine-core's go, 2026-10-29, at load 90–170)
 
 - [ ] 5.1 A civ-like frame (the 3.3 scene scaled to agent town's civ counts, or agent town's civ-hazards scene): shot time and the `sort_binned_render_phase` span, with and without the patch, three runs each, load noted; results in design.md "Measurements" and the team note
 - [ ] 5.2 Acceptance in agent town: civ-hazards and civ-meaning give 1 hash in 10 at load 60–150

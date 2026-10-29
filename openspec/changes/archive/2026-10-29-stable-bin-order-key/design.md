@@ -57,5 +57,7 @@ outside `FixedStep`. Multidraw bins: `FixedStep` gives every camera `NoIndirectD
 
 ## Measurements
 
-To be filled by task 5: civ-like frame, shot time and the `sort_binned_render_phase` span, with
-and without the patch, three runs each, load average noted.
+Measured after landing (engine-core's go, 2026-10-29): the machine's load stayed at 90–170 for a
+day, and a cold release build of both arms did not finish. `bench/stable-bin-order/run.sh` builds
+and times the arms in separate slots. The limit: the patch's median `PhaseSort` time under the
+fixed step within 2% or 0.1 ms of main's; over it, a follow-up fix.
