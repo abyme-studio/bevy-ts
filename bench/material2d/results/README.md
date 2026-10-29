@@ -20,9 +20,10 @@ waits for the GPU. 600 frames after 120 warm-up, with the arms alternated.
   (median of the run medians), within the 1.6 ms estimate.
 - Estimate (proposal, from the learn-planets research): 100 planets at most 1.6 ms of GPU, 500 at
   most 8 ms. `n500` reads 3.6 ms over `off`.
-- Two runs of each of `n100`, `n200` and `n500` read 5 to 6 ms, the rest 2 to 4 ms; `off` held
-  1.1 to 1.4 ms throughout. The median places the gate; the slow runs are noted, not explained.
-- CPU: the transparent pass's encoding grows with the draws, about 0.25 µs a layer (0.13 ms at
+- Two runs of each of `n100` and `n200`, and four of `n500`, read 5 to 6 ms; the rest read 1.9 to
+  4.1 ms. `off` held 1.1 to 1.4 ms throughout. The median places the gate; the slow runs are
+  noted, not explained.
+- CPU: the transparent pass's encoding grows with the draws, about 0.08 µs a layer (0.13 ms at
   500 planets, about 1,600 layers). Metal gives no GPU timestamps, so GPU time shows only in the
   frame time.
 - `n200` is recorded for learn-planets and gates nothing.
