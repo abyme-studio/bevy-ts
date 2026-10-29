@@ -522,6 +522,43 @@ fn restart(world: &mut World) {
     world.insert_resource(tree);
 }
 
+/// Orders `host::frame` before Bevy's sprite mesh systems. `add_mesh` queues a `Mesh2d` insert for
+/// each `Sprite` added since it last ran; a frame that despawned one between the queue and its sync
+/// point (a level swap) made the insert panic on a despawned entity. Before it, `add_mesh` sees only
+/// live sprites, this frame's mounts among them, so a swapped-in level draws the frame it mounts.
+/// `add_mesh` is private, so the edge is added by name (Bevy's `debug` names, which `bevy_remote`
+/// turns on); the `despawn_swap` test fails if it is gone.
+#[derive(Debug)]
+struct FrameBeforeSpriteMesh;
+
+impl bevy::ecs::schedule::ScheduleBuildPass for FrameBeforeSpriteMesh {
+    type EdgeOptions = ();
+
+    fn add_dependency(&mut self, _: bevy::ecs::schedule::NodeId, _: bevy::ecs::schedule::NodeId, _: Option<&()>) {}
+
+    fn collapse_set(
+        &mut self,
+        _: bevy::ecs::schedule::SystemSetKey,
+        _: &indexmap::IndexSet<bevy::ecs::schedule::SystemKey, bevy::platform::hash::FixedHasher>,
+        _: &bevy::ecs::schedule::graph::DiGraph<bevy::ecs::schedule::NodeId>,
+    ) -> impl Iterator<Item = (bevy::ecs::schedule::NodeId, bevy::ecs::schedule::NodeId)> {
+        std::iter::empty()
+    }
+
+    fn build(
+        &mut self,
+        _: &mut World,
+        graph: &mut bevy::ecs::schedule::ScheduleGraph,
+        mut deps: bevy::ecs::schedule::FlattenedDependencies<'_>,
+    ) -> Result<(), bevy::ecs::schedule::ScheduleBuildError> {
+        let find = |name: &str| graph.systems.iter().find(|(_, s, _)| s.name().to_string() == name).map(|(key, _, _)| key);
+        if let (Some(frame), Some(mesh)) = (find("bevy_ts_tsx::host::frame"), find("bevy_sprite_render::sprite_mesh::add_mesh")) {
+            deps.add_edge(frame, mesh);
+        }
+        Ok(())
+    }
+}
+
 impl Plugin for TsxPlugin {
     fn build(&self, app: &mut App) {
         // `<material>` is a `StandardMaterial.of` value: it needs the reflected asset type and
@@ -545,10 +582,12 @@ impl Plugin for TsxPlugin {
         }
         app.add_systems(
             PostUpdate,
-            // After Bevy's sprite mesh systems and their sync point: `add_mesh` queues a `Mesh2d` insert for each new `Sprite`, and a frame that despawned one first (a level swap) made that insert panic on a despawned entity.
             // The sweep frees instances no entity holds once the reconcile has set this frame's; world text lays out after, so a bound label draws the frame its binding changes, and the pixel-2D pass, so a bound y draws its z the same frame.
-            host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare).before(bevy_ts_material::kinds::sweep).before(bevy_ts_material::WorldTextSystems).before(bevy_ts_material::Pixel2dSystems).before(bevy_ts_material::BitmapTextSystems).after(bevy::sprite_render::check_entities_needing_specialization::<bevy::sprite_render::SpriteMeshMaterial>),
+            host::frame.after(bevy_ts::BevyTsSet::PostUpdate).before(bevy::ui::UiSystems::Prepare).before(bevy_ts_material::kinds::sweep).before(bevy_ts_material::WorldTextSystems).before(bevy_ts_material::Pixel2dSystems).before(bevy_ts_material::BitmapTextSystems),
         );
+        app.edit_schedule(PostUpdate, |s| {
+            s.add_build_pass(FrameBeforeSpriteMesh);
+        });
         app.add_ts_command_kind(mount::UNMOUNT, mount::unmount);
         app.add_systems(PostUpdate, intrinsics::report_texture_failures);
         // After the frame's bindings, so a `selected` key written this frame finds its tab.

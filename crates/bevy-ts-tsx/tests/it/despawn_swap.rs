@@ -1,11 +1,15 @@
 //! A level swap in one frame: a `<For>` slot unmounts rows whose `Sprite` Bevy's sprite mesh path
-//! (`add_mesh`, `PostUpdate`) saw added that same frame. Its `Mesh2d` insert is queued
-//! on `Commands`, so `host::frame` must run after those commands apply, or the despawn lands first
-//! and the insert panics on a despawned entity.
+//! (`add_mesh`, `PostUpdate`) would see added. Its `Mesh2d` insert is queued on `Commands`, so
+//! `host::frame` runs before it, or the despawn lands between the queue and the insert and the
+//! insert panics on a despawned entity. The app has the engine's plugins, world text among them,
+//! so an ordering that closes a cycle fails here.
 
 use bevy::ecs::schedule::SingleThreadedExecutor;
 use bevy::prelude::*;
-use bevy::sprite_render::SpriteMeshPlugin;
+use bevy::render::RenderPlugin;
+use bevy::render::settings::{RenderCreation, WgpuSettings};
+use bevy::window::ExitCondition;
+use bevy::winit::WinitPlugin;
 use bevy_ts::BevyTsPlugin;
 use bevy_ts::backend::ModuleSet;
 use bevy_ts::fake::{FakeHandle, FakeProgram};
@@ -23,15 +27,20 @@ fn app() -> (App, Replies) {
     let fake = FakeHandle::default();
     let h = fake.clone();
     let mut app = App::new();
-    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
-        .init_asset::<Mesh>()
-        .init_asset::<Image>()
-        .init_asset::<Shader>()
-        .init_asset::<TextureAtlasLayout>()
-        .init_asset::<bevy::sprite_render::SpriteMeshMaterial>()
-        .add_plugins(BevyTsPlugin::new(move || Box::new(h.backend())))
-        .add_plugins(TsxPlugin)
-        .add_plugins(SpriteMeshPlugin);
+    let render = RenderPlugin { render_creation: RenderCreation::Automatic(Box::new(WgpuSettings { backends: None, ..default() })), ..default() };
+    app.add_plugins(
+        DefaultPlugins
+            .build()
+            .disable::<WinitPlugin>()
+            .disable::<bevy::log::LogPlugin>()
+            .set(WindowPlugin { primary_window: None, exit_condition: ExitCondition::DontExit, ..default() })
+            .set(render),
+    )
+    .add_plugins(BevyTsPlugin::new(move || Box::new(h.backend())))
+    .add_plugins(TsxPlugin)
+    .add_plugins(bevy_ts_material::WorldTextPlugin);
+    app.finish();
+    app.cleanup();
     // One thread, in the order the graph gives: the race is the graph's, not the scheduler's luck.
     app.edit_schedule(PostUpdate, |s| {
         s.set_executor(SingleThreadedExecutor::new());
@@ -66,9 +75,12 @@ fn call(app: &mut App, replies: &Replies, reply: Value) {
     app.update();
 }
 
-fn sprites(app: &mut App) -> usize {
+/// Mounted sprites, and those with their quad.
+fn sprites(app: &mut App) -> (usize, usize) {
     let world = app.world_mut();
-    world.query_filtered::<&TsxNode, With<Sprite>>().iter(world).count()
+    let all = world.query_filtered::<&TsxNode, With<Sprite>>().iter(world).count();
+    let meshed = world.query_filtered::<&TsxNode, (With<Sprite>, With<Mesh2d>)>().iter(world).count();
+    (all, meshed)
 }
 
 /// `PostUpdate`'s systems in run order, by name.
@@ -79,19 +91,16 @@ fn order(app: &App) -> Vec<String> {
 }
 
 #[test]
-fn the_frame_runs_after_the_sprite_mesh_commands_apply() {
+fn the_frame_runs_before_the_sprite_mesh_systems() {
     let (mut app, replies) = app();
     let row = json!([{ "key": "row", "type": "entity", "components": [{ "type": "Sprite", "kind": "rust", "props": {} }] }]);
     call(&mut app, &replies, json!({ "mounts": [[1, "a", row]] }));
-    assert_eq!(sprites(&mut app), 1);
+    assert_eq!(sprites(&mut app), (1, 1), "the quad the frame it mounts");
     // The swap: the old rows go and the new come in one call.
     call(&mut app, &replies, json!({ "unmounts": [[1, "a"]], "mounts": [[1, "b", row]] }));
-    assert_eq!(sprites(&mut app), 1);
-    // The race is between systems the graph leaves unordered, so the order is the test: the
-    // frame comes after `add_material` (the second of `add_mesh`'s chain) and a sync point.
+    assert_eq!(sprites(&mut app), (1, 1), "the new level's quad the frame it swaps in");
+    // The race is between systems the graph would leave unordered, so the order is the test.
     let names = order(&app);
     let at = |what: &str| names.iter().position(|n| n.contains(what)).unwrap_or_else(|| panic!("no {what} in {names:#?}"));
-    let (material, frame) = (at("add_material"), at("host::frame"));
-    assert!(material < frame, "{names:#?}");
-    assert!(names[material..frame].iter().any(|n| n.contains("apply_deferred") || n.contains("ApplyDeferred")), "a sync point between: {names:#?}");
+    assert!(at("host::frame") < at("add_mesh"), "{names:#?}");
 }

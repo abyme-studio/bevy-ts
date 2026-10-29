@@ -622,6 +622,7 @@ dependencies = [
  "bevy-ts",
  "bevy-ts-material",
  "bevy-ts-remote",
+ "indexmap",
  "serde",
  "serde_json",
 ]
