@@ -185,6 +185,12 @@ jobs:
         id: ndk
         with: { ndk-version: r28c }
       - run: cargo install cargo-ndk --locked
+      # The fat-LTO link of the .so outgrows the runner's 16 GB: the runner was shut down there.
+      - name: 32 GB of swap
+        run: |
+          sudo swapoff -a && sudo rm -f /mnt/swapfile
+          sudo fallocate -l 32G /mnt/swapfile && sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile && sudo swapon /mnt/swapfile && free -g
       # bindgen parses V8's libc++, which needs libclang 19 (the runner ships 18), as rusty_v8's CI does.
       - name: libclang 19
         run: |
@@ -193,7 +199,8 @@ jobs:
       - name: V8 version
         id: v8
         run: echo "v8=$(awk '$0 == "name = \"v8\"" { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: v8-cache
         with:
           path: ~/.cache/bevy-ts/v8-android/v${{ steps.v8.outputs.v8 }}
           key: v8-android-${{ steps.v8.outputs.v8 }}
@@ -202,6 +209,16 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
           BEVY_TS_V8_JOBS: 4
         run: scripts/android
+      # Saved even when a later step of the build fails: V8 alone takes over an hour.
+      - name: V8 built
+        id: v8-built
+        if: ${{ always() && steps.v8-cache.outputs.cache-hit != 'true' }}
+        run: if [ -f ~/.cache/bevy-ts/v8-android/v${{ steps.v8.outputs.v8 }}/librusty_v8.a ]; then echo "built=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/cache/save@v4
+        if: ${{ always() && steps.v8-built.outputs.built == 'true' }}
+        with:
+          path: ~/.cache/bevy-ts/v8-android/v${{ steps.v8.outputs.v8 }}
+          key: v8-android-${{ steps.v8.outputs.v8 }}
       - uses: actions/upload-artifact@v4
         with:
           name: android-arm64
