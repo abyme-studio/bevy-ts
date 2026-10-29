@@ -56,7 +56,8 @@ out=$cache/game-$game
 ~/dev/abyme/scripts/gate-slot run bevy-ts:android-smoke -- bash -c 'cargo build -q -p bevy-ts-cli 2> target/android-smoke-cli.log' \
   || { grep -v ld64 target/android-smoke-cli.log >&2; exit 1; }
 project=${SMOKE_PROJECT:-examples/$game}
-./target/debug/bevy-ts build "$project" --out "$out" ${SMOKE_ENTRY:+--entry "$SMOKE_ENTRY"} >/dev/null
+# --copy-sources: the phone cannot read an asset source on this Mac (agent town's `~/` stardew).
+./target/debug/bevy-ts build "$project" --out "$out" --copy-sources ${SMOKE_ENTRY:+--entry "$SMOKE_ENTRY"} >/dev/null
 env64=$(printf '%s' "${SMOKE_ENV:-{\}}" | base64 | tr -d '\n')
 settle=${SETTLE:-5}
 
@@ -103,7 +104,7 @@ copied=$("$adb" -s $serial shell run-as $pkg stat -c %s files/libbevy_ts_android
 "$adb" -s $serial shell run-as $pkg rm -rf files/games
 tar -C "$out/game" -cf "$cache/game.tar" .
 "$adb" -s $serial push -q "$cache/game.tar" /data/local/tmp/game.tar >/dev/null
-"$adb" -s $serial shell "cat /data/local/tmp/game.tar | run-as $pkg sh -c 'mkdir -p files/games/$game && tar -C files/games/$game -xf -'"
+"$adb" -s $serial shell "cat /data/local/tmp/game.tar | run-as $pkg sh -c 'mkdir -p files/games/$game && tar -C files/games/$game -xf -' && rm /data/local/tmp/game.tar"
 "$adb" -s $serial logcat -G 16M >/dev/null 2>&1 || true
 "$adb" -s $serial logcat -c
 
