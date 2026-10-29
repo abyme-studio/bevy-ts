@@ -1306,7 +1306,7 @@ declare module "bevy-ts/states" {
 }
 
 declare module "bevy-ts/time" {
-  /** `bevy_ts_cli::time::VirtualClock<'_>`, a system param exported from Rust; take it as a system parameter. */
+  /** `bevy_ts_embed::time::VirtualClock<'_>`, a system param exported from Rust; take it as a system parameter. */
   export interface VirtualTime {
     pause(): void;
     unpause(): void;
@@ -1330,7 +1330,7 @@ declare module "bevy-ts/time" {
     readonly effective_speed_f64: number;
     readonly max_delta: number;
   }
-  /** `bevy_ts_cli::time::FixedClock<'_>`, a system param exported from Rust; take it as a system parameter. */
+  /** `bevy_ts_embed::time::FixedClock<'_>`, a system param exported from Rust; take it as a system parameter. */
   export interface FixedTime {
     setTimestep(seconds: number): void;
     setTimestepSeconds(seconds: number): void;
