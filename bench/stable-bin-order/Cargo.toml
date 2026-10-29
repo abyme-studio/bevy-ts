@@ -19,3 +19,6 @@ bevy_render = { path = "../../vendor/bevy_render" }
 
 [profile.release]
 debug = false
+
+# Its own workspace: the base checkout sits under this one's target/, whose workspace it is not in.
+[workspace]
