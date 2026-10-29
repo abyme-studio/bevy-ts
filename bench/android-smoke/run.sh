@@ -62,7 +62,9 @@ project=${SMOKE_PROJECT:-examples/$game}
 env64=$(printf '%s' "${SMOKE_ENV:-{\}}" | base64 | tr -d '\n')
 settle=${SETTLE:-5}
 
-# A headless emulator of its own.
+# A headless emulator of its own, under a grant of the machine's budget held while run.sh lives:
+# beside load 130-180 its CPUs hung 20 s at a time, its boot took 9 min and it crashed.
+~/dev/abyme/scripts/gate-slot take $$ bevy-ts:android-emulator
 if [[ ! -d "$ANDROID_AVD_HOME/bevy-ts-smoke.avd" ]]; then
   echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" -s create avd -n bevy-ts-smoke \
     -k "system-images;android-34;google_apis;arm64-v8a" -d pixel_6 >/dev/null
