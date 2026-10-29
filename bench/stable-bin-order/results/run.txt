@@ -1,0 +1,8 @@
+# bench/stable-bin-order, 2026-10-30: patch a038aa133 (holes 1-3) vs base ed7f78a81, release, alternating
+# PhaseSort mean per frame, median of 3: patch 70 us, base 44 us (+26 us, under the 0.1 ms limit)
+arm=patch run=1 load=26.56 shot_ms=1446 phase_sort_mean_us=81 phase_sort_p95_us=116 frames=133
+arm=base run=1 load=26.56 shot_ms=660 phase_sort_mean_us=43 phase_sort_p95_us=69 frames=119
+arm=patch run=2 load=26.56 shot_ms=451 phase_sort_mean_us=70 phase_sort_p95_us=127 frames=120
+arm=base run=2 load=26.56 shot_ms=493 phase_sort_mean_us=44 phase_sort_p95_us=71 frames=122
+arm=patch run=3 load=26.56 shot_ms=484 phase_sort_mean_us=63 phase_sort_p95_us=100 frames=119
+arm=base run=3 load=26.56 shot_ms=480 phase_sort_mean_us=44 phase_sort_p95_us=79 frames=120

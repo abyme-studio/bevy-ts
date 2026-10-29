@@ -51,8 +51,13 @@ fn main() {
         .add_systems(Update, shared_leaf);
     let sorts = Sorts::default();
     let (before, after) = (sorts.clone(), sorts.clone());
+    // As `App::run`'s runner: the renderer is made asynchronously, and `RenderApp` exists only
+    // once the plugins are ready.
+    while app.plugins_state() == bevy::app::PluginsState::Adding {
+        bevy::tasks::tick_global_task_pools_on_main_thread();
+    }
     app.finish();
-    app.cleanup();
+    // Before `cleanup`, which moves `RenderApp` to the render thread (`PipelinedRenderingPlugin`).
     app.sub_app_mut(RenderApp).add_systems(
         Render,
         (
@@ -67,6 +72,7 @@ fn main() {
             .before(RenderSystems::Prepare),
         ),
     );
+    app.cleanup();
     while !(std::fs::metadata(&shot).is_ok_and(|m| m.len() > 0) && !app.world().contains_resource::<ShotWhenReady>()) {
         app.update();
         assert!(started.elapsed() < Duration::from_secs(600), "no shot in 10 min");
