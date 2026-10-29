@@ -13,6 +13,7 @@ asked for a result at whatever load there was, not 8 runs on a quiet machine.
 | frame, median of the run medians | 14.00 | 15.33 | 14.73 | 20.29 | 20.12 | 25.92 |
 | frame, lowest run median | 11.19 | 14.51 | 12.29 | 17.69 | 18.17 | 22.09 |
 | frame, highest run median | 17.98 | 16.54 | 16.60 | 27.76 | 27.17 | 27.82 |
+| frame p95, median of the run p95s | 44.64 | 45.94 | 52.99 | 57.77 | 50.63 | 56.04 |
 | transparent 2D pass, CPU, median | none | 0.006 | 0.023 | 0.072 | 0.13 | 0.30 |
 | opaque 2D pass, CPU, median | 0.001 | 0.014 | 0.014 | 0.015 | 0.015 | 0.015 |
 
