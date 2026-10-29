@@ -67,17 +67,14 @@ engine fetches the library at `bevy-ts`'s version itself.
 The release workflow's `android` job builds it at every release on a Linux runner with
 `scripts/android`. V8 has no Android prebuilt, so it builds from source once per `v8` version
 (about an hour) and is cached under `~/.cache/bevy-ts/v8-android`. `android-publish` then publishes
-it, but only once `ANDROID_PUBLISH` in the first job's Platforms step is `true`; until then its
-publish is a dry run. That waits on its first version by hand, as below, on the operator's go:
+it while `ANDROID_PUBLISH` in the first job's Platforms step is `true`; `false` makes its
+publish a dry run. Its first version went out by hand, on the operator's go, from a dry run's
+`android-arm64` artifact, then its trusted publisher was set as above:
 
 ```sh
-scripts/android
-mkdir -p packages/platforms/android-arm64/lib
-cp -R dist/aarch64-linux-android/. packages/platforms/android-arm64/lib/
-cd packages/platforms/android-arm64 && npm publish --access public --tag next
+gh run download <run> -n android-arm64 -D packages/platforms/android-arm64/lib
+cd packages/platforms/android-arm64 && npm pkg set version=<version> && npm publish --access public --tag next
 ```
-
-then its trusted publisher, then `ANDROID_PUBLISH: true`.
 
 ## The packed examples
 
