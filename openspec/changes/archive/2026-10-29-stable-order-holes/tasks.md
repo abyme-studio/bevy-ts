@@ -17,4 +17,4 @@
 
 ## 4. Measure (after landing, engine-core's rule)
 
-- [ ] 4.1 `bench/stable-bin-order`, patch vs main: median PhaseSort time under the fixed step within 2% or 0.1 ms
+- [ ] 4.1 `bench/stable-bin-order`, patch vs main: median PhaseSort time under the fixed step within 2% or 0.1 ms (run after landing; over the limit, a follow-up fix)

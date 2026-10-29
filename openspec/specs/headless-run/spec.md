@@ -147,15 +147,18 @@ A hold SHALL NOT be progress. When the env shot fails after 60 s with no progres
 ### Requirement: A fixed-step shot draws ties in a stable order
 
 Under `FixedStep`, every entity with an `Aabb` SHALL get a 64-bit key: a `FixedHasher` hash of its
-world-space AABB centre (`GlobalTransform` × `Aabb.center`), its half extents, and the asset path of
-its mesh or sprite image when it has one. The render world SHALL hold the keys as
-`StableBinOrder(MainEntityHashMap<u64>)`.
+whole `GlobalTransform` affine and its local `Aabb`, as f32 bits, the asset path of its mesh or
+sprite image when it has one, and a hash of the reflected fields of each `MeshMaterial3d` or
+`MeshMaterial2d` asset it draws with. A key SHALL be computed again when any of those components
+change. The render world SHALL hold the keys as `StableBinOrder(MainEntityHashMap<u64>)`.
 
 While `StableBinOrder` is in the render world:
 
-- `sort_binned_render_phase` SHALL sort each bin's entities by key, then `MainEntity`, and SHALL
-  order `batchable_meshes` and `unbatchable_meshes` by each bin's smallest key, then by the bin's
-  own key. An entity with no key SHALL sort after every keyed one.
+- `sort_binned_render_phase` SHALL sort each bin's entities by key, then `MainEntity`, in
+  batchable, unbatchable and non-mesh bins alike. It SHALL order `batchable_meshes`,
+  `unbatchable_meshes` and `non_mesh_items` by each bin's first key, then by the bin's own key. An
+  entity with no key SHALL sort after every keyed one. An unbatchable bin's buffer indices SHALL
+  follow its sorted order.
 - `sort_phase_system` SHALL order a sorted phase's items by key before `SortedPhaseItem::sort`, so
   items with one sort key keep the key order.
 
@@ -181,4 +184,36 @@ sort as in Bevy 0.20.
 
 #### Scenario: A bin's order without the fixed step
 - **WHEN** `sort_binned_render_phase` runs with no `StableBinOrder`
-- **THEN** bins and their entities keep Bevy 0.20's order
+- **THEN** bins and their batchable entities keep Bevy 0.20's order, and unbatchable and non-mesh entities draw in the order they were queued
+
+#### Scenario: Unbatchable bins
+- **WHEN** `sort_binned_render_phase` runs with `StableBinOrder` on two unbatchable bins whose entities were queued out of key order
+- **THEN** the bins come in order of their first key and each bin's entities in key order
+
+#### Scenario: A half turn
+- **WHEN** one slab mesh, red in front and blue behind, is shot twice at one place, the second turned exactly half a turn about y, once spawned in each order
+- **THEN** the two PNGs have identical pixels
+
+#### Scenario: Two materials on one mesh
+- **WHEN** one quad mesh is shot twice at one place, in a red material and a blue one, once spawned in each order
+- **THEN** the two PNGs have identical pixels
+
+### Requirement: An order dump names what a shot drew
+
+With `BEVY_TS_ORDER_DUMP=1`, each shot SHALL also write `<shot>.order.txt` beside it, from the
+frame it captured. The file SHALL list each active camera's transform as f32 bits, and every
+entity with an `Aabb`, with its `StableKey` and a hash of each material's reflected fields. A
+handle in a material SHALL hash as its asset's path. Then, per camera view, it SHALL list
+Opaque3d, AlphaMask3d, Opaque3dPrepass and AlphaMask3dPrepass: every bin in draw order with its
+entities' keys, the unbatchable bins' entities in the order they draw, and the count of non-mesh
+items. Last come Transparent3d's items with their keys. An item with no key SHALL show `-`, and a
+key two items share SHALL be marked `*`. Entity ids SHALL appear only after a tab on their line.
+Without the variable, no file SHALL be written and no dump system SHALL run.
+
+#### Scenario: Two runs dump alike
+- **WHEN** the glTF race scene is shot twice under `FixedStep` with `OrderDump`
+- **THEN** both dumps exist and are equal once each line's text after a tab is dropped
+
+#### Scenario: No dump unasked
+- **WHEN** the same scene is shot without `OrderDump`
+- **THEN** no `.order.txt` is written
