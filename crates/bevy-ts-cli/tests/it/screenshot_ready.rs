@@ -23,6 +23,7 @@ use bevy_ts::generation::{DevSource, ReloadStatus};
 use bevy_ts::runtime::RuntimeInfo;
 use bevy_ts_cli::compile::Compiler;
 use bevy_ts_cli::headless::{self, SIZE};
+use bevy_ts_remote::order_dump::OrderDump;
 use bevy_ts_remote::screenshot::{FixedStep, ReadyPlugin, ReadyTimeout, ShotWhenReady, pipelines_waiting};
 use common::*;
 use serde_json::json;
@@ -292,7 +293,8 @@ fn stacked_instances_at_one_depth_are_the_same_every_shot() {
 /// Two bins, their instances queued in a scrambled order and keyed in another, as a frame whose
 /// assets loaded in another order does: with Bevy's [`StableBinOrder`], which [`ReadyPlugin`] fills
 /// under the fixed step, bins draw in the order of their first key and each bin's instances in key
-/// order; without it, bins in bin key order and instances in queue order.
+/// order; without it, bins in bin key order and instances in queue order. The same for batchable
+/// bins and unbatchable ones (a skinned mesh's).
 #[test]
 fn bins_draw_in_key_order_with_stable_bin_order() {
     use bevy::asset::uuid::Uuid;
@@ -309,7 +311,7 @@ fn bins_draw_in_key_order_with_stable_bin_order() {
     let bin = |n: u128| Opaque3dBinKey { asset_id: AssetId::<Mesh>::Uuid { uuid: Uuid::from_u128(n) }.untyped() };
     // (bin, queue order, key): bin 1 sorts first by its key, bin 2 by its smallest instance key.
     let queued = [(1, 30), (2, 50), (1, 10), (2, 5), (1, 20), (2, 40)];
-    let run = |stable: bool| {
+    let run = |stable: bool, kind: BinnedRenderPhaseType| {
         let mut world = World::new();
         let view = RetainedViewEntity::new(MainEntity::from(world.spawn_empty().id()), None, 0);
         let entities: Vec<Entity> = queued.iter().map(|_| world.spawn_empty().id()).collect();
@@ -319,7 +321,7 @@ fn bins_draw_in_key_order_with_stable_bin_order() {
         let phase = phases.get_mut(&view).unwrap();
         // Queued last entity first, so neither queue nor entity order is key order.
         for (i, (&(b, _), &e)) in queued.iter().zip(&entities).enumerate().rev() {
-            phase.add(batch_set.clone(), bin(b), (e, MainEntity::from(e)), InputUniformIndex(i as u32), BinnedRenderPhaseType::BatchableMesh);
+            phase.add(batch_set.clone(), bin(b), (e, MainEntity::from(e)), InputUniformIndex(i as u32), kind);
         }
         world.insert_resource(phases);
         if stable {
@@ -329,10 +331,16 @@ fn bins_draw_in_key_order_with_stable_bin_order() {
         world.run_system_once(sort_binned_render_phase::<Opaque3d>).unwrap();
         let phases = world.resource::<ViewBinnedRenderPhases<Opaque3d>>();
         let key_of = |m: &MainEntity| queued[entities.iter().position(|e| *e == m.id()).unwrap()].1;
-        phases[&view].batchable_meshes.iter().map(|((_, b), bin)| (b.asset_id, bin.entities().keys().map(key_of).collect::<Vec<_>>())).collect::<Vec<_>>()
+        let phase = &phases[&view];
+        match kind {
+            BinnedRenderPhaseType::BatchableMesh => phase.batchable_meshes.iter().map(|((_, b), bin)| (b.asset_id, bin.entities().keys().map(key_of).collect::<Vec<_>>())).collect::<Vec<_>>(),
+            _ => phase.unbatchable_meshes.iter().map(|((_, b), bin)| (b.asset_id, bin.entities.keys().map(key_of).collect())).collect(),
+        }
     };
-    assert_eq!(run(true), vec![(bin(2).asset_id, vec![5, 40, 50]), (bin(1).asset_id, vec![10, 20, 30])], "with StableBinOrder, key order");
-    assert_eq!(run(false), vec![(bin(1).asset_id, vec![20, 10, 30]), (bin(2).asset_id, vec![40, 5, 50])], "without it, Bevy's order");
+    for kind in [BinnedRenderPhaseType::BatchableMesh, BinnedRenderPhaseType::UnbatchableMesh] {
+        assert_eq!(run(true, kind), vec![(bin(2).asset_id, vec![5, 40, 50]), (bin(1).asset_id, vec![10, 20, 30])], "{kind:?} with StableBinOrder, key order");
+        assert_eq!(run(false, kind), vec![(bin(1).asset_id, vec![20, 10, 30]), (bin(2).asset_id, vec![40, 5, 50])], "{kind:?} without it, Bevy's order");
+    }
 }
 
 /// A PNG of 4 x 4 RGBA pixels, one colour.
@@ -683,6 +691,62 @@ fn mesh_tie_shot(name: &str, blue_first: bool) -> Vec<u8> {
     png(&path).data.expect("the shot's pixels")
 }
 
+/// Two entities, each a mesh, a material and a transform.
+type Pair = [(Handle<Mesh>, Handle<StandardMaterial>, Transform); 2];
+
+/// Shoots `scene`'s two entities under the fixed step, spawned in its order, or the other way round
+/// with `flip`: their entity ids, and so their `MainEntity` order, flip with it.
+fn spawn_order_shot(name: &str, flip: bool, scene: fn(&mut Assets<Mesh>, &mut Assets<StandardMaterial>) -> Pair) -> Vec<u8> {
+    let dir = shots_dir(name);
+    let path = dir.join("tie.png");
+    let (_game, mut app) = engine(name, &path, 30);
+    app.insert_resource(FixedStep).add_systems(Startup, move |mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>| {
+        let mut pair = scene(&mut meshes, &mut materials);
+        if flip {
+            pair.reverse();
+        }
+        for (mesh, material, transform) in pair {
+            commands.spawn((Mesh3d(mesh), MeshMaterial3d(material), transform));
+        }
+    });
+    start(&mut app);
+    apply_script(&mut app);
+    until_shot(&mut app, &path);
+    png(&path).data.expect("the shot's pixels")
+}
+
+/// A slab whose front is red and back blue, twice at one place, the second turned exactly half a
+/// turn about y: the same bounds, and the second's blue back exactly on the first's red front.
+fn half_turn(meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) -> Pair {
+    let mut slab = Mesh::from(Cuboid::new(2.5, 2.5, 0.5));
+    let normals = slab.attribute(Mesh::ATTRIBUTE_NORMAL).and_then(|a| a.as_float3()).expect("a cuboid's normals").to_vec();
+    let colours: Vec<[f32; 4]> = normals.iter().map(|n| if n[2] > 0.5 { [1.0, 0.0, 0.0, 1.0] } else if n[2] < -0.5 { [0.0, 0.0, 1.0, 1.0] } else { [0.5, 0.5, 0.5, 1.0] }).collect();
+    slab.insert_attribute(Mesh::ATTRIBUTE_COLOR, colours);
+    let mesh = meshes.add(slab);
+    let material = materials.add(StandardMaterial { base_color: Color::WHITE, unlit: true, ..default() });
+    let turned = Transform::from_rotation(Quat::from_xyzw(0.0, 1.0, 0.0, 0.0));
+    [(mesh.clone(), material.clone(), Transform::IDENTITY), (mesh, material, turned)]
+}
+
+/// One quad, twice at one place, in a red material and a blue one.
+fn two_materials(meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) -> Pair {
+    let mesh = meshes.add(Rectangle::new(2.5, 2.5));
+    let [red, blue] = [Color::srgb(1.0, 0.0, 0.0), Color::srgb(0.0, 0.0, 1.0)].map(|c| materials.add(StandardMaterial { base_color: c, unlit: true, ..default() }));
+    [(mesh.clone(), red, Transform::IDENTITY), (mesh, blue, Transform::IDENTITY)]
+}
+
+#[test]
+fn one_mesh_turned_half_a_turn_follows_no_spawn_order() {
+    let (a, b) = (spawn_order_shot("half-turn-a", false, half_turn), spawn_order_shot("half-turn-b", true, half_turn));
+    assert!(a == b, "the spawn order decided the tie: {} of {} bytes differ", differ(&a, &b), a.len());
+}
+
+#[test]
+fn two_materials_on_one_mesh_follow_no_spawn_order() {
+    let (a, b) = (spawn_order_shot("two-materials-a", false, two_materials), spawn_order_shot("two-materials-b", true, two_materials));
+    assert!(a == b, "the spawn order decided the tie: {} of {} bytes differ", differ(&a, &b), a.len());
+}
+
 #[derive(Resource)]
 struct Scenes(Vec<Handle<bevy::world_serialization::WorldAsset>>);
 
@@ -690,6 +754,11 @@ struct Scenes(Vec<Handle<bevy::world_serialization::WorldAsset>>);
 /// `places`. With `first`, its read is released first and the others once its scene has loaded;
 /// with `None` all go at once, the order left to the IO threads. `setup` adds the rest of the scene.
 fn gltf_shot(name: &str, assets: impl FnOnce(&Path), places: &[Vec3], first: Option<usize>, work: Duration, setup: impl FnOnce(&mut App)) -> Vec<u8> {
+    gltf_shot_dump(name, assets, places, first, work, setup).0
+}
+
+/// As [`gltf_shot`], with the shot's order dump when `setup` asked for one.
+fn gltf_shot_dump(name: &str, assets: impl FnOnce(&Path), places: &[Vec3], first: Option<usize>, work: Duration, setup: impl FnOnce(&mut App)) -> (Vec<u8>, Option<String>) {
     let dir = shots_dir(name);
     let path = dir.join("shot.png");
     let folder = dir.join("assets");
@@ -729,7 +798,7 @@ fn gltf_shot(name: &str, assets: impl FnOnce(&Path), places: &[Vec3], first: Opt
     for _ in 0..5 {
         app.update();
     }
-    png(&path).data.expect("the shot's pixels")
+    (png(&path).data.expect("the shot's pixels"), std::fs::read_to_string(OrderDump::path(&path)).ok())
 }
 
 /// The red and blue quads of [`mesh_tie_shot`] as two glTFs, `g0` red and `g1` blue.
@@ -751,6 +820,27 @@ fn a_tie_at_one_depth_follows_no_load_order() {
     let red = gltf_shot("tie-red-gltf-first", tie_gltfs, &at, Some(0), Duration::ZERO, |_| {});
     let blue = gltf_shot("tie-blue-gltf-first", tie_gltfs, &at, Some(1), Duration::ZERO, |_| {});
     assert!(red == blue, "the glTF load order decided the tie: {} of {} bytes differ", differ(&red, &blue), red.len());
+}
+
+/// An order dump's lines without their entity ids, which follow load timing (after a tab).
+fn without_ids(dump: &str) -> String {
+    dump.lines().map(|l| l.split('\t').next().unwrap_or_default()).collect::<Vec<_>>().join("\n")
+}
+
+#[test]
+fn an_order_dump_is_the_same_every_run_and_only_when_asked() {
+    let at = [Vec3::ZERO, Vec3::ZERO];
+    let asked = |app: &mut App| {
+        app.insert_resource(OrderDump::default());
+    };
+    let dumps: Vec<String> = (0..2).map(|i| gltf_shot_dump(&format!("order-dump-{i}"), tie_gltfs, &at, None, Duration::ZERO, asked).1.expect("a dump beside the shot")).collect();
+    for line in ["camera order=0 transform=", "view order=0 transform=", "  Opaque3d bins=2 ", "entity key=", "material=bevy_pbr::"] {
+        assert!(dumps[0].contains(line), "no `{line}` in the dump:\n{}", dumps[0]);
+    }
+    assert!(!without_ids(&dumps[0]).contains(" - ") && !dumps[0].contains("* "), "an item with no key, or a shared one:\n{}", dumps[0]);
+    assert_eq!(without_ids(&dumps[0]), without_ids(&dumps[1]), "two runs' dumps differ");
+    let (_, none) = gltf_shot_dump("order-dump-off", tie_gltfs, &at, None, Duration::ZERO, |_| {});
+    assert!(none.is_none(), "a dump with no OrderDump");
 }
 
 #[test]

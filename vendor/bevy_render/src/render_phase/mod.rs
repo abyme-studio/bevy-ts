@@ -935,8 +935,10 @@ pub struct BinnedRenderPhaseBatch {
 
 /// Information about the unbatchable entities in a bin.
 pub struct UnbatchableBinnedEntities {
-    /// The entities.
-    pub entities: MainEntityHashMap<Entity>,
+    /// The entities, in the order they draw: `sort_binned_render_phase` sorts
+    /// them by [`StableBinOrder`] when it is there, before the buffer indices
+    /// are given out in this order.
+    pub entities: IndexMap<MainEntity, Entity, EntityHash>,
 
     /// The GPU array buffer indices of each unbatchable binned entity.
     pub(crate) buffer_indices: UnbatchableBinnedEntityIndexSet,
@@ -944,8 +946,8 @@ pub struct UnbatchableBinnedEntities {
 
 /// Information about [`BinnedRenderPhaseType::NonMesh`] entities.
 pub struct NonMeshEntities {
-    /// The entities.
-    pub entities: MainEntityHashMap<Entity>,
+    /// The entities, in the order they draw (sorted as unbatchable ones are).
+    pub entities: IndexMap<MainEntity, Entity, EntityHash>,
 }
 
 /// Stores instance indices and dynamic offsets for unbatchable entities in a
@@ -1135,7 +1137,7 @@ where
                         entry.get_mut().entities.insert(main_entity, entity);
                     }
                     indexmap::map::Entry::Vacant(entry) => {
-                        let mut entities = MainEntityHashMap::default();
+                        let mut entities = IndexMap::default();
                         entities.insert(main_entity, entity);
                         entry.insert(UnbatchableBinnedEntities {
                             entities,
@@ -1155,7 +1157,7 @@ where
                         entry.get_mut().entities.insert(main_entity, entity);
                     }
                     indexmap::map::Entry::Vacant(entry) => {
-                        let mut entities = MainEntityHashMap::default();
+                        let mut entities = IndexMap::default();
                         entities.insert(main_entity, entity);
                         entry.insert(NonMeshEntities { entities });
                     }
@@ -1518,7 +1520,7 @@ fn remove_entity_from_bin<BPI>(
                 entity_bin_key.batch_set_key.clone(),
                 entity_bin_key.bin_key.clone(),
             )) {
-                bin_entry.get_mut().entities.remove(&entity);
+                bin_entry.get_mut().entities.swap_remove(&entity);
 
                 // If the bin is now empty, remove the bin.
                 if bin_entry.get_mut().entities.is_empty() {
@@ -1532,7 +1534,7 @@ fn remove_entity_from_bin<BPI>(
                 entity_bin_key.batch_set_key.clone(),
                 entity_bin_key.bin_key.clone(),
             )) {
-                bin_entry.get_mut().entities.remove(&entity);
+                bin_entry.get_mut().entities.swap_remove(&entity);
 
                 // If the bin is now empty, remove the bin.
                 if bin_entry.get_mut().entities.is_empty() {

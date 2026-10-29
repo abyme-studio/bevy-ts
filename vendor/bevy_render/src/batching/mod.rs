@@ -207,8 +207,10 @@ pub fn sort_binned_render_phase<BPI>(
         phase.batchable_meshes.sort_unstable_keys();
         phase.unbatchable_meshes.sort_unstable_keys();
         phase.non_mesh_items.sort_unstable_keys();
-        // Bins in the order of their first entity's key, then their own key:
-        // bin keys are allocation ids, which follow load timing.
+        // Each bin's entities by key, then bins in the order of their first
+        // entity's key, then their own key: bin keys are allocation ids, which
+        // follow load timing. The unbatchable bins' buffer indices are given
+        // out later, in this order.
         if let Some(stable) = &stable {
             for bin in phase.batchable_meshes.values_mut() {
                 bin.sort(stable);
@@ -216,9 +218,22 @@ pub fn sort_binned_render_phase<BPI>(
             phase
                 .batchable_meshes
                 .sort_by_cached_key(|_, bin| bin.entities().keys().next().map(|e| stable.order(*e)));
-            phase.unbatchable_meshes.sort_by_cached_key(|_, bin| {
-                bin.entities.keys().map(|e| stable.order(*e)).min()
-            });
+            for bin in phase.unbatchable_meshes.values_mut() {
+                if !bin.entities.keys().is_sorted_by_key(|e| stable.order(*e)) {
+                    bin.entities.sort_by_cached_key(|e, _| stable.order(*e));
+                }
+            }
+            phase
+                .unbatchable_meshes
+                .sort_by_cached_key(|_, bin| bin.entities.keys().next().map(|e| stable.order(*e)));
+            for bin in phase.non_mesh_items.values_mut() {
+                if !bin.entities.keys().is_sorted_by_key(|e| stable.order(*e)) {
+                    bin.entities.sort_by_cached_key(|e, _| stable.order(*e));
+                }
+            }
+            phase
+                .non_mesh_items
+                .sort_by_cached_key(|_, bin| bin.entities.keys().next().map(|e| stable.order(*e)));
         }
     }
 }
