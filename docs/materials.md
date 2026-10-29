@@ -355,8 +355,10 @@ fraction of a pixel still read whole pixels, so a slow shimmer steps: that is th
   shader kept. With none, the camera draws as without the pass.
 - At most four pass kinds live at once, and the params with the frame fields fit 256 bytes. Each
   is refused at its `pass()` call.
-- Cost: a pass reads and writes every pixel of the target once.
-  `bench/fullscreen-pass/results/README.md` has the numbers. A camera with no pass costs nothing.
+- Cost: a pass reads and writes every pixel of the target once, estimated at 0.15 to 0.6 ms at
+  1080p. On a loaded M5 Max it did not show above the noise of the frame time, and its CPU cost is
+  about 1 µs ([bench/fullscreen-pass/results](../bench/fullscreen-pass/results/README.md)). A camera
+  with no pass costs nothing.
 
 Not yet: a second texture on a pass (noise, a LUT), render targets and `RenderLayers`, script
 `Material2d`, and passes on a `Camera3d`. A Rust app uses Bevy's `FullscreenMaterial` itself.

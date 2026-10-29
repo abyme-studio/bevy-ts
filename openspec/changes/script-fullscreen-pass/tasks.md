@@ -25,12 +25,12 @@
 
 ## 5. Bench (rule 8)
 
-- [ ] 5.1 `bench/fullscreen-pass/` (`Cargo.toml` outside the workspace with the `bevy_render` patch as `bench/pixel-2d` has, `src/main.rs`, `run.sh` sourcing `scripts/slot.sh`): 1920×1080 image target, `PixelCamera` zoom 3, 2,000 sprites from a 16×16 atlas made in code; arms `off`, `passthrough`, `grade`; the pass span's GPU time from `RenderDiagnosticsPlugin` and the frame time, median and p95 over 600 frames after 120 warm-up, arms alternated
-- [ ] 5.2 A `fullscreen-pass-bench` process in `.abyme/processes.ts`; run it; `bench/fullscreen-pass/results/README.md` and `runs.txt` with machine, load, commit and the verdict against the 0.15 to 0.6 ms estimate
+- [x] 5.1 `bench/fullscreen-pass/` (`Cargo.toml` outside the workspace with the `bevy_render` patch as `bench/pixel-2d` has, `src/main.rs`, `run.sh` sourcing `scripts/slot.sh`): 1920×1080 image target, `PixelCamera` zoom 3, 2,000 sprites from a 16×16 atlas made in code; arms `off`, `passthrough`, `grade`; the pass span's GPU time from `RenderDiagnosticsPlugin` and the frame time, median and p95 over 600 frames after 120 warm-up, arms alternated
+- [x] 5.2 A `fullscreen-pass-bench` process in `.abyme/processes.ts`; run it; `bench/fullscreen-pass/results/README.md` and `runs.txt` with machine, load, commit and the verdict against the 0.15 to 0.6 ms estimate
 
 ## 6. Docs and example
 
-- [ ] 6.1 `docs/materials.md`: "Fullscreen passes": declaring, `<pass>`, the appended WGSL and frame fields, crispness and snapping to texels (a fog example), order, hot reload and errors, the four-kind and 256-byte limits, the measured cost, and the follow-ups (second texture, render targets and `RenderLayers`, script `Material2d`, `Camera3d`); its intro's "Render passes ... stay Rust" narrowed
+- [x] 6.1 `docs/materials.md`: "Fullscreen passes": declaring, `<pass>`, the appended WGSL and frame fields, crispness and snapping to texels (a fog example), order, hot reload and errors, the four-kind and 256-byte limits, the measured cost, and the follow-ups (second texture, render targets and `RenderLayers`, script `Material2d`, `Camera3d`); its intro's "Render passes ... stay Rust" narrowed
 - [x] 6.2 `docs/2d.md`: a short "Fullscreen passes" section pointing at materials.md, and a coverage row (`FullscreenMaterial` on `Core2d`, `<pass kind>`, working, the 4.2 and 4.3 tests) that `two_d_doc` checks
 - [x] 6.3 `examples/shapes-2d`: `src/dusk.wgsl` and a `<pass kind={Dusk}>` on its camera with a bound amount; repo-made art only
 - [x] 6.4 `CHANGELOG.md`: one line under Unreleased
