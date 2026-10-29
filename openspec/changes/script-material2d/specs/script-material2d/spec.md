@@ -49,7 +49,7 @@ Under `PixelCamera` at a whole zoom, a fragment whose colour depends only on `fl
 - **THEN** it covers 48×48 pixels in whole 3×3 blocks
 
 #### Scenario: Y-sorted planets
-- **WHEN** two overlapping quads with one kind and `<YSort layer={1} />` stand at y 0 and y -10
+- **WHEN** two overlapping quads with one `"blend"` kind and `<YSort layer={1} />` stand at y 0 and y -10
 - **THEN** the one at y -10 draws in front, and after a bound y swaps them the other does within a frame
 
 ### Requirement: 2D materials and their shaders hot reload

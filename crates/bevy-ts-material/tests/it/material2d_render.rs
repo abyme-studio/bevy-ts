@@ -178,7 +178,9 @@ fn the_lower_of_two_y_sorted_quads_draws_in_front() {
     let mut app = app_with(|p| p.add(bevy_ts_material::Pixel2dPlugin));
     let world = app.world_mut();
     let (target, _) = camera(world);
-    let k = kind(world, "m2d::Sorted", &[("color", ParamType::Base(Base::Color))], &[], COLOR, AlphaMode::Opaque);
+    // Blend, as a planet's layers are: an opaque kind is depth-tested, and 10 px of y-sort is below one
+    // depth step at 2D's ±1000, so two opaque quads tie and the later draw wins.
+    let k = kind(world, "m2d::Sorted", &[("color", ParamType::Base(Base::Color))], &[], COLOR, AlphaMode::Blend);
     let quad = world.resource_mut::<Assets<Mesh>>().add(Rectangle::new(40.0, 40.0));
     let mut spawn = |c: &str, y: f32| {
         let m = world.resource_mut::<Assets<ScriptMaterial2d>>().add(material(&k, json!({ "color": c })));
@@ -187,8 +189,8 @@ fn the_lower_of_two_y_sorted_quads_draws_in_front() {
     // Spawned blue last, so without y-sort the tie at z 0 would not decide for red.
     let _red = spawn("#ff0000", -10.0);
     let blue = spawn("#0000ff", 0.0);
-    // Inside both quads, whichever is in front.
-    let overlap = |img: &Image| px(img, W / 2, H / 2 - 5);
+    // World y -5, inside both quads at every step (blue at y -20 spans -40 to 0), whichever is in front.
+    let overlap = |img: &Image| px(img, W / 2, H / 2 + 5);
     until_drawn(&mut app, &target, |_| Ok(()), |_, img| {
         let c = overlap(img);
         if is(c, Srgba::RED) { Ok(()) } else { Err(format!("the overlap is {c:?}, not red")) }

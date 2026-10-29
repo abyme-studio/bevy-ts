@@ -635,9 +635,12 @@ fn world_textures(world: &World, k: &KindState, props: &Map<String, Value>) -> R
     k.kind.bindings.textures().iter().map(|t| texture(world, t, props.get(t))).collect()
 }
 
+/// The kind and textures an instance draws with now.
+type Held = (Arc<Kind>, Vec<Option<Handle<Image>>>);
+
 /// [`world_textures`] for an instance `old` already draws: a ref that no longer resolves (the
 /// script dropped it, or reloaded) keeps the image `old` holds under that texture's name.
-fn textures_keeping(world: &World, k: &KindState, props: &Map<String, Value>, old: Option<&(Arc<Kind>, Vec<Option<Handle<Image>>>)>) -> Vec<Option<Handle<Image>>> {
+fn textures_keeping(world: &World, k: &KindState, props: &Map<String, Value>, old: Option<&Held>) -> Vec<Option<Handle<Image>>> {
     let held = |t: &str| {
         let (kind, textures) = old?;
         let i = kind.bindings.textures().iter().position(|n| n == t)?;

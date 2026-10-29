@@ -218,6 +218,7 @@ fn extract_instances(
 
 /// Bevy's `mark_2d_meshes_as_changed_if_their_materials_changed`: `extract_2d_meshes` re-extracts
 /// only changed meshes, and it is where a mesh takes its material's binding.
+#[allow(clippy::type_complexity)]
 fn mark_meshes_changed(
     mut queries: ParamSet<(
         Query<&mut Mesh2d, Or<(Changed<MeshScriptMaterial2d>, AssetChanged<MeshScriptMaterial2d>)>>,

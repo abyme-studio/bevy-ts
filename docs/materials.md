@@ -360,7 +360,9 @@ A texture samples with its image's own sampler, nearest under `"imageSampler": "
 
 A planet of several layers is one rectangle per layer, children of one entity at local z steps of
 0.00001, below one y pixel, as a sprite's shadow is. `<YSort>` on the parent sets its z from its y
-and marks its meshes changed, so a script 2D material sorts as a sprite does.
+and marks its meshes changed, so a script 2D material sorts as a sprite does. Y-sort a `"blend"`
+kind: an opaque one is depth-tested, and a few pixels of y are below one depth step, so two
+overlapping opaque quads tie and draw in no set order.
 
 Opaque layers of one kind and one asset batch into one draw across entities: instance params are in
 one storage buffer, read by `MeshTag`, not in the asset. Blend layers sort by z, so they batch only
