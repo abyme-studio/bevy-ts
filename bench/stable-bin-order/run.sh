@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Both arms of bench/stable-bin-order, release: `patch` is this checkout, `base` the checkout at
-# $BASE (default /tmp/leaf-flips-base, this branch's base). One target folder: the arms differ only
-# in path crates, so Bevy builds once.
+# $BASE (default target/stable-bin-order-base, a worktree at this branch's base, holding a copy of
+# this bench; not /tmp, which a reboot empties). One target folder: the arms differ only in path
+# crates, so Bevy builds once.
 #   run.sh build    builds both arms, in a check slot of its own
 #   run.sh time N   N runs per arm, alternating, in a second, short slot
 #   run.sh N        both
 set -euo pipefail
 cd "$(dirname "$0")"
-base=${BASE:-/tmp/leaf-flips-base}
+base=${BASE:-$PWD/../../target/stable-bin-order-base}
 export CARGO_TARGET_DIR="$PWD/../../target/stable-bin-order-bench"
 # No sccache: its server drops under a loaded machine's builds, and a bench builds its own target.
 export RUSTC_WRAPPER=""
