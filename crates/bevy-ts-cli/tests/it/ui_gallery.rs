@@ -30,6 +30,9 @@ fn the_gallery_mounts_every_intrinsic() {
         .init_asset::<StandardMaterial>()
         .init_asset::<bevy::sprite_render::ColorMaterial>()
         .init_asset::<Image>()
+        .init_asset::<Shader>()
+        // The Warm pass is a script kind: `bevy-ts/material` and its `.wgsl`.
+        .add_plugins(bevy_ts_material::ScriptMaterialPlugin)
         .init_asset::<bevy::image::TextureAtlasLayout>()
         .add_plugins(bevy_ts_material::BitmapTextPlugin)
         .init_resource::<bevy::picking::pointer::PointerMap>()
@@ -45,7 +48,8 @@ fn the_gallery_mounts_every_intrinsic() {
     let world = app.world_mut();
     let mut mounted = BTreeSet::new();
     for n in world.query::<&TsxNode>().iter(world) {
-        mounted.extend(n.components.keys().cloned());
+        // A `<pass kind>` is keyed `pass:<kind>` on its camera: it counts as `pass`.
+        mounted.extend(n.components.keys().map(|k| bevy_ts_tsx::resolve::pass_of_key(k).map_or(k.clone(), |_| bevy_ts_tsx::resolve::PASS.to_string())));
         mounted.extend(n.types.iter().filter(|t| *t == "entity").cloned());
     }
     let missing: Vec<_> = intrinsics().into_iter().filter(|t| !mounted.contains(t)).collect();

@@ -2,9 +2,14 @@
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
 import { app, Show, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
-import { AutoDirectionalNavigation, Camera3d, Checked, GlobalZIndex, Pressed, ScrollPosition, TextureAtlasLayout, Transform, ZIndex } from "bevy-ts/bevy";
+import { AutoDirectionalNavigation, Camera2d, Camera3d, Checked, GlobalZIndex, Pressed, ScrollPosition, TextureAtlasLayout, Transform, ZIndex } from "bevy-ts/bevy";
 import { CompassOctant, KeyCode, type DirectionalNavigation, type InputFocusVisible, type Keys } from "bevy-ts/input";
+import { color, f32, pass } from "bevy-ts/material";
 import type { Child } from "bevy-ts/jsx-runtime";
+import warm from "./warm.wgsl";
+
+/** A fullscreen pass: `<pass>` mixes the 2D camera's image toward a tint. */
+export const Warm = pass("gallery::Warm", { params: { amount: f32, tint: color }, fragment: warm });
 
 /** A titled panel in the gallery's grid of panels. */
 const Panel = ({ title, children }: { title: string; children?: Child }) => (
@@ -350,6 +355,11 @@ app.scene("gallery", () => (
       <bitmapText font="fonts/tiny.json" scale={2} color="#ff4">{() => `CLICKED ${clicks()} TIMES`}</bitmapText>
     </entity>
     {/* The minimap's camera, above the cube looking down; its viewport gives it an image of its own. */}
+    {/* The 2D camera, so the 2D elements above draw, and <pass> runs over its image (a pass sits on a Camera2d). */}
+    <entity key="camera2d">
+      <Camera2d />
+      <pass kind={Warm} amount={() => (clicks() > 0 ? 0.3 : 0)} tint="#ffb070" />
+    </entity>
     <entity key="mini" ref={mini}>
       <Camera3d />
       <Transform translation={[0, 4, 0]} rotation={[-0.7071, 0, 0, 0.7071]} />
