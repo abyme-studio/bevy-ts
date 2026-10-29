@@ -63,14 +63,15 @@ env64=$(printf '%s' "${SMOKE_ENV:-{\}}" | base64 | tr -d '\n')
 settle=${SETTLE:-5}
 
 # A headless emulator of its own, under a grant of the machine's budget held while run.sh lives:
-# beside load 130-180 its CPUs hung 20 s at a time, its boot took 9 min and it crashed.
+# beside load 130-180 its CPUs hung 20 s at a time, its boot took 9 min and it crashed. Not wiped:
+# a first boot is slower still, and run.sh clears the game it pushed before.
 ~/dev/abyme/scripts/gate-slot take $$ bevy-ts:android-emulator
 if [[ ! -d "$ANDROID_AVD_HOME/bevy-ts-smoke.avd" ]]; then
   echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" -s create avd -n bevy-ts-smoke \
     -k "system-images;android-34;google_apis;arm64-v8a" -d pixel_6 >/dev/null
 fi
 "$ANDROID_HOME/emulator/emulator" -avd bevy-ts-smoke -port $port -no-window -no-audio -no-boot-anim \
-  -no-snapshot -gpu swiftshader_indirect -memory 4096 -partition-size 16384 -wipe-data > "$cache/emulator.log" 2>&1 &
+  -no-snapshot -gpu swiftshader_indirect -memory 4096 -partition-size 16384 > "$cache/emulator.log" 2>&1 &
 emu=$!
 trap '"$adb" -s $serial emu kill >/dev/null 2>&1 || true; wait $emu 2>/dev/null || true' EXIT
 
@@ -94,7 +95,7 @@ count() { log | grep -c -- "$1" || true; }
 # A loaded emulator shows "System UI isn't responding", over the game and in the way of a tap.
 close_dialogs() { "$adb" -s $serial shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true; }
 
-until_ok '[[ "$("$adb" -s $serial shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == 1 ]]' 600 "the emulator booted"
+until_ok '[[ "$("$adb" -s $serial shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == 1 ]]' 900 "the emulator booted"
 say "booted"
 "$adb" -s $serial shell input keyevent KEYCODE_WAKEUP
 "$adb" -s $serial shell wm dismiss-keyguard >/dev/null 2>&1 || true
