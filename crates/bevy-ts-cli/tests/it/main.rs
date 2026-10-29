@@ -48,6 +48,7 @@ mod native_params_bench;
 mod native_writes;
 mod occlusion_render;
 mod packages;
+mod passes;
 mod pcss_bench;
 mod predicate_bench;
 mod play;

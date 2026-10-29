@@ -1,7 +1,8 @@
 // `bevy-ts/material`: script materials. A material is a name, a params schema in WGSL types and
 // `.wgsl` files imported like modules; Rust lays out the params, generates their declarations and
-// draws it with one erased material. Served by the engine; evaluated once, so each declaration
-// goes into the loading generation's `materials` section.
+// draws it with one erased material. A pass is a fullscreen fragment over a `Camera2d`'s image,
+// declared the same way. Served by the engine; evaluated once, so each declaration goes into the
+// loading generation's `materials` or `passes` section.
 import { asset, assets, sectionItems } from "bevy-ts";
 
 export const f32 = "f32";
@@ -123,4 +124,43 @@ export function material(name, decl) {
   items.push({ name, params, textures, instance, fragment, vertex: shader("vertex"), alphaMode, location: at || null });
   SCHEMAS.set(name, { params, textures, instance });
   return new MaterialKind(name);
+}
+
+/** A pass kind: what `<pass kind={...} />` names. Only `name` crosses into a scene. */
+class PassKind {
+  constructor(name) {
+    this.name = name;
+    Object.freeze(this);
+  }
+}
+
+/**
+ * `pass("game::Dusk", { params: { amount: f32, tint: color }, fragment: dusk, order: 0 })`, where
+ * `dusk` is `import dusk from "./dusk.wgsl"`. Rust lays the params out after the frame fields and
+ * refuses reserved names, more than 256 bytes and a fifth kind, at this call.
+ */
+export function pass(name, decl) {
+  const at = callerLocation();
+  const fail = (m) => {
+    throw located(`pass ${name}: ${m}`, at);
+  };
+  if (typeof name !== "string" || !name) throw located("pass(name, ...): the name is a string (\"game::Dusk\")", at);
+  if (!decl || typeof decl !== "object") fail("takes { params, fragment }");
+  for (const k of Object.keys(decl)) {
+    if (!["params", "fragment", "order"].includes(k)) fail(`unknown option ${k}`);
+  }
+  if (typeof decl.fragment === "string") fail("fragment is a WGSL file, import it: import shader from \"./fragment.wgsl\"; then fragment: shader");
+  if (!isShaderFile(decl.fragment)) fail("needs a fragment shader, a shader file from a .wgsl import");
+  const order = decl.order === undefined ? 0 : decl.order;
+  if (typeof order !== "number" || !Number.isFinite(order)) fail(`order ${JSON.stringify(decl.order)} is a number`);
+  const params = [];
+  for (const [p, type] of Object.entries(decl.params || {})) {
+    const ok = BASES.has(type) || (type && typeof type === "object" && BASES.has(type.array) && Number.isInteger(type.len));
+    if (!ok) fail(`param ${p} has type ${JSON.stringify(type)}; use f32, i32, u32, vec2f, vec3f, vec4f, mat4x4f, color or array(...)`);
+    params.push({ name: p, type });
+  }
+  const items = sectionItems("passes");
+  if (items.some((m) => m.name === name)) fail("is declared twice");
+  items.push({ name, params, fragment: decl.fragment.path, order, location: at || null });
+  return new PassKind(name);
 }

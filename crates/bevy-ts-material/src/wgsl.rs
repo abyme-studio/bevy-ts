@@ -8,7 +8,6 @@
 //! the prelude followed by the file verbatim. naga's line `n` is then the file's line `n - k`, `k`
 //! the prelude's lines; past the file's last line is the generated params code.
 
-use crate::kinds::MaterialDecl;
 use crate::layout::Bindings;
 use bevy::asset::AssetId;
 use bevy::prelude::*;
@@ -36,6 +35,16 @@ pub fn combine(text: &str, bindings: &Bindings, material: &str) -> String {
     s
 }
 
+/// A pass's file, then its params struct and screen bindings, appended as [`combine`]'s are.
+pub fn combine_pass(text: &str, layout: &crate::layout::PassLayout, pass: &str) -> String {
+    let mut s = text.to_string();
+    if !s.ends_with('\n') {
+        s.push('\n');
+    }
+    s.push_str(&layout.wgsl(pass));
+    s
+}
+
 /// What the check found.
 #[derive(Debug)]
 pub enum Checked {
@@ -47,8 +56,18 @@ pub enum Checked {
     Unverified(String),
 }
 
+/// What a checked shader belongs to: a material or a pass, as its errors name it.
+pub struct Subject {
+    /// `material game::Glow`, `pass game::Dusk`.
+    pub label: String,
+    /// Its declaration in TS, where an error in the generated declarations points.
+    pub at: Option<SourceLocation>,
+    /// The names the generated declarations use.
+    pub generated: Vec<String>,
+}
+
 /// Checks a combined source under `defs`. `shaders` holds Bevy's shader modules.
-pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &MaterialDecl, defs: &[ShaderDefVal]) -> Checked {
+pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Subject, defs: &[ShaderDefVal]) -> Checked {
     let author_lines = combined.find("\n// bevy-ts: the params").map_or(combined.lines().count(), |i| combined[..i].lines().count());
     // The prepended import's columns are not the author's.
     let shift = if combined.starts_with(crate::layout::INSTANCE_IMPORT) { crate::layout::INSTANCE_IMPORT.len() as u32 } else { 0 };
@@ -56,7 +75,7 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
         let column = if line == 1 { column.saturating_sub(shift).max(1) } else { column };
         Some(SourceLocation { file: bevy_ts::backend::display_path(file), line: line as u32, column })
     };
-    let fail = |m: String, loc| Checked::Errors(vec![ScriptError::at(format!("material {}: {m}", decl.name), loc)]);
+    let fail = |m: String, loc| Checked::Errors(vec![ScriptError::at(format!("{}: {m}", decl.label), loc)]);
 
     // The file as WESL: its imports, and the names it declares.
     let tu = match TranslationUnit::from_str(combined) {
@@ -66,7 +85,7 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
             return if line <= author_lines {
                 fail(e.error.to_string(), at(line, col))
             } else {
-                fail(format!("{} in the declarations generated from its params", e.error), decl.at())
+                fail(format!("{} in the declarations generated from its params", e.error), decl.at.clone())
             };
         }
     };
@@ -79,13 +98,13 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
     let main_names: HashSet<String> = tu.global_declarations.iter().filter_map(decl_ident).map(|i| i.name().clone()).collect();
     // The file declaring a name the params generate (a texture named like its own `const`): the
     // schema's error, named exactly, before anything is compiled.
-    let generated = generated_names(decl);
+    let generated = &decl.generated;
     let mut declared: HashMap<String, usize> = HashMap::new();
     for i in tu.global_declarations.iter().filter_map(decl_ident) {
         *declared.entry(i.name().clone()).or_default() += 1;
     }
     if let Some(n) = generated.iter().find(|n| declared.get(*n).copied().unwrap_or_default() > 1) {
-        return fail(format!("the file declares `{n}`, which its params, textures or instance params generate"), decl.at());
+        return fail(format!("the file declares `{n}`, which its params, textures or instance params generate"), decl.at.clone());
     }
 
     // Bevy's modules, by module path, as its shader cache resolves them.
@@ -125,10 +144,10 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
                     if line <= author_lines {
                         fail(d.error.to_string(), at(line, col))
                     } else {
-                        fail(format!("{} in the declarations generated from its params", d.error), decl.at())
+                        fail(format!("{} in the declarations generated from its params", d.error), decl.at.clone())
                     }
                 }
-                _ if matches!(*d.error, wesl::Error::ResolveError(_)) => fail(d.error.to_string(), decl.at()),
+                _ if matches!(*d.error, wesl::Error::ResolveError(_)) => fail(d.error.to_string(), decl.at.clone()),
                 _ => Checked::Unverified(d.error.to_string()),
             };
         }
@@ -158,7 +177,7 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
         } else if n - k <= author_lines {
             fail(message, at(n - k, column))
         } else {
-            fail(format!("{message} in the declarations generated from its params"), decl.at())
+            fail(format!("{message} in the declarations generated from its params"), decl.at.clone())
         }
     };
     let module = match naga::front::wgsl::parse_str(&source) {
@@ -176,7 +195,7 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
             };
             return match loc {
                 Some(l) => map(l.line_number, l.line_position, msg),
-                None => fail(msg, decl.at()),
+                None => fail(msg, decl.at.clone()),
             };
         }
     };
@@ -194,15 +213,10 @@ pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Mater
         let loc = spans.iter().rev().find(|l| l.line_number as usize > k).or(spans.last()).copied();
         return match loc {
             Some(l) => map(l.line_number, l.line_position, msg),
-            None => fail(msg, decl.at()),
+            None => fail(msg, decl.at.clone()),
         };
     }
     Checked::Ok
-}
-
-/// The names the generated declarations use ([`Bindings::generated_names`]).
-fn generated_names(decl: &MaterialDecl) -> Vec<String> {
-    decl.bindings().map(|b| b.generated_names()).unwrap_or_default()
 }
 
 /// A global declaration's name.

@@ -124,6 +124,26 @@ fn check_script_materials(plugin: bool, kinds: &std::collections::BTreeMap<Strin
     }
 }
 
+/// Every `<pass kind>` against the pass kinds the generation declares. Bound props are checked as
+/// their values arrive.
+fn check_passes(plugin: bool, kinds: &std::collections::BTreeMap<String, Option<bevy_ts_material::layout::PassLayout>>, nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
+    for n in nodes {
+        for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::PASS) {
+            let Ok(kind) = resolve::pass_kind(c) else { continue };
+            if !plugin {
+                errors.push(ScriptError::at("<pass>: script passes need ScriptMaterialPlugin", c.source.clone()));
+                continue;
+            }
+            let props = c.props.iter().filter(|(p, v)| p.as_str() != "kind" && desc::binding_id(v).is_none()).map(|(p, v)| (p.clone(), v.clone())).collect();
+            let bound: Vec<String> = c.props.iter().filter(|(_, v)| desc::binding_id(v).is_some()).map(|(p, _)| p.clone()).collect();
+            if let Err(m) = bevy_ts_material::pass::check_props(kinds, &kind, &props, &bound) {
+                errors.push(ScriptError::at(format!("<pass>: {m}"), c.source.clone()));
+            }
+        }
+        check_passes(plugin, kinds, &n.children, errors);
+    }
+}
+
 /// Checks a generation's scenes against its pending components. Touches nothing.
 fn check(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> Result<(), Vec<ScriptError>> {
     let t = std::time::Instant::now();
@@ -158,6 +178,12 @@ fn check_inner(world: &mut World, input: &bevy_ts::plugin_api::SectionInput) -> 
         let plugin = world.contains_resource::<bevy_ts_material::MaterialKinds>();
         for r in &overlaid.roots {
             check_script_materials(plugin, &kinds, &r.nodes, &mut errors);
+        }
+    }
+    if let Some(kinds) = bevy_ts_material::pass::section_kinds(input.sections) {
+        let plugin = world.contains_resource::<bevy_ts_material::PassKinds>();
+        for r in &overlaid.roots {
+            check_passes(plugin, &kinds, &r.nodes, &mut errors);
         }
     }
     if !errors.is_empty() {
@@ -400,7 +426,7 @@ pub(crate) fn publish_bound(world: &mut World, generation: Option<u64>) {
     let mut out: std::collections::HashMap<bevy::ecs::component::ComponentId, BoundComponent> = Default::default();
     for t in tree.reactive.targets.values() {
         let key = t.component.as_str();
-        if ui::UiKind::from_tag(key).is_some() || key == resolve::NAME || key == resolve::MATERIAL || resolve::asset_intrinsic(key) {
+        if ui::UiKind::from_tag(key).is_some() || key == resolve::NAME || key == resolve::MATERIAL || resolve::asset_intrinsic(key) || resolve::pass_of_key(key).is_some() {
             continue;
         }
         let (id, kind) = if let Some(c) = ts.live(key) {

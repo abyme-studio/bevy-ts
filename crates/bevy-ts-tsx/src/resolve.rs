@@ -20,6 +20,17 @@ pub const MESH: &str = "mesh";
 pub const MATERIAL: &str = "material";
 pub const MESH2D: &str = "mesh2d";
 pub const MATERIAL2D: &str = "material2d";
+pub const PASS: &str = "pass";
+
+/// A `<pass kind={K}>`'s identity on its camera: one per kind.
+pub fn pass_key(kind: &str) -> String {
+    format!("{PASS}:{kind}")
+}
+
+/// The kind a `<pass>` key names.
+pub fn pass_of_key(key: &str) -> Option<&str> {
+    key.strip_prefix(PASS)?.strip_prefix(':')
+}
 
 /// The asset intrinsics, whose props are rebuilt as a whole and cannot be bound.
 pub fn asset_intrinsic(tag: &str) -> bool {
@@ -63,6 +74,8 @@ pub enum Target {
     ScriptMaterial { kind: String, props: Map<String, Value>, gltf_material: Option<String> },
     /// `<material asset={ref} />`: an owned script material, `Kind.add`'s ref number `asset`.
     OwnedMaterial { asset: u64, gltf_material: Option<String> },
+    /// `<pass kind={K} ...params />` on a camera: a script pass of kind `kind`.
+    Pass { kind: String, props: Map<String, Value> },
     /// A reflect-tier Rust component, by type path: written field by field through reflection.
     Reflect { type_path: String },
     /// Bevy's state-scoped component of a TS state value (`<DespawnOnExit value={Game.Playing} />`),
@@ -211,6 +224,16 @@ pub fn script_material(c: &ComponentDesc) -> Result<ScriptMaterialDesc, ScriptEr
     Ok(ScriptMaterialDesc { kind, props, gltf_material })
 }
 
+/// `<pass kind={K}>`'s kind name (`K` describes as `{ name }`).
+pub fn pass_kind(c: &ComponentDesc) -> Result<String, ScriptError> {
+    match c.props.get("kind") {
+        Some(Value::String(s)) => Ok(s.clone()),
+        Some(Value::Object(o)) if matches!(o.get("name"), Some(Value::String(_))) => Ok(o["name"].as_str().expect("checked").to_string()),
+        Some(v) if binding_id(v).is_some() => Err(err("<pass kind> cannot be bound; give each kind its own <pass>", &c.source)),
+        _ => Err(err("<pass kind={...}> takes a kind from pass() in bevy-ts/material", &c.source)),
+    }
+}
+
 /// `<material asset={ref} gltfMaterial? />`: the ref number of an owned script material
 /// (`Kind.add`) and its `gltfMaterial`. Any other prop, or a ref of another asset type, fails.
 pub fn owned_material(c: &ComponentDesc) -> Result<(u64, Option<String>), ScriptError> {
@@ -317,6 +340,8 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts, reg
         Target::Reflect { .. } => {}
         // Instance params may be bound; the tsx check, which sees the kinds, fails any other.
         Target::ScriptMaterial { .. } => {}
+        // Every pass param may be bound: it lives on the camera.
+        Target::Pass { .. } => {}
         _ => return Err(err(format!("<{}> props cannot be bound yet; bind a component field or a UI prop", c.ty), &c.source)),
     }
     r.bound = bound;
@@ -438,6 +463,15 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(resolved(Target::ScriptMaterial { kind, props, gltf_material }, (controlled, BTreeMap::new(), BTreeMap::new())))
         }
+        ComponentKind::Intrinsic if c.ty == PASS => {
+            let kind = pass_kind(c)?;
+            let mut props = c.props.clone();
+            props.remove("kind");
+            let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            let mut r = resolved(Target::Pass { kind: kind.clone(), props }, (controlled, BTreeMap::new(), BTreeMap::new()));
+            r.key = pass_key(&kind);
+            Ok(r)
+        }
         ComponentKind::Intrinsic if c.ty == MATERIAL => {
             let props: MaterialProps = parse_props(c)?;
             props.check().map_err(|m| err(format!("<material>: {m}"), &c.source))?;
@@ -494,6 +528,17 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts, 
         });
     }
     for c in &node.components {
+        if c.kind == ComponentKind::Intrinsic && c.ty == PASS {
+            let kind = pass_kind(c)?;
+            if !node.components.iter().any(|c| c.kind == ComponentKind::Rust && c.ty == "Camera2d") {
+                return Err(err(format!("<pass kind={{{kind}}}> runs on a camera's image: put it on an entity with <Camera2d />"), &c.source));
+            }
+            if !seen.insert(pass_key(&kind)) {
+                return Err(err(format!("<pass kind={{{kind}}}> is given twice on one camera"), &c.source));
+            }
+            out.push(resolve(c, ts, native, registry)?);
+            continue;
+        }
         if !seen.insert(c.ty.clone()) {
             return Err(err(format!("{} is given twice on one entity", c.ty), &c.source));
         }

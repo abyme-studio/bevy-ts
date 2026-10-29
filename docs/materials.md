@@ -2,8 +2,9 @@
 
 A custom material is data: a params schema in TS and WGSL in a `.wgsl` file. The prebuilt engine
 draws it with no Rust and no project engine. The code is `crates/bevy-ts-material`; the TS module
-is `bevy-ts/material`. Render passes, compute and other render-world work stay Rust, in the native
-crate.
+is `bevy-ts/material`. A fullscreen pass over a `Camera2d` is data too ([Fullscreen
+passes](#fullscreen-passes)). Other render passes, compute and other render-world work stay Rust,
+in the native crate.
 
 `bevy-ts dev examples/cube/src/glow.tsx` runs the cube example with one, `game::Glow`, and
 `node examples/cube/glow-walk.mjs` walks editing it live.
@@ -279,6 +280,86 @@ import { MaterialAlpha } from "bevy-ts/bevy";
 - The first fade of each distinct material compiles its pipelines: a visible hitch, about half a
   second on an M5 Max for a Synty building (main's `Blend` fade cost about 0.3 s). Fade it once
   off-screen, or early, to warm it.
+
+## Fullscreen passes
+
+A pass grades a `Camera2d`'s whole image: dusk, fog, a flash. It is declared like a material, a
+params schema and one `.wgsl` file, and runs through Bevy's `FullscreenMaterial` on `Core2d`, after
+tonemapping and before upscaling.
+
+```tsx
+import { color, f32, pass } from "bevy-ts/material";
+import dusk from "./dusk.wgsl";
+
+export const Dusk = pass("game::Dusk", { params: { amount: f32, tint: color }, fragment: dusk });
+const [dark, setDark] = signal(0);
+
+<entity name="camera">
+  <Camera2d />
+  <pass kind={Dusk} amount={() => dark()} tint="#ff8844" />
+</entity>
+```
+
+```wgsl
+import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
+
+@fragment
+fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+    let c = textureSample(screen, screen_sampler, in.uv);
+    return vec4<f32>(mix(c.rgb, c.rgb * params.tint.rgb, params.amount), c.a);
+}
+```
+
+- `pass(name, { params, fragment, order? })` takes material params' types. A WGSL string fails at
+  the call; import the file.
+- `<pass kind>` sits on an entity with `<Camera2d />`. Elsewhere, or a second `<pass>` of one kind
+  on one camera, fails the load at the element. Removing it stops the pass the next frame.
+- Its params live on the camera, not in a shared asset, so every one may be bound. Unset params
+  are zero, colours white. A prop the kind lacks fails at the element.
+- bevy-ts appends, after your last line, the params struct and three bindings: `screen`, the
+  camera's image; `screen_sampler`, nearest; and `params`. Do not declare them.
+- The struct starts with four fields the engine writes each frame:
+  - `time`: `Time`'s elapsed seconds, wrapped as Bevy's `globals.time`. It holds while the game
+    is paused.
+  - `size`: the target in physical pixels.
+  - `texel`: physical pixels per world unit. Under `<PixelCamera zoom={2} />` it is 2 on a 1x
+    target.
+  - `view`: the world point drawn at the target's centre, after the pixel camera's snap.
+
+  A pixel's world point is `params.view + (in.uv - 0.5) * vec2(1.0, -1.0) * params.size /
+  params.texel`. `time`, `texel`, `size`, `view`, `screen`, `screen_sampler`, `params` and the
+  struct's name cannot be params.
+- Passes run by ascending `order` (0 by default), then by kind name, on every camera.
+
+### Crisp pixel art
+
+The pass runs at the target's resolution after the sprites drew at a whole zoom, and samples
+nearest, so a pass that returns its input draws the same pixels as no pass. An effect of its own
+snaps to the art by flooring the world point to whole world units:
+
+```wgsl
+let world = params.view + (in.uv - 0.5) * vec2(1.0, -1.0) * params.size / params.texel;
+let cell = floor(world + vec2(params.time * 4.0, 0.0));
+let fog = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453) * 0.2;
+```
+
+Each fog cell then covers one texel of the art and moves in whole texels. UVs shifted by a
+fraction of a pixel still read whole pixels, so a slow shimmer steps: that is the crisp look.
+
+### Hot reload, errors and limits
+
+- A `.wgsl` save replaces the shader in place, with no generation. A changed schema re-encodes each
+  camera's params by name. A change of kinds or `order` moves shaders and params in one world
+  update.
+- Errors are reported as a material's are: the pass name and your `file:line:col`, the previous
+  shader kept. With none, the camera draws as without the pass.
+- At most four pass kinds live at once, and the params with the frame fields fit 256 bytes. Each
+  is refused at its `pass()` call.
+- Cost: a pass reads and writes every pixel of the target once.
+  `bench/fullscreen-pass/results/README.md` has the numbers. A camera with no pass costs nothing.
+
+Not yet: a second texture on a pass (noise, a LUT), render targets and `RenderLayers`, script
+`Material2d`, and passes on a `Camera3d`. A Rust app uses Bevy's `FullscreenMaterial` itself.
 
 ## Known limits
 

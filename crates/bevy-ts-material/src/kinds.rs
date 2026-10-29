@@ -96,6 +96,12 @@ impl MaterialDecl {
         out
     }
 
+    /// What the WGSL check names in its errors.
+    pub fn subject(&self) -> wgsl::Subject {
+        let generated = self.bindings().map(|b| b.generated_names()).unwrap_or_default();
+        wgsl::Subject { label: format!("material {}", self.name), at: self.at(), generated }
+    }
+
     /// The material's location, file shown relative to the working directory.
     pub fn at(&self) -> Option<SourceLocation> {
         self.location.clone().map(|mut l| {
@@ -380,7 +386,7 @@ fn next_source(
         return Ok(None);
     }
     if let Some(defs) = defs {
-        match wgsl::check(world.resource::<Assets<Shader>>(), &combined, file, decl, &defs) {
+        match wgsl::check(world.resource::<Assets<Shader>>(), &combined, file, &decl.subject(), &defs) {
             wgsl::Checked::Errors(errors) => return Err(errors),
             wgsl::Checked::Unverified(why) => debug!("material {}: not checked before replacing its shader: {why}", decl.name),
             wgsl::Checked::Ok => {}
@@ -456,6 +462,7 @@ pub fn report_pipeline_errors(world: &mut World) {
     let generation = world.resource::<bevy_ts::generation::Generations>().live;
     let mut kinds = std::mem::take(&mut world.resource_mut::<MaterialKinds>().live);
     let mut out = Vec::new();
+    let mut not_ours = Vec::new();
     for f in failed {
         if f.version < versions.get(&f.shader).copied().unwrap_or_default() {
             continue;
@@ -464,6 +471,7 @@ pub fn report_pipeline_errors(world: &mut World) {
             let decl = &k.decl;
             std::iter::once(&mut k.fragment).chain(k.vertex.as_mut()).find(|s| s.handle.id() == f.shader).map(|s| (decl, s))
         }) else {
+            not_ours.push(f);
             continue;
         };
         let Some(source) = stage.source.clone() else { continue };
@@ -471,7 +479,7 @@ pub fn report_pipeline_errors(world: &mut World) {
             continue;
         }
         stage.reported = Some(f.version);
-        match wgsl::check(world.resource::<Assets<Shader>>(), &source, &stage.file, decl, &f.defs) {
+        match wgsl::check(world.resource::<Assets<Shader>>(), &source, &stage.file, &decl.subject(), &f.defs) {
             wgsl::Checked::Errors(errors) => out.extend(errors),
             _ => out.push(ScriptError::at(
                 format!("material {}: the renderer could not build {}: {}", decl.name, bevy_ts::backend::display_path(&stage.file), f.message),
@@ -481,6 +489,7 @@ pub fn report_pipeline_errors(world: &mut World) {
     }
     world.resource_mut::<MaterialKinds>().live = kinds;
     log_errors(world, generation, out, "");
+    crate::pass::report_failures(world, not_ours, &versions);
 }
 
 /// `.wgsl` files saved with no module changed: every stage naming one is re-read and replaced. A

@@ -16,7 +16,7 @@ export const Fragment = Symbol.for("bevy-ts.fragment");
 const ELEMENT = Symbol.for("bevy-ts.element");
 
 /** Intrinsics that describe components of the enclosing entity. */
-const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d", "worldText", "text2d", "bitmapText"]);
+const COMPONENT_INTRINSICS = new Set(["mesh", "material", "mesh2d", "material2d", "pass", "worldText", "text2d", "bitmapText"]);
 /** bevy_ui intrinsics: entities of their own, with one intrinsic component named after the tag. */
 const UI_INTRINSICS = new Set([
   "node", "text", "image", "button", "span", "viewport", "input",
@@ -1625,7 +1625,8 @@ function describeEntity(el, key, type, parentType) {
     }
     if (isComponent(c.type) || COMPONENT_INTRINSICS.has(c.type)) {
       const name = typeName(c.type);
-      const prev = byType.get(name);
+      // A camera takes one `<pass>` per kind; the host names a kind given twice.
+      const prev = c.type === "pass" ? undefined : byType.get(name);
       if (prev) throw located(`${name} is given twice on one entity (first at ${at(prev.source)})`, c.source);
       byType.set(name, c);
       node.components.push(describeComponent(c, childItems));

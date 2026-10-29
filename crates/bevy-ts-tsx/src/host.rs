@@ -515,6 +515,12 @@ fn patch(world: &mut World, binding: u32, v: Value) {
             k => k.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
         };
         bevy_ts_material::instance::patch(world, e, &kind, &prop, &props, source.clone())
+    } else if let Some(kind) = resolve::pass_of_key(&key) {
+        // A pass param: the camera's own bytes.
+        let mut props: Map<String, Value> = owned.fields.iter().filter(|(k, s)| !s.applied.is_null() && k.as_str() != "kind").map(|(k, s)| (k.clone(), s.applied.clone())).collect();
+        props.insert(prop.clone(), v.clone());
+        crate::intrinsics::insert_pass(world, e, kind, &props, source.clone());
+        Ok(())
     } else if resolve::asset_intrinsic(&key) || key == resolve::NAME {
         Err("this prop cannot be bound".to_string())
     } else if let Some(path) = world.resource::<TsComponents>().live(&key).is_none().then(|| world.resource::<NativeLayouts>().get(&key).filter(|n| n.reflect_holes.iter().any(|h| h.name == prop)).map(|n| n.type_path.clone())).flatten() {

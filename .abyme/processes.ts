@@ -166,6 +166,14 @@ const processes = {
   },
   // Change pixel-art-2d, design 8: bench/pixel-2d's arms, 3 runs each (8 with RUNS=8), in a check slot.
   "pixel-2d-bench": { cmd: "bash -c 'set -o pipefail; bench/pixel-2d/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tee -a bench/pixel-2d/results/runs.txt | grep -E \"^arm=|load|error\"'" },
+  // Change script-fullscreen-pass: the material crate's lib tests and pass tests, the CLI's pass,
+  // 2D doc and material tests, bevy-ts-tsx's tests, tsc and clippy, in a check slot. SFP_ONLY
+  // narrows the CLI's tests.
+  "script-fullscreen-pass-test": {
+    cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:script-fullscreen-pass -- bash -c \"cargo test -p bevy-ts-material --lib && cargo test -p bevy-ts-material --no-fail-fast --test it -- pass:: pass_render:: && cargo test -p bevy-ts-tsx && cargo test -p bevy-ts-cli --no-fail-fast --test it -- ${SFP_ONLY:-passes:: two_d_doc:: materials::} && (cd packages/bevy-ts && pnpm check) && cargo clippy -p bevy-ts-material -p bevy-ts-tsx -p bevy-ts-cli --all-targets -- -D warnings\" 2>&1 | grep -v ld64 | tee target/script-fullscreen-pass-test.log | grep -E -A7 \"^error|^warning|-->|test result|FAILED|panicked|error TS|stale\" | tail -150'",
+  },
+  // Change script-fullscreen-pass, design 8: bench/fullscreen-pass's arms, 3 runs each (8 with RUNS=8), in a check slot.
+  "fullscreen-pass-bench": { cmd: "bash -c 'set -o pipefail; bench/fullscreen-pass/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tee -a bench/fullscreen-pass/results/runs.txt | grep -E \"^arm=|load|error|panicked\"'" },
   // Change custom-relationships: bevy-ts checked with and without reflect, in a check slot.
   "custom-relationships-check": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"cargo check -p bevy-ts -p bevy-ts-remote -p bevy-ts-levels -p bevy-ts-cli --all-targets && cargo check -p bevy-ts --features reflect --all-targets\" 2>&1 | grep -v ld64 | tee target/custom-relationships-check.log | grep -E -A7 \"^error|^warning|Finished\" | tail -150'" },
   "custom-relationships-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"scripts/gen-protocol.sh && cargo test -p bevy-ts -p bevy-ts-remote -p bevy-ts-levels --lib --tests && cargo test -p bevy-ts --features reflect --lib && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --test it -- relationships:: ecs_queries:: heap_fields:: protocol:: saves:: reload:: tsx::\" 2>&1 | grep -v ld64 | tee target/custom-relationships-test.log | grep -E -A12 \"^error|panicked|FAILED|^test result\" | tail -150'" },

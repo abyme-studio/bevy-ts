@@ -504,10 +504,125 @@ pub fn struct_name(material: &str) -> String {
     s + "Params"
 }
 
+/// Bytes of a pass's params struct, frame fields included: `ScriptPass`'s size.
+pub const PASS_BYTES: usize = 256;
+
+/// The fields the engine writes into every pass's params each frame, first in its struct.
+pub const FRAME_FIELDS: [(&str, Base); 4] = [("time", Base::F32), ("texel", Base::F32), ("size", Base::Vec2f), ("view", Base::Vec2f)];
+
+/// Bytes the frame fields take, from offset 0.
+pub const FRAME_BYTES: usize = 24;
+
+/// A pass's params as one WGSL uniform struct: the frame fields at 0, 4, 8 and 16, then the
+/// kind's params by WGSL's uniform rules, at most [`PASS_BYTES`]. Binds the screen at 0, its
+/// sampler at 1 and the struct at 2, all in group 0, as Bevy's `FullscreenMaterial` lays them out.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PassLayout {
+    struct_name: String,
+    params: ParamsLayout,
+}
+
+impl PassLayout {
+    pub fn new<'a>(pass: &str, params: impl IntoIterator<Item = (&'a str, &'a ParamType)>) -> Result<Self, String> {
+        let struct_name = struct_name(pass);
+        if struct_name.starts_with("__") {
+            return Err(format!("its params struct would be {struct_name}; WGSL names may not start with __"));
+        }
+        let params: Vec<(&str, &ParamType)> = params.into_iter().collect();
+        for (n, _) in &params {
+            if FRAME_FIELDS.iter().any(|(f, _)| f == n) {
+                return Err(format!("param {n}: the engine writes {n} every frame; name it something else"));
+            }
+            if ["screen", "screen_sampler", "params", struct_name.as_str()].contains(n) {
+                return Err(format!("param {n}: the generated pass code declares {n}"));
+            }
+            if *n == "kind" {
+                return Err("param kind: <pass> takes kind itself".into());
+            }
+        }
+        let frame: Vec<(&str, ParamType)> = FRAME_FIELDS.iter().map(|(n, b)| (*n, ParamType::Base(*b))).collect();
+        let layout = ParamsLayout::new(frame.iter().map(|(n, t)| (*n, t)).chain(params))?;
+        if layout.size > PASS_BYTES {
+            return Err(format!("its params take {} bytes with the frame fields; at most {PASS_BYTES} fit", layout.size));
+        }
+        Ok(PassLayout { struct_name, params: layout })
+    }
+
+    /// The whole struct, frame fields first.
+    pub fn params(&self) -> &ParamsLayout {
+        &self.params
+    }
+
+    /// The kind's own params, without the frame fields.
+    pub fn own(&self) -> impl Iterator<Item = &ParamField> {
+        self.params.fields.iter().skip(FRAME_FIELDS.len())
+    }
+
+    /// Whether `name` is one of the kind's own params.
+    pub fn has(&self, name: &str) -> bool {
+        self.own().any(|f| f.name == name)
+    }
+
+    pub fn struct_name(&self) -> &str {
+        &self.struct_name
+    }
+
+    /// The names the generated code declares at module scope.
+    pub fn generated_names(&self) -> Vec<String> {
+        ["screen", "screen_sampler", "params", self.struct_name.as_str()].map(String::from).to_vec()
+    }
+
+    /// The struct and the bindings, appended after the author's last line as a material's are.
+    pub fn wgsl(&self, pass: &str) -> String {
+        let mut s = format!("\n// bevy-ts: the params and screen of {pass}, generated from its TS schema.\n");
+        s.push_str(&format!("struct {} {{\n", self.struct_name));
+        for f in &self.params.fields {
+            s.push_str(&format!("    {}: {},\n", f.name, f.ty.wgsl()));
+        }
+        s.push_str("}\n");
+        s.push_str("@group(0) @binding(0) var screen: texture_2d<f32>;\n");
+        s.push_str("@group(0) @binding(1) var screen_sampler: sampler;\n");
+        s.push_str(&format!("@group(0) @binding(2) var<uniform> params: {};\n", self.struct_name));
+        s
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_pass_puts_the_frame_fields_first_then_its_params() {
+        let p = [("amount", B(F32)), ("tint", B(Color))];
+        let l = PassLayout::new("game::Dusk", p.iter().map(|(n, t)| (*n, t))).unwrap();
+        assert_eq!(offsets(l.params()), [0, 4, 8, 16, 24, 32]);
+        assert_eq!(l.params().size, 48);
+        assert_eq!(l.own().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["amount", "tint"]);
+        let w = l.wgsl("game::Dusk");
+        assert!(w.contains("struct DuskParams {\n    time: f32,\n    texel: f32,\n    size: vec2<f32>,\n    view: vec2<f32>,\n    amount: f32,\n    tint: vec4<f32>,\n}"), "{w}");
+        assert!(w.contains("@group(0) @binding(0) var screen: texture_2d<f32>;"), "{w}");
+        assert!(w.contains("@group(0) @binding(1) var screen_sampler: sampler;"), "{w}");
+        assert!(w.contains("@group(0) @binding(2) var<uniform> params: DuskParams;"), "{w}");
+        assert_eq!(PassLayout::new("game::Dusk", []).unwrap().params().size, 32);
+    }
+
+    #[test]
+    fn a_pass_refuses_reserved_names_and_more_than_256_bytes() {
+        let new = |p: &[(&str, ParamType)]| PassLayout::new("game::Dusk", p.iter().map(|(n, t)| (*n, t)));
+        for f in ["time", "texel", "size", "view"] {
+            assert!(new(&[(f, B(F32))]).unwrap_err().contains("the engine writes"), "{f}");
+        }
+        for g in ["screen", "screen_sampler", "params", "DuskParams"] {
+            assert!(new(&[(g, B(F32))]).unwrap_err().contains("generated pass code"), "{g}");
+        }
+        assert!(new(&[("kind", B(F32))]).unwrap_err().contains("<pass> takes kind"));
+        assert!(new(&[("loop", B(F32))]).unwrap_err().contains("reserved"));
+        // 32 bytes of frame fields and padding, then 14 vec4s fill 256 exactly; 15 do not fit.
+        assert!(new(&[("a", ParamType::Array { array: Vec4f, len: 14 })]).is_ok());
+        let e = new(&[("a", ParamType::Array { array: Vec4f, len: 15 })]).unwrap_err();
+        assert!(e.contains("272 bytes with the frame fields; at most 256"), "{e}");
+    }
 
     fn layout(params: &[(&str, ParamType)]) -> ParamsLayout {
         ParamsLayout::new(params.iter().map(|(n, t)| (*n, t))).unwrap()

@@ -82,3 +82,19 @@ export declare function material<P extends Record<string, ParamType>, T extends 
   name: string,
   decl: { params: P; textures?: T; instance?: I; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode },
 ): MaterialKind<P, T, I>;
+
+/** A pass kind, what `<pass kind={...} />` names. */
+export interface PassKind<P extends Record<string, ParamType> = Record<string, ParamType>> {
+  readonly name: string;
+  /** Types only: the props `<pass>` takes for this kind, each a value or bound (`amount={() => a()}`). */
+  readonly __props?: { [K in keyof P]?: ParamValue<P[K]> | (() => ParamValue<P[K]>) };
+}
+
+/**
+ * Declares a fullscreen pass over a `Camera2d`'s image: its params, laid out after the frame
+ * fields `time`, `texel`, `size` and `view` by WGSL's uniform rules (at most 256 bytes with them),
+ * and its fragment, a `.wgsl` file imported like a module. The WGSL reads `screen` with
+ * `screen_sampler` (nearest) and `params.<name>`; bevy-ts appends those declarations. Passes run
+ * by ascending `order` (0 by default), then by name; at most four kinds at once.
+ */
+export declare function pass<P extends Record<string, ParamType> = {}>(name: string, decl: { params?: P; fragment: ShaderFile; order?: number }): PassKind<P>;

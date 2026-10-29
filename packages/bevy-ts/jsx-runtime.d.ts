@@ -1029,6 +1029,18 @@ export interface OwnedMaterialProps {
   gltfMaterial?: string;
 }
 
+/**
+ * `<pass kind={Dusk} amount={() => dusk()} />` on an entity with `<Camera2d />`: a fullscreen pass
+ * from `pass()` in `bevy-ts/material`, run over the camera's image after the main pass. Its params
+ * live on the camera: each a value or bound. One `<pass>` per kind on a camera; unset params are
+ * zero, colours white. Checked against the kind's schema when the generation loads, as
+ * `<material kind>` is: an intrinsic's props cannot follow the type of its `kind`.
+ */
+export interface PassProps extends KeyAttribute {
+  kind: { readonly name: string };
+  [param: string]: unknown;
+}
+
 type DescElement = Element;
 
 /**
@@ -1070,6 +1082,7 @@ export declare namespace JSX {
     material: MaterialProps | ScriptMaterialProps | OwnedMaterialProps;
     mesh2d: Mesh2dProps;
     material2d: Material2dProps;
+    pass: PassProps;
     worldText: WorldTextProps;
     text2d: Text2dProps;
     bitmapText: BitmapTextProps;

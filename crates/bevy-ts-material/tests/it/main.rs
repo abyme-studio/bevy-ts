@@ -8,6 +8,8 @@ compile_error!("a release build of the tests links the Bevy dylib: build it with
 mod alpha;
 mod alpha_render;
 mod bitmap_text;
+mod pass;
+mod pass_render;
 mod pixel2d;
 mod pixel2d_render;
 mod scene;

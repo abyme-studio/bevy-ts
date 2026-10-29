@@ -857,6 +857,23 @@ pub fn remove_material(world: &mut World, e: Entity) {
     fit_mesh(world, e);
 }
 
+/// `<pass kind={K} ...params />` on camera `e`: its params, by name, in the kind's slot.
+pub fn insert_pass(world: &mut World, e: Entity, kind: &str, props: &serde_json::Map<String, serde_json::Value>, at: Option<SourceLocation>) {
+    if !world.contains_resource::<bevy_ts_material::PassKinds>() {
+        crate::reconcile::log_error(world, "<pass>: script passes need ScriptMaterialPlugin".into(), at);
+        return;
+    }
+    let props = props.iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect();
+    bevy_ts_material::pass::set(world, e, kind, props, at);
+}
+
+/// The `<pass>` of `kind` came off camera `e`.
+pub fn remove_pass(world: &mut World, e: Entity, kind: &str) {
+    if world.contains_resource::<bevy_ts_material::PassKinds>() {
+        bevy_ts_material::pass::remove(world, e, kind);
+    }
+}
+
 /// A `<material>` texture that failed to load, reported at the element that set it.
 pub fn report_texture_failures(world: &mut World, mut cursor: Local<MessageCursor<AssetLoadFailedEvent<Image>>>) {
     let Some(messages) = world.get_resource::<Messages<AssetLoadFailedEvent<Image>>>() else { return };

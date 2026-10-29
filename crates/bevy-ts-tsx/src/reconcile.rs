@@ -704,6 +704,7 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
         Target::Material2d(p) => intrinsics::insert_material2d(world, e, p, r.source.clone()),
         Target::ScriptMaterial { kind, props, gltf_material } => intrinsics::insert_script_material(world, e, kind, props, gltf_material.as_deref(), r.source.clone()),
         Target::OwnedMaterial { asset, gltf_material } => intrinsics::insert_owned_material(world, e, *asset, gltf_material.as_deref(), r.source.clone()),
+        Target::Pass { kind, props } => intrinsics::insert_pass(world, e, kind, props, r.source.clone()),
         Target::Ui(kind) => {
             let props: Map<String, Value> = r.controlled.clone().into_iter().collect();
             if let Err(m) = ui::insert(world, e, *kind, &props) {
@@ -898,6 +899,7 @@ fn remove(world: &mut World, e: Entity, key: &str, prev: &OwnedComponent) {
             }
         }
         resolve::MATERIAL2D => intrinsics::remove_material2d(world, e),
+        key if resolve::pass_of_key(key).is_some() => intrinsics::remove_pass(world, e, resolve::pass_of_key(key).expect("checked")),
         tag if ui::UiKind::from_tag(tag).is_some() => ui::remove(world, e, ui::UiKind::from_tag(tag).expect("checked")),
         scoped if bevy_ts::states::scoped_kind(scoped).is_some() => {
             bevy_ts::states::remove_scoped(world, e, bevy_ts::states::scoped_kind(scoped).expect("checked"));
@@ -1023,6 +1025,24 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
                         };
                     }
                     intrinsics::insert_script_material(world, e, kind, &all, gltf_material.as_deref(), r.source.clone());
+                    stats.written += 1;
+                }
+            }
+            Target::Pass { kind, props } => {
+                // As a script material: rebuilt when an unbound prop changed, bound props keeping
+                // what their binding last wrote.
+                let unbound: Map<String, Value> = prev.fields.iter().filter(|(f, _)| !r.bound.contains_key(*f)).map(|(k, s)| (k.clone(), s.applied.clone())).collect();
+                state = owned(r);
+                bound_fields(r, prev, &mut state);
+                if unbound != r.controlled.clone().into_iter().collect::<Map<_, _>>() {
+                    let mut all = props.clone();
+                    for f in r.bound.keys() {
+                        match prev.fields.get(f).map(|s| &s.applied) {
+                            Some(v) if !v.is_null() => all.insert(f.clone(), v.clone()),
+                            _ => None,
+                        };
+                    }
+                    intrinsics::insert_pass(world, e, kind, &all, r.source.clone());
                     stats.written += 1;
                 }
             }

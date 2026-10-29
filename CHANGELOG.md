@@ -4,6 +4,9 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `pass()` from `bevy-ts/material` and `<pass kind>` on a `Camera2d` run a fullscreen WGSL fragment
+  over the camera's image, with bindable params and engine-written `time`, `texel`, `size` and
+  `view`; at most four kinds at once (docs/materials.md, Fullscreen passes).
 - World text places a frame's new glyphs in the atlas sorted by their raster, not in the order
   labels were laid out. The same labels spawned in one frame in another order draw the same pixels;
   before, letter edges could differ under MSAA. Glyphs first used in different frames still go in

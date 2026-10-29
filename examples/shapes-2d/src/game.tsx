@@ -4,13 +4,16 @@
 // y-sorted walkers pacing past each other at the right edge, the first with a screen-size marker
 // over its head (click it). The camera is a pixel camera: keys 1, 2 and 4 zoom it, and zoomed in it
 // follows that walker, so the marker and moving texels stay in view. A title in a bitmap font
-// counts the clicks too. A tile floor is a `TilemapChunk`. One world unit is one pixel. docs/2d.md
+// counts the clicks too. A tile floor is a `TilemapChunk`. A dusk pass on the camera darkens and
+// warms the whole image and back, slowly (src/dusk.wgsl). One world unit is one pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
 import { app, Component, signal, sliced, Time, Update, type f32, type Mut, type Query, type Res, type With, type Without } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
 import { KeyCode, type Keys } from "bevy-ts/input";
 import { Camera2d, Image, PixelCamera, ScreenSize, Sprite, SpriteClip, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
 import { TilemapChunk, TilemapChunkTileData } from "bevy-ts/bevy";
+import { color, f32 as float, pass } from "bevy-ts/material";
+import dusk from "./dusk.wgsl";
 
 const shapes: Mesh2dProps[] = [
   { shape: "circle", radius: 50 },
@@ -40,6 +43,16 @@ const [clicked, setClicked] = signal<string | null>(null);
 const [clicks, setClicks] = signal(0);
 /** sheet.png: four 32-pixel tiles in a row, marked 1 to 4. */
 const sheet = TextureAtlasLayout.fromGrid({ tileSize: [32, 32], columns: 4, rows: 1 });
+
+/** Dusk: a fullscreen pass grading the camera's image toward `tint` by `amount`. */
+export const Dusk = pass("shapes::Dusk", { params: { amount: float, tint: color }, fragment: dusk });
+const [dark, setDark] = signal(0);
+
+/** The day turns to dusk and back, every 20 seconds. */
+export function dayCycle(time: Res<Time>) {
+  setDark(0.3 - 0.3 * Math.cos((time.elapsed_secs / 20) * 2 * Math.PI));
+}
+app.addSystems(Update, dayCycle);
 
 /** A walker's place in its pacing: walkers out of step pass each other. */
 export class Walker extends Component {
@@ -101,6 +114,7 @@ export const Shapes = () => (
     <entity name="camera">
       <Camera2d />
       <PixelCamera zoom={1} />
+      <pass kind={Dusk} amount={() => dark()} tint="#ff9a5c" />
     </entity>
     {shapes.map((props, i) => {
       const col = i % COLUMNS;
