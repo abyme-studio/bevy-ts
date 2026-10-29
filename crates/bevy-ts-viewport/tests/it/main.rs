@@ -9,6 +9,7 @@ mod common;
 
 mod assets;
 mod edit;
+mod headless;
 mod preview;
 mod spike;
 mod viewport;

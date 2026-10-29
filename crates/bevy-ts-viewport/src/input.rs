@@ -4,17 +4,14 @@
 use crate::keyboard::write;
 use crate::shared::SharedRes;
 use crate::VirtualWindow;
-use bevy::input::ButtonState;
-use bevy::input::gestures::{DoubleTapGesture, PinchGesture, RotationGesture};
 use bevy::input::keyboard::KeyboardFocusLost;
-use bevy::input::mouse::{MouseButton, MouseButtonInput, MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::input::gamepad::{
     GamepadAxis, GamepadButton, GamepadConnection, GamepadConnectionEvent, RawGamepadAxisChangedEvent, RawGamepadButtonChangedEvent,
     RawGamepadEvent,
 };
 use bevy::input::touch::{ForceTouch, TouchInput, TouchPhase};
 use bevy::prelude::*;
-use bevy::window::{CursorEntered, CursorLeft, CursorMoved, WindowEvent, WindowFocused};
+use bevy::window::{WindowEvent, WindowFocused};
 use bevy_ts_remote::protocol::{self as p, ViewportInput};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -74,30 +71,6 @@ pub(crate) fn queue_at(world: &mut World, at: Instant, params: Value) -> bool {
     }
 }
 
-fn button(b: Option<p::PointerEventButton>) -> MouseButton {
-    match b {
-        Some(p::PointerEventButton::Right) => MouseButton::Right,
-        Some(p::PointerEventButton::Middle) => MouseButton::Middle,
-        Some(p::PointerEventButton::Back) => MouseButton::Back,
-        Some(p::PointerEventButton::Forward) => MouseButton::Forward,
-        Some(p::PointerEventButton::Left) | None => MouseButton::Left,
-    }
-}
-
-/// Moves the cursor to `pos` (logical pixels, which are the viewer's points), writing
-/// `CursorMoved` if it changed.
-fn move_cursor(world: &mut World, window: Entity, pos: Vec2) {
-    let Some(mut w) = world.get_mut::<Window>(window) else { return };
-    let before = w.cursor_position();
-    if before == Some(pos) {
-        return;
-    }
-    w.set_cursor_position(Some(pos));
-    let delta = before.map(|b| pos - b);
-    world.resource_mut::<crate::feedback::Cursor>().set_by_viewer(pos);
-    write(world, CursorMoved { window, position: pos, delta });
-}
-
 /// Applies the queued events in arrival order. Runs in `First`.
 pub(crate) fn apply(world: &mut World) {
     let events = std::mem::take(&mut world.resource_mut::<PendingInput>().0);
@@ -114,6 +87,13 @@ pub(crate) fn apply(world: &mut World) {
     }
 }
 
+/// The viewer put the cursor there, so it is not a warp to send back.
+fn viewer_moved(world: &mut World, moved: Option<Vec2>) {
+    if let Some(pos) = moved {
+        world.resource_mut::<crate::feedback::Cursor>().set_by_viewer(pos);
+    }
+}
+
 fn apply_one(world: &mut World, window: Entity, e: ViewportInput) {
     let mods = match &e {
         ViewportInput::PointerEvent(e) => Some(Modifiers::from(&e.mods)),
@@ -127,55 +107,14 @@ fn apply_one(world: &mut World, window: Entity, e: ViewportInput) {
     }
     match e {
         ViewportInput::PointerEvent(e) => {
-            let pos = Vec2::new(e.x as f32, e.y as f32);
-            match e.kind {
-                p::PointerEventKind::Enter => {
-                    write(world, CursorEntered { window });
-                    move_cursor(world, window, pos);
-                }
-                p::PointerEventKind::Leave => {
-                    if let Some(mut w) = world.get_mut::<Window>(window) {
-                        w.set_cursor_position(None);
-                    }
-                    write(world, CursorLeft { window });
-                }
-                p::PointerEventKind::Move => move_cursor(world, window, pos),
-                p::PointerEventKind::Down | p::PointerEventKind::Up => {
-                    move_cursor(world, window, pos);
-                    let state = if e.kind == p::PointerEventKind::Down { ButtonState::Pressed } else { ButtonState::Released };
-                    write(world, MouseButtonInput { button: button(e.button), state, window });
-                }
-            }
-            if let (Some(dx), Some(dy)) = (e.dx, e.dy)
-                && (dx != 0.0 || dy != 0.0)
-            {
-                write(world, MouseMotion { delta: Vec2::new(dx as f32, dy as f32) });
-            }
+            let moved = crate::mouse::pointer(world, window, &e);
+            viewer_moved(world, moved);
         }
         ViewportInput::WheelEvent(e) => {
-            if let (Some(x), Some(y)) = (e.x, e.y) {
-                move_cursor(world, window, Vec2::new(x as f32, y as f32));
-            }
-            let unit = match e.unit {
-                p::WheelEventUnit::Line => MouseScrollUnit::Line,
-                p::WheelEventUnit::Pixel => MouseScrollUnit::Pixel,
-            };
-            let phase = match e.phase {
-                Some(p::WheelEventPhase::Started) => TouchPhase::Started,
-                Some(p::WheelEventPhase::Ended) => TouchPhase::Ended,
-                Some(p::WheelEventPhase::Cancelled) => TouchPhase::Canceled,
-                Some(p::WheelEventPhase::Moved) | None => TouchPhase::Moved,
-            };
-            write(world, MouseWheel { unit, x: e.dx as f32, y: e.dy as f32, window, phase });
+            let moved = crate::mouse::wheel(world, window, &e);
+            viewer_moved(world, moved);
         }
-        ViewportInput::GestureEvent(e) => {
-            let d = e.delta.unwrap_or(0.0) as f32;
-            match e.kind {
-                p::GestureEventKind::Pinch => write(world, PinchGesture(d)),
-                p::GestureEventKind::Rotate => write(world, RotationGesture(d)),
-                p::GestureEventKind::DoubleTap => write(world, DoubleTapGesture),
-            }
-        }
+        ViewportInput::GestureEvent(e) => crate::mouse::gesture(world, &e),
         ViewportInput::KeyEvent(e) => crate::keyboard::key(world, window, e),
         ViewportInput::ImeEvent(e) => crate::keyboard::ime(world, window, e),
         ViewportInput::FocusEvent(e) => {

@@ -102,12 +102,12 @@ fn a_test_clicks_a_mesh_headless() {
     assert_eq!(clicks, 1);
     assert!(lines.iter().any(|l| l.contains("cube clicked primary")), "{lines:?}");
 
-    // A wheel is refused, naming it, and nothing of the request applies: the pointer and key in it
+    // A touch is refused, naming it, and nothing of the request applies: the pointer and key in it
     // would otherwise click again.
-    let wheel = json!({ "type": "wheel", "dx": 0, "dy": 1, "unit": "line" });
+    let touch = json!({ "type": "touch", "kind": "end", "touches": [] });
     let key = json!({ "type": "key", "code": "KeyA", "key": "a", "state": "down" });
-    let e = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("down", x, y), pointer("up", x, y), key, wheel] })).unwrap_err();
-    assert!(e.contains("wheel"), "{e}");
+    let e = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("down", x, y), pointer("up", x, y), key, touch] })).unwrap_err();
+    assert!(e.contains("touch"), "{e}");
     let e = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("move", x, y)], "viewport": 1 })).unwrap_err();
     assert!(e.contains("viewport 1"), "{e}");
     std::thread::sleep(Duration::from_millis(300));
