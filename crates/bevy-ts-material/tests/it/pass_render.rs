@@ -159,6 +159,20 @@ fn the_frame_fields_under_a_pixel_camera() {
 }
 
 #[test]
+fn texel_follows_the_camera_scale() {
+    let _gpu = GPU.lock().unwrap_or_else(|e| e.into_inner());
+    let mut app = app();
+    // 320 pixels over 320 world units, scaled 2: 640 world units, half a pixel each.
+    let (target, cam) = camera(&mut app, Transform::from_scale(Vec3::splat(2.0)));
+    load(&mut app, 1, vec![decl_of("game::Frame", json!([]), "frame.wgsl", 0.0)]).unwrap();
+    pass::set(app.world_mut(), cam, "game::Frame", Map::new(), None);
+    until_drawn(&mut app, &target, |_| Ok(()), |w, _| {
+        let (_, texel, _, _) = frame_fields(&slot_bytes(w, cam, 0).unwrap());
+        if (texel - 0.5).abs() < 1e-4 { Ok(()) } else { Err(format!("texel {texel}, not 0.5")) }
+    });
+}
+
+#[test]
 fn a_replaced_shader_draws_within_frames_and_a_bad_one_keeps_the_last() {
     let _gpu = GPU.lock().unwrap_or_else(|e| e.into_inner());
     let mut app = app();

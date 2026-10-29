@@ -132,3 +132,22 @@ fn a_schema_change_re_encodes_by_name() {
     let k = &app.world().resource::<PassKinds>().live["game::Dusk"];
     assert!(k.layout.has("glow") && !k.layout.has("tint"));
 }
+
+/// A kind that moves to another slot forgets the failure reported in its old one, so a failure
+/// of the new slot's shader is reported, whether its declaration stayed or changed.
+#[test]
+fn a_moved_kind_forgets_its_old_slots_reported_failure() {
+    let mut app = app();
+    load(&mut app, 1, vec![decl("game::K", amount(), 0.0)]).unwrap();
+    let mark = |app: &mut App| app.world_mut().resource_mut::<PassKinds>().live.get_mut("game::K").unwrap().reported = Some(1);
+    let reported = |app: &App| {
+        let k = &app.world().resource::<PassKinds>().live["game::K"];
+        (k.slot, k.reported)
+    };
+    mark(&mut app);
+    load(&mut app, 2, vec![decl("game::A", amount(), -1.0), decl("game::K", amount(), 0.0)]).unwrap();
+    assert_eq!(reported(&app), (1, None), "the same declaration, moved");
+    mark(&mut app);
+    load(&mut app, 3, vec![decl("game::K", json!([]), 0.0)]).unwrap();
+    assert_eq!(reported(&app), (0, None), "a new declaration, moved");
+}

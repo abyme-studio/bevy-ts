@@ -261,6 +261,10 @@ pub fn apply(world: &mut World, generation: u64, present: bool) {
                 k.wanted = None;
                 let moved = k.slot != slot;
                 k.slot = slot;
+                // A failure already reported was the old slot's shader's.
+                if moved {
+                    k.reported = None;
+                }
                 if moved && let Some(source) = k.source.clone() {
                     install(world, &mut k, source);
                 }
@@ -287,7 +291,7 @@ fn rebuild(world: &mut World, generation: u64, decl: PassDecl, old: Option<PassK
     let current = old.as_ref().and_then(|o| o.source.clone());
     match next_source(world, &decl, &layout, slot, current.as_deref(), old.is_some() && !moved) {
         Ok(source) => {
-            let mut k = PassKind { decl, layout, wanted: None, slot, source: current, reported: old.and_then(|o| o.reported) };
+            let mut k = PassKind { decl, layout, wanted: None, slot, source: current, reported: old.and_then(|o| o.reported).filter(|_| !moved) };
             // The same source, in a new slot, still needs writing there.
             if let Some(s) = source.or_else(|| k.source.clone().filter(|_| moved)) {
                 install(world, &mut k, s);
@@ -484,9 +488,14 @@ pub fn check_props(kinds: &BTreeMap<String, Option<PassLayout>>, kind: &str, pro
 /// `<pass kind>` on camera `e`: its props for the kind, then the camera's slots.
 pub fn set(world: &mut World, e: Entity, kind: &str, props: Map<String, Value>, at: Option<SourceLocation>) {
     let Ok(mut em) = world.get_entity_mut(e) else { return };
-    let mut passes = em.take::<CameraPasses>().unwrap_or_default();
-    passes.props.insert(kind.to_string(), (props, at));
-    em.insert(passes);
+    match em.get_mut::<CameraPasses>() {
+        Some(mut passes) => {
+            passes.props.insert(kind.to_string(), (props, at));
+        }
+        None => {
+            em.insert(CameraPasses { props: BTreeMap::from([(kind.to_string(), (props, at))]) });
+        }
+    }
     sync_camera(world, e);
 }
 
@@ -575,8 +584,8 @@ pub fn frame_fields(bytes: &[u8]) -> (f32, f32, Vec2, Vec2) {
 
 /// `PostUpdate`, after the pixel camera's snap and Bevy's camera update: the frame fields of
 /// every pass on every camera. `time` is `Time`'s wrapped elapsed seconds, as Bevy's
-/// `globals.time`; `size` the physical target; `texel` its pixels per world unit; `view` the world
-/// point drawn at its centre.
+/// `globals.time`; `size` the physical target; `texel` its pixels per world unit, through the
+/// camera's scale; `view` the world point drawn at its centre.
 fn write_frame_fields(world: &mut World) {
     let time = world.resource::<Time>().elapsed_secs_wrapped();
     let mut q = world.query_filtered::<(Entity, &Camera, &Projection, &GlobalTransform), With<CameraPasses>>();
@@ -585,7 +594,10 @@ fn write_frame_fields(world: &mut World) {
         .map(|(e, camera, projection, at)| {
             let size = camera.physical_target_size().unwrap_or_default().as_vec2();
             let (texel, view) = match projection {
-                Projection::Orthographic(o) if o.area.width() > 0.0 => (size.x / o.area.width(), at.transform_point(o.area.center().extend(0.0)).truncate()),
+                Projection::Orthographic(o) if o.area.width() > 0.0 => {
+                    let world_width = o.area.width() * at.scale().x.abs();
+                    (if world_width > 0.0 { size.x / world_width } else { 0.0 }, at.transform_point(o.area.center().extend(0.0)).truncate())
+                }
                 _ => (0.0, at.translation().truncate()),
             };
             let mut b = [0u8; crate::layout::FRAME_BYTES];
@@ -599,11 +611,12 @@ fn write_frame_fields(world: &mut World) {
         let mut em = world.entity_mut(e);
         for slot in 0..SLOTS as u8 {
             slots!(slot, T => {
-                if let Some(old) = em.get::<T>() {
-                    let mut bytes = old.bytes();
-                    if bytes[..frame.len()] != frame {
-                        bytes[..frame.len()].copy_from_slice(&frame);
-                        em.insert(T::from_bytes(&bytes));
+                if let Some(mut pass) = em.get_mut::<T>() {
+                    let words = frame.chunks(4).map(|w| u32::from_le_bytes(w.try_into().expect("4 bytes")));
+                    for (i, w) in words.enumerate() {
+                        if pass.data[i / 4][i % 4] != w {
+                            pass.data[i / 4][i % 4] = w;
+                        }
                     }
                 }
             });
