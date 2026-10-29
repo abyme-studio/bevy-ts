@@ -49,7 +49,8 @@ fn the_gallery_mounts_every_intrinsic() {
     let mut mounted = BTreeSet::new();
     for n in world.query::<&TsxNode>().iter(world) {
         // A `<pass kind>` is keyed `pass:<kind>` on its camera: it counts as `pass`.
-        mounted.extend(n.components.keys().map(|k| bevy_ts_tsx::resolve::pass_of_key(k).map_or(k.clone(), |_| bevy_ts_tsx::resolve::PASS.to_string())));
+        use bevy_ts_tsx::resolve::{pass_of_key, PASS};
+        mounted.extend(n.components.keys().map(|k| pass_of_key(k).map_or(k.clone(), |_| PASS.to_string())));
         mounted.extend(n.types.iter().filter(|t| *t == "entity").cloned());
     }
     let missing: Vec<_> = intrinsics().into_iter().filter(|t| !mounted.contains(t)).collect();

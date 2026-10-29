@@ -2,7 +2,7 @@
 // Not shipped (no example.json): `bevy-ts dev src/gallery.tsx`. A test (crates/bevy-ts-cli/tests/it/ui_gallery.rs)
 // loads it headless and fails when an intrinsic in jsx-runtime.d.ts is not mounted here.
 import { app, Show, Update, conicGradient, deg, fr, linearGradient, percent, px, radialGradient, ref, repeat, signal, sliced, span, tiled } from "bevy-ts";
-import { AutoDirectionalNavigation, Camera2d, Camera3d, Checked, GlobalZIndex, Pressed, ScrollPosition, TextureAtlasLayout, Transform, ZIndex } from "bevy-ts/bevy";
+import { AutoDirectionalNavigation, Camera, Camera2d, Camera3d, Checked, GlobalZIndex, Pressed, ScrollPosition, TextureAtlasLayout, Transform, ZIndex } from "bevy-ts/bevy";
 import { CompassOctant, KeyCode, type DirectionalNavigation, type InputFocusVisible, type Keys } from "bevy-ts/input";
 import { color, f32, pass } from "bevy-ts/material";
 import type { Child } from "bevy-ts/jsx-runtime";
@@ -354,12 +354,13 @@ app.scene("gallery", () => (
     <entity key="pixels">
       <bitmapText font="fonts/tiny.json" scale={2} color="#ff4">{() => `CLICKED ${clicks()} TIMES`}</bitmapText>
     </entity>
-    {/* The minimap's camera, above the cube looking down; its viewport gives it an image of its own. */}
-    {/* The 2D camera, so the 2D elements above draw, and <pass> runs over its image (a pass sits on a Camera2d). */}
+    {/* The 2D camera, so the 2D elements above draw and <pass> runs over its image (a pass sits on a Camera2d). Order 1, clearing nothing: it draws over the 3D camera, and the pass grades the whole frame. */}
     <entity key="camera2d">
       <Camera2d />
+      <Camera order={1} clear_color="None" />
       <pass kind={Warm} amount={() => (clicks() > 0 ? 0.3 : 0)} tint="#ffb070" />
     </entity>
+    {/* The minimap's camera, above the cube looking down; its viewport gives it an image of its own. */}
     <entity key="mini" ref={mini}>
       <Camera3d />
       <Transform translation={[0, 4, 0]} rotation={[-0.7071, 0, 0, 0.7071]} />
