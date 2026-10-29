@@ -20,6 +20,7 @@ export const texture2d = "texture2d";
 
 const BASES = new Set([f32, i32, u32, vec2f, vec3f, vec4f, mat4x4f, color]);
 const ALPHA = new Set(["opaque", "blend", "premultiplied", "add", "multiply", "alphaToCoverage"]);
+const ALPHA_2D = new Set(["opaque", "blend"]);
 
 /** A fixed array, strided to 16 bytes; scalar and `vec2f` elements read as `.x`/`.xy` of a `vec4`. */
 export function array(of, len) {
@@ -73,16 +74,55 @@ class MaterialKind {
   }
 }
 
+/** A 2D material kind: what `<material2d kind={...} />` names. Only `name` crosses into a scene. */
+class Material2dKind {
+  constructor(name) {
+    this.name = name;
+    Object.freeze(this);
+  }
+}
+
+/** Where a declaration was made, for an error naming it. */
+function where(item) {
+  const l = item.location;
+  return l ? ` at ${l.file}:${l.line}` : "";
+}
+
+/**
+ * The name `name` is free across materials, 2D materials and passes (one namespace), or the call
+ * fails naming the declaration that took it.
+ */
+function claim(name, fail) {
+  const m = sectionItems("materials").find((i) => i.name === name);
+  if (m) fail(m.space === "2d" ? `is declared twice; material2d ${name}${where(m)} took the name` : `is declared twice; material ${name}${where(m)} took the name`);
+  const p = sectionItems("passes").find((i) => i.name === name);
+  if (p) fail(`is declared twice; pass ${name}${where(p)} took the name`);
+}
+
 /**
  * `material("game::Glow", { params: { color: color, pulse: f32 }, fragment: glow })`, where
  * `glow` is `import glow from "./glow.wgsl"`.
  */
 export function material(name, decl) {
-  const at = callerLocation();
+  declare("material", "3d", name, decl, callerLocation());
+  return new MaterialKind(name);
+}
+
+/**
+ * `material2d("game::Planet", { params: { sea: color }, instance: { seed: f32 }, fragment: planet })`:
+ * a material for `<mesh2d>`, drawn by Bevy's 2D pipeline. It takes what `material()` takes; its
+ * `alphaMode` is `"opaque"`, `"blend"` or `{ mask }`.
+ */
+export function material2d(name, decl) {
+  declare("material2d", "2d", name, decl, callerLocation());
+  return new Material2dKind(name);
+}
+
+function declare(call, space, name, decl, at) {
   const fail = (m) => {
-    throw located(`material ${name}: ${m}`, at);
+    throw located(`${call} ${name}: ${m}`, at);
   };
-  if (typeof name !== "string" || !name) throw located("material(name, ...): the name is a string (\"game::Glow\")", at);
+  if (typeof name !== "string" || !name) throw located(`${call}(name, ...): the name is a string (\"game::Glow\")`, at);
   if (!decl || typeof decl !== "object") fail("takes { params, fragment }");
   for (const k of Object.keys(decl)) {
     if (!["params", "textures", "instance", "fragment", "vertex", "alphaMode"].includes(k)) fail(`unknown option ${k}`);
@@ -118,13 +158,13 @@ export function material(name, decl) {
     instance.push({ name: p, type });
   }
   let alphaMode = decl.alphaMode === undefined ? "opaque" : decl.alphaMode;
+  const modes = space === "2d" ? ALPHA_2D : ALPHA;
   if (typeof alphaMode === "object" && alphaMode !== null && typeof alphaMode.mask === "number") alphaMode = { mask: alphaMode.mask };
-  else if (!ALPHA.has(alphaMode)) fail(`alphaMode ${JSON.stringify(alphaMode)}; use ${[...ALPHA].join(", ")} or { mask: 0.5 }`);
-  const items = sectionItems("materials");
-  if (items.some((m) => m.name === name)) fail("is declared twice");
-  items.push({ name, params, textures, instance, fragment, vertex: shader("vertex"), alphaMode, location: at || null });
-  SCHEMAS.set(name, { params, textures, instance });
-  return new MaterialKind(name);
+  else if (!modes.has(alphaMode)) fail(`alphaMode ${JSON.stringify(alphaMode)}; use ${[...modes].map((m) => JSON.stringify(m)).join(", ")} or { mask: 0.5 }`);
+  claim(name, fail);
+  const vertex = shader("vertex");
+  sectionItems("materials").push({ name, params, textures, instance, fragment, vertex, alphaMode, space, location: at || null });
+  if (space === "3d") SCHEMAS.set(name, { params, textures, instance });
 }
 
 /** A pass kind: what `<pass kind={...} />` names. Only `name` crosses into a scene. */
@@ -160,8 +200,7 @@ export function pass(name, decl) {
     if (!ok) fail(`param ${p} has type ${JSON.stringify(type)}; use f32, i32, u32, vec2f, vec3f, vec4f, mat4x4f, color or array(...)`);
     params.push({ name: p, type });
   }
-  const items = sectionItems("passes");
-  if (items.some((m) => m.name === name)) fail("is declared twice");
-  items.push({ name, params, fragment: decl.fragment.path, order, location: at || null });
+  claim(name, fail);
+  sectionItems("passes").push({ name, params, fragment: decl.fragment.path, order, location: at || null });
   return new PassKind(name);
 }

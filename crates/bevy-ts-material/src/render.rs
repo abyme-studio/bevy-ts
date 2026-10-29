@@ -24,7 +24,7 @@ use bevy::render::camera::{DirtySpecializationSystems, DirtySpecializations};
 use bevy::image::ImageSampler;
 use bevy::platform::collections::HashMap;
 use bevy::render::erased_render_asset::{ErasedRenderAsset, ErasedRenderAssetDependency, ErasedRenderAssetPlugin, PrepareAssetError};
-use bevy::render::material_bind_groups::{MaterialBindGroupAllocator, MaterialBindGroupAllocators, RenderMaterialBindings};
+use bevy::render::material_bind_groups::{MaterialBindGroupAllocator, MaterialBindGroupAllocators, MaterialBindingId, RenderMaterialBindings};
 use bevy::render::render_asset::{RenderAssets, prepare_assets};
 use bevy::render::render_phase::DrawFunctions;
 use bevy::render::render_resource::binding_types::{sampler, storage_buffer_read_only_sized, texture_2d, uniform_buffer_sized};
@@ -108,9 +108,10 @@ impl Plugin for ScriptMaterialRenderPlugin {
         app.init_asset::<ScriptMaterial>()
             .add_plugins(ErasedRenderAssetPlugin::<ScriptMaterial, AfterImages>::default())
             .init_resource::<EntitiesNeedingSpecialization<ScriptMaterial>>()
-            .init_resource::<ImageSamplers>()
-            .add_systems(PostUpdate, (check_entities_needing_specialization, rebind_samplers).after(AssetEventSystems));
+            .init_resource::<ImageSamplers<ScriptMaterial>>()
+            .add_systems(PostUpdate, (check_entities_needing_specialization, rebind_samplers::<ScriptMaterial>).after(AssetEventSystems));
         crate::scene::plugin(app);
+        crate::material2d::plugin(app);
         crate::alpha::plugin(app);
         crate::instance::plugin(app);
         let instances = crate::instance::buffer(app.world());
@@ -138,7 +139,7 @@ impl Plugin for ScriptMaterialRenderPlugin {
 
 /// Script materials prepare after the frame's images, so a material and its image changed in one
 /// frame bind the image's new sampler. Bevy's own dependencies only name erased assets.
-struct AfterImages;
+pub(crate) struct AfterImages;
 
 impl ErasedRenderAssetDependency for AfterImages {
     fn register_system(render_app: &mut SubApp, system: bevy::ecs::schedule::ScheduleConfigs<bevy::ecs::system::ScheduleSystem>) {
@@ -146,19 +147,36 @@ impl ErasedRenderAssetDependency for AfterImages {
     }
 }
 
-/// The sampler last seen for each image a script material holds.
-#[derive(Resource, Default)]
-struct ImageSamplers(HashMap<AssetId<Image>, ImageSampler>);
+/// The sampler last seen for each image a script material of type `A` holds.
+#[derive(Resource)]
+pub(crate) struct ImageSamplers<A>(HashMap<AssetId<Image>, ImageSampler>, std::marker::PhantomData<A>);
+
+impl<A> Default for ImageSamplers<A> {
+    fn default() -> Self {
+        ImageSamplers(HashMap::default(), std::marker::PhantomData)
+    }
+}
+
+/// A script material asset, 3D or 2D: the images it binds.
+pub(crate) trait Textured: Asset {
+    fn textures(&self) -> &[Option<Handle<Image>>];
+}
+
+impl Textured for ScriptMaterial {
+    fn textures(&self) -> &[Option<Handle<Image>>] {
+        &self.textures
+    }
+}
 
 /// A material binds its images' samplers when it is prepared, and it is prepared only on its own
 /// asset event. A re-prepared `GpuImage` makes a new sampler every time, so a changed sampler
 /// (`assets.set(img, { sampler })`) touches every material holding the image, which re-prepares
 /// it as the same instance. A rewrite that keeps the sampler (`setData`) touches none.
-fn rebind_samplers(
+pub(crate) fn rebind_samplers<A: Textured>(
     mut events: MessageReader<AssetEvent<Image>>,
     images: Res<Assets<Image>>,
-    mut materials: ResMut<Assets<ScriptMaterial>>,
-    mut seen: ResMut<ImageSamplers>,
+    mut materials: ResMut<Assets<A>>,
+    mut seen: ResMut<ImageSamplers<A>>,
 ) {
     for ev in events.read() {
         match *ev {
@@ -169,7 +187,7 @@ fn rebind_samplers(
                 }
                 let holders: Vec<_> = materials
                     .iter()
-                    .filter(|(_, m)| m.textures.iter().flatten().any(|h| h.id() == id))
+                    .filter(|(_, m)| m.textures().iter().flatten().any(|h| h.id() == id))
                     .map(|(m, _)| m)
                     .collect();
                 if holders.is_empty() {
@@ -223,44 +241,10 @@ impl ErasedRenderAsset for ScriptMaterial {
         (opaque, alpha_mask, transparent, allocators, bindings, images, fallback, instances, buffers): &mut SystemParamItem<Self::Param>,
     ) -> Result<PreparedMaterial, PrepareAssetError<ScriptMaterial>> {
         let kind = source.kind.clone();
-        let mut resources = Vec::new();
-        let mut data_buffer = Vec::new();
-        if let Some(b) = kind.bindings.params_binding() {
-            data_buffer = source.data.clone();
-            resources.push((b, UnpreparedBindingResource::Data(0..data_buffer.len() as u32)));
-        }
-        for i in 0..kind.bindings.textures().len() {
-            // The image's own sampler, as Bevy's `AsBindGroup` binds `#[sampler]`.
-            let (view, sampler) = match source.textures.get(i).and_then(Option::as_ref) {
-                Some(h) => match images.get(h) {
-                    Some(img) => (img.texture_view.clone(), img.sampler.clone()),
-                    None => return Err(PrepareAssetError::RetryNextUpdate(source)),
-                },
-                None => (fallback.d2.texture_view.clone(), fallback.d2.sampler.clone()),
-            };
-            let b = kind.bindings.texture_binding(i);
-            resources.push((b, UnpreparedBindingResource::TextureView(TextureViewDimension::D2, view)));
-            resources.push((b + 1, UnpreparedBindingResource::Sampler(SamplerBindingType::Filtering, sampler)));
-        }
-        if let Some(b) = kind.bindings.instance_binding() {
-            // Bound once Bevy has made the buffer; it rebinds when the buffer grows.
-            let Some(InstanceBuffer(h)) = instances.as_deref() else { return Err(PrepareAssetError::RetryNextUpdate(source)) };
-            if buffers.get(h.id()).is_none() {
-                return Err(PrepareAssetError::RetryNextUpdate(source));
-            }
-            resources.push((b, UnpreparedBindingResource::ShaderBuffer(h.clone())));
-        }
-        let mut unprepared = BindGroupBuilder { binding_resources: UnpreparedBindingResources(resources), data_buffer };
-        let allocator = allocators.get_mut(&TypeId::of::<ScriptMaterial>()).expect("allocator inserted at render startup");
-        let binding = match bindings.entry(asset_id.into()) {
-            Entry::Occupied(mut e) => {
-                allocator.free(*e.get());
-                let b = allocator.allocate_unprepared(&mut unprepared, &kind.layout);
-                *e.get_mut() = b;
-                b
-            }
-            Entry::Vacant(e) => *e.insert(allocator.allocate_unprepared(&mut unprepared, &kind.layout)),
+        let Some(mut unprepared) = unprepared(&kind, &source.data, &source.textures, images, fallback, instances.as_deref(), buffers) else {
+            return Err(PrepareAssetError::RetryNextUpdate(source));
         };
+        let binding = allocate(allocators, bindings, TypeId::of::<ScriptMaterial>(), asset_id.untyped(), &mut unprepared, &kind.layout);
 
         let render_phase_type = match kind.alpha_mode {
             AlphaMode::Blend | AlphaMode::Premultiplied | AlphaMode::Add | AlphaMode::Multiply => RenderPhaseType::Transparent,
@@ -295,6 +279,66 @@ impl ErasedRenderAsset for ScriptMaterial {
         {
             a.free(b);
         }
+    }
+}
+
+/// An instance's bind group resources, in its kind's binding order. `None` while one of its images
+/// or the instance buffer is not on the GPU yet: the asset retries next frame.
+pub(crate) fn unprepared(
+    kind: &Kind,
+    data: &[u8],
+    textures: &[Option<Handle<Image>>],
+    images: &RenderAssets<GpuImage>,
+    fallback: &FallbackImage,
+    instances: Option<&InstanceBuffer>,
+    buffers: &RenderAssets<GpuShaderBuffer>,
+) -> Option<BindGroupBuilder> {
+    let mut resources = Vec::new();
+    let mut data_buffer = Vec::new();
+    if let Some(b) = kind.bindings.params_binding() {
+        data_buffer = data.to_vec();
+        resources.push((b, UnpreparedBindingResource::Data(0..data_buffer.len() as u32)));
+    }
+    for i in 0..kind.bindings.textures().len() {
+        // The image's own sampler, as Bevy's `AsBindGroup` binds `#[sampler]`.
+        let (view, sampler) = match textures.get(i).and_then(Option::as_ref) {
+            Some(h) => {
+                let img = images.get(h)?;
+                (img.texture_view.clone(), img.sampler.clone())
+            }
+            None => (fallback.d2.texture_view.clone(), fallback.d2.sampler.clone()),
+        };
+        let b = kind.bindings.texture_binding(i);
+        resources.push((b, UnpreparedBindingResource::TextureView(TextureViewDimension::D2, view)));
+        resources.push((b + 1, UnpreparedBindingResource::Sampler(SamplerBindingType::Filtering, sampler)));
+    }
+    if let Some(b) = kind.bindings.instance_binding() {
+        // Bound once Bevy has made the buffer; it rebinds when the buffer grows.
+        let InstanceBuffer(h) = instances?;
+        buffers.get(h.id())?;
+        resources.push((b, UnpreparedBindingResource::ShaderBuffer(h.clone())));
+    }
+    Some(BindGroupBuilder { binding_resources: UnpreparedBindingResources(resources), data_buffer })
+}
+
+/// Allocates an instance's bind group in its space's allocator, freeing the one it had.
+pub(crate) fn allocate(
+    allocators: &mut MaterialBindGroupAllocators,
+    bindings: &mut RenderMaterialBindings,
+    space: TypeId,
+    asset_id: bevy::asset::UntypedAssetId,
+    unprepared: &mut BindGroupBuilder,
+    layout: &BindGroupLayoutDescriptor,
+) -> MaterialBindingId {
+    let allocator = allocators.get_mut(&space).expect("allocator inserted at render startup");
+    match bindings.entry(asset_id) {
+        Entry::Occupied(mut e) => {
+            allocator.free(*e.get());
+            let b = allocator.allocate_unprepared(unprepared, layout);
+            *e.get_mut() = b;
+            b
+        }
+        Entry::Vacant(e) => *e.insert(allocator.allocate_unprepared(unprepared, layout)),
     }
 }
 

@@ -2,7 +2,8 @@
 
 A custom material is data: a params schema in TS and WGSL in a `.wgsl` file. The prebuilt engine
 draws it with no Rust and no project engine. The code is `crates/bevy-ts-material`; the TS module
-is `bevy-ts/material`. A fullscreen pass over a `Camera2d` is data too ([Fullscreen
+is `bevy-ts/material`. A material for a `<mesh2d>` is the same data ([2D
+materials](#2d-materials)), and so is a fullscreen pass over a `Camera2d` ([Fullscreen
 passes](#fullscreen-passes)). Other render passes, compute and other render-world work stay Rust,
 in the native crate.
 
@@ -281,6 +282,101 @@ import { MaterialAlpha } from "bevy-ts/bevy";
   second on an M5 Max for a Synty building (main's `Blend` fade cost about 0.3 s). Fade it once
   off-screen, or early, to warm it.
 
+## 2D materials
+
+`material2d()` declares a material for a `<mesh2d>`, drawn by Bevy's 2D pipeline under a
+`Camera2d`. It takes what `material()` takes: params, textures, instance params, a `fragment` and an
+optional `vertex`.
+
+```tsx
+import { color, f32, material2d } from "bevy-ts/material";
+import planet from "./planet.wgsl";
+
+export const Planet = material2d("game::Planet", {
+  params: { sea: color },
+  instance: { pixels: f32, seed: f32, land: f32 },
+  fragment: planet,
+  alphaMode: "blend",
+});
+
+<entity>
+  <Transform translation={[120, 40, 0]} />
+  <mesh2d shape="rectangle" size={[48, 48]} />
+  <material2d kind={Planet} sea="#24a" pixels={48} seed={3} land={() => cutoff()} />
+</entity>
+```
+
+```wgsl
+import bevy_sprite_render::mesh2d::vertex_output::VertexOutput;
+import bevy_sprite_render::mesh2d::view_bindings::globals;
+
+@fragment
+fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+    let me = instance(in.instance_index);
+    let px = floor(in.uv * me.pixels);
+    ...
+}
+```
+
+- `<material2d kind>` sits beside a `<mesh2d>`, as `<material kind>` beside a `<mesh>`. Params and
+  textures key a shared asset, equal props share it, and an asset no entity holds is freed at the
+  end of the frame. Instance params go to the entity and may be bound. A bound param or texture, a
+  prop the kind lacks (`color`, `alpha`, `texture` or `uvTransform` too, unless the kind has it),
+  a 3D kind, or the element on an entity with a `<Sprite>` fails the load at the element. A 2D kind
+  on `<material>` fails the same way. Removing the element stops drawing the mesh with the kind.
+- `<material2d>` without `kind` is still a `ColorMaterial` ([2d.md](2d.md)).
+- `alphaMode` is `"opaque"` (default), `"blend"` or `{ mask: 0.5 }`; 2D has no other. Opaque draws
+  in `Opaque2d`, a mask in `AlphaMask2d`, blend in `Transparent2d`, sorted by z. The fragment
+  returns straight alpha: Bevy's 2D blend multiplies by it.
+- A name is one namespace across `material()`, `material2d()` and `pass()`: a second declaration of
+  a name fails at its call, naming the first.
+- bevy-ts appends the params struct, textures and instance array after your last line, as for 3D,
+  at `@group(2)` with the same binding numbers. A kind with instance params gets Bevy's 2D
+  `get_tag` imported at the start of your first line (`bevy_sprite_render::mesh2d::functions`).
+- Your file imports `VertexOutput` from `bevy_sprite_render::mesh2d::vertex_output` (its `uv`,
+  `world_position` and `instance_index`) and `globals` from
+  `bevy_sprite_render::mesh2d::view_bindings` for `globals.time`, which holds while the game is
+  paused.
+- Hot reload and errors are a 3D material's: a `.wgsl` save replaces the shader in place, a changed
+  schema re-encodes every asset and row by name, an error names the kind and your `file:line:col`,
+  and the last good shader keeps drawing.
+
+### Art pixels
+
+Under `<PixelCamera>` at a whole zoom, one world unit is a whole `zoom × zoom` block of screen
+pixels, on whole pixels. The fragment runs once per screen pixel, so a value computed from a whole
+world unit is the same across its block. Find the art pixel one of two ways:
+
+- Quad space, as PixelPlanets does: `floor(in.uv * pixels)`, `pixels` the quad's size in world
+  units (an instance param). Crisp when the quad's corners sit on whole world units: a whole
+  translation for an even size, a half one for an odd size. bevy-ts does not move the mesh; place it.
+- World space: `floor(in.world_position.xy)`. Crisp wherever the mesh is, with the art fixed to the
+  world grid.
+
+A texture samples with its image's own sampler, nearest under `"imageSampler": "nearest"`.
+`PixelCamera` turns MSAA off, so a quad's edge covers whole pixels.
+
+### Layers, y-sort and batching
+
+A planet of several layers is one rectangle per layer, children of one entity at local z steps of
+0.00001, below one y pixel, as a sprite's shadow is. `<YSort>` on the parent sets its z from its y
+and marks its meshes changed, so a script 2D material sorts as a sprite does.
+
+Opaque layers of one kind and one asset batch into one draw across entities: instance params are in
+one storage buffer, read by `MeshTag`, not in the asset. Blend layers sort by z, so they batch only
+where consecutive draws share a kind and an asset. Stacked layers of one planet alternate kinds and
+draw one call each. When planets do not overlap, put each layer kind in its own z band (all seas
+at z 1, all land at z 2) and each kind's layers batch.
+
+### Cost
+
+COST_PLACEHOLDER
+
+Not yet: a script material on a `Sprite` (Bevy draws a sprite as a unit quad whose size, anchor and
+flip live in its own material; draw a `<mesh2d shape="rectangle">` with the image as a texture
+param instead), `Kind.add` owned instances in 2D, a script material on a `TilemapChunk`, and render
+targets for drawing a planet once at art size.
+
 ## Fullscreen passes
 
 A pass grades a `Camera2d`'s whole image: dusk, fog, a flash. It is declared like a material, a
@@ -361,7 +457,7 @@ fraction of a pixel still read whole pixels, so a slow shimmer steps: that is th
   with no pass costs nothing.
 
 Not yet: a second texture on a pass (noise, a LUT), render targets and `RenderLayers`, script
-`Material2d`, and passes on a `Camera3d`. A Rust app uses Bevy's `FullscreenMaterial` itself.
+sprite materials, and passes on a `Camera3d`. A Rust app uses Bevy's `FullscreenMaterial` itself.
 
 ## Known limits
 
@@ -381,6 +477,13 @@ One Rust asset type, `ScriptMaterial`, implements `ErasedRenderAsset` by hand (B
 `manual_material.rs`). Every kind's instances sit behind its one non-bindless bind group allocator,
 which takes each allocation's layout, so kinds with different layouts coexist. Each kind gets its
 own material key, or kinds would share one specialized pipeline.
+
+2D is the same under its own asset type, `ScriptMaterial2d` (`material2d.rs`), drawn by
+`MeshScriptMaterial2d`. Its `ErasedRenderAsset` returns Bevy's `PreparedMaterial2d`. Bevy's 2D
+specialise and queue systems read only the shared `RenderMaterial2dInstances` and each prepared
+asset's properties, so they draw these entities; the per-type extract and specialisation systems
+Bevy's `Material2dPlugin<M>` adds are written there for `MeshScriptMaterial2d`. Both spaces share
+the layout, the WGSL check, the kinds and the one instance buffer.
 
 On a scene root, `scene.rs` reacts to `WorldInstanceReady` and to changes on the root, as
 scene-animation does. It walks the instance's own entities (`iter_instance_entities`), not the

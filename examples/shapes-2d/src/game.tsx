@@ -5,15 +5,17 @@
 // over its head (click it). The camera is a pixel camera: keys 1, 2 and 4 zoom it, and zoomed in it
 // follows that walker, so the marker and moving texels stay in view. A title in a bitmap font
 // counts the clicks too. A tile floor is a `TilemapChunk`. A dusk pass on the camera darkens and
-// warms the whole image and back, slowly (src/dusk.wgsl). One world unit is one pixel. docs/2d.md
+// warms the whole image and back, slowly (src/dusk.wgsl). A pixel-art planet is two script 2D
+// materials on stacked rectangles, sea under land (src/planet.wgsl). One world unit is one pixel. docs/2d.md
 // lists what 2D takes. Not shipped (no example.json): `bevy-ts dev src/game.tsx`.
 import { app, Component, signal, sliced, Time, Update, type f32, type Mut, type Query, type Res, type With, type Without } from "bevy-ts";
 import type { Mesh2dProps } from "bevy-ts/jsx-runtime";
 import { KeyCode, type Keys } from "bevy-ts/input";
 import { Camera2d, Image, PixelCamera, ScreenSize, Sprite, SpriteClip, TextureAtlasLayout, Transform, YSort } from "bevy-ts/bevy";
 import { TilemapChunk, TilemapChunkTileData } from "bevy-ts/bevy";
-import { color, f32 as float, pass } from "bevy-ts/material";
+import { color, f32 as float, material2d, pass } from "bevy-ts/material";
 import dusk from "./dusk.wgsl";
+import planet from "./planet.wgsl";
 
 const shapes: Mesh2dProps[] = [
   { shape: "circle", radius: 50 },
@@ -47,6 +49,13 @@ const sheet = TextureAtlasLayout.fromGrid({ tileSize: [32, 32], columns: 4, rows
 /** Dusk: a fullscreen pass grading the camera's image toward `tint` by `amount`. */
 export const Dusk = pass("shapes::Dusk", { params: { amount: float, tint: color }, fragment: dusk });
 const [dark, setDark] = signal(0);
+
+/** A planet's two layers: one file, two kinds, each a disc of its colour where the noise allows. */
+const layer = { params: { color: color, cutoff: float }, instance: { pixels: float, seed: float }, fragment: planet, alphaMode: "blend" } as const;
+export const Sea = material2d("shapes::Sea", layer);
+export const Land = material2d("shapes::Land", layer);
+/** The planet's size in world units: even, so on a whole translation its art pixels are whole. */
+const PLANET = 48;
 
 /** The day turns to dusk and back, every 20 seconds. */
 export function dayCycle(time: Res<Time>) {
@@ -144,6 +153,19 @@ export const Shapes = () => (
       <Transform translation={[-2.2 * STEP, 1.4 * STEP, 0]} />
       <TilemapChunk chunk_size={[6, 2]} tile_display_size={[24, 24]} tileset={tileset} />
       <TilemapChunkTileData value={floor} />
+    </entity>
+    {/* Layers are children at local z steps of 0.00001, sea first, so land draws over it. */}
+    <entity key="planet" name="planet">
+      <Transform translation={[330, 200, 0]} />
+      <entity key="sea" name="sea">
+        <mesh2d shape="rectangle" size={[PLANET, PLANET]} />
+        <material2d kind={Sea} color="#2a5d9e" cutoff={0} pixels={PLANET} seed={7} />
+      </entity>
+      <entity key="land" name="land">
+        <Transform translation={[0, 0, 0.00001]} />
+        <mesh2d shape="rectangle" size={[PLANET, PLANET]} />
+        <material2d kind={Land} color="#5f8f3a" cutoff={0.55} pixels={PLANET} seed={7} />
+      </entity>
     </entity>
     {/* panel.png is 32 px with an 8 px border: sliced, its corners keep their size as it stretches. */}
     <entity key="panel" name="sliced panel">

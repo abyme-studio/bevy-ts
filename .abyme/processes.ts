@@ -178,6 +178,11 @@ const processes = {
   "fullscreen-pass-bench": { cmd: "bash -c 'set -o pipefail; bench/fullscreen-pass/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tee -a bench/fullscreen-pass/results/runs.txt | grep -E \"^arm=|load|error|panicked\"'" },
   // The same at 8 runs per arm, for arms within noise of each other.
   "fullscreen-pass-bench-8": { cmd: "bash -c 'set -o pipefail; bench/fullscreen-pass/run.sh 8 2>&1 | grep -v ld64 | tee -a bench/fullscreen-pass/results/runs.txt | grep -E \"^arm=|load|error|panicked\"'" },
+  // Change script-material2d, design 8: bench/material2d's arms, 3 runs each (8 with RUNS=8), in a check slot.
+  // Its cold release build at high load runs past 30 min.
+  "material2d-bench": { cmd: "bash -c 'set -o pipefail; bench/material2d/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tee -a bench/material2d/results/runs.txt | grep -E \"^arm=|load|error|panicked\"'", limit: LONG_BENCH },
+  // The same at 8 runs per arm, for arms within noise of each other.
+  "material2d-bench-8": { cmd: "bash -c 'set -o pipefail; bench/material2d/run.sh 8 2>&1 | grep -v ld64 | tee -a bench/material2d/results/runs.txt | grep -E \"^arm=|load|error|panicked\"'", limit: LONG_BENCH },
   // Change custom-relationships: bevy-ts checked with and without reflect, in a check slot.
   "custom-relationships-check": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"cargo check -p bevy-ts -p bevy-ts-remote -p bevy-ts-levels -p bevy-ts-cli --all-targets && cargo check -p bevy-ts --features reflect --all-targets\" 2>&1 | grep -v ld64 | tee target/custom-relationships-check.log | grep -E -A7 \"^error|^warning|Finished\" | tail -150'" },
   "custom-relationships-test": { cmd: "bash -c 'set -o pipefail; mkdir -p target; ~/dev/abyme/scripts/gate-slot run bevy-ts:custom-relationships -- bash -c \"scripts/gen-protocol.sh && cargo test -p bevy-ts -p bevy-ts-remote -p bevy-ts-levels --lib --tests && cargo test -p bevy-ts --features reflect --lib && cargo test -p bevy-ts-cli --lib && cargo test -p bevy-ts-cli --test it -- relationships:: ecs_queries:: heap_fields:: protocol:: saves:: reload:: tsx::\" 2>&1 | grep -v ld64 | tee target/custom-relationships-test.log | grep -E -A12 \"^error|panicked|FAILED|^test result\" | tail -150'" },

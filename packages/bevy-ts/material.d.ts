@@ -83,6 +83,34 @@ export declare function material<P extends Record<string, ParamType>, T extends 
   decl: { params: P; textures?: T; instance?: I; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode },
 ): MaterialKind<P, T, I>;
 
+/** The alpha modes 2D draws. */
+export type AlphaMode2d = "opaque" | "blend" | { mask: number };
+
+/** A 2D material kind, what `<material2d kind={...} />` names. */
+export interface Material2dKind<
+  P extends Record<string, ParamType> = Record<string, ParamType>,
+  T extends Record<string, "texture2d"> = {},
+  I extends Record<string, ParamType> = {},
+> {
+  readonly name: string;
+  /**
+   * Types only: the props `<material2d>` takes for this kind: params by value, textures as an
+   * asset path or an image ref, instance params by value or bound (`seed={() => s()}`).
+   */
+  readonly __props2d?: { [K in keyof P]?: ParamValue<P[K]> } & { [K in keyof T]?: string | AssetRef<import("bevy-ts/bevy").Image> } & { [K in keyof I]?: ParamValue<I[K]> | (() => ParamValue<I[K]>) };
+}
+
+/**
+ * Declares a script 2D material, drawn on a `<mesh2d>` by Bevy's 2D pipeline: what `material()`
+ * takes, and 2D's alpha modes. The WGSL imports `VertexOutput` from
+ * `bevy_sprite_render::mesh2d::vertex_output`; bevy-ts appends the params, textures and instance
+ * declarations at `@group(2)`. A name is one namespace with `material()` and `pass()`.
+ */
+export declare function material2d<P extends Record<string, ParamType>, T extends Record<string, "texture2d"> = {}, I extends Record<string, ParamType> = {}>(
+  name: string,
+  decl: { params?: P; textures?: T; instance?: I; fragment: ShaderFile; vertex?: ShaderFile; alphaMode?: AlphaMode2d },
+): Material2dKind<P, T, I>;
+
 /** A pass kind, what `<pass kind={...} />` names. */
 export interface PassKind<P extends Record<string, ParamType> = Record<string, ParamType>> {
   readonly name: string;

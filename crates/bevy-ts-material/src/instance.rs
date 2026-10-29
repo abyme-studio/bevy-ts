@@ -9,6 +9,7 @@
 //! component's remove hook (a despawn too), and the buffer is uploaded once, in `Last`.
 
 use crate::layout::{Bindings, INSTANCE_BYTES};
+use crate::material2d::{MeshScriptMaterial2d, ScriptMaterial2d};
 use crate::render::{ScriptMaterial, ScriptMaterial3d};
 use bevy::asset::RenderAssetUsages;
 use bevy::ecs::entity::EntityHashMap;
@@ -241,6 +242,15 @@ pub fn apply(world: &mut World, e: Entity, kind: &str, props: &Map<String, Value
     Ok(h)
 }
 
+/// `<material2d kind={K} ...props />` on `e`, as [`apply`] is for `<material kind>`: one buffer of
+/// rows serves both spaces.
+pub fn apply2d(world: &mut World, e: Entity, kind: &str, props: &Map<String, Value>, at: Option<SourceLocation>) -> Result<Handle<ScriptMaterial2d>, String> {
+    let (key, instance, bindings) = crate::kinds::split_props(world, kind, props).ok_or_else(|| format!("no material {kind}"))?;
+    let h = crate::kinds::instance2d(world, kind, &key)?;
+    set(world, e, kind, &bindings, &instance, at);
+    Ok(h)
+}
+
 /// A bound prop of `<material kind>` arrived: `props` are the element's values now. Only an
 /// instance param may be bound; it writes the entity's `ScriptInstance`, never the asset.
 pub fn patch(world: &mut World, e: Entity, kind: &str, prop: &str, props: &Map<String, Value>, at: Option<SourceLocation>) -> Result<(), String> {
@@ -282,7 +292,10 @@ pub fn reencode(world: &mut World, kind: &str, old: Option<&Bindings>, new: &Bin
     }
     let mut q = world.query_filtered::<(Entity, &ScriptMaterial3d), (Without<ScriptInstance>, Without<KeptMeshTag>)>();
     let materials = world.resource::<Assets<ScriptMaterial>>();
-    let missing: Vec<Entity> = q.iter(world).filter(|(_, m)| materials.get(&m.0).is_some_and(|m| m.kind.name == kind)).map(|(e, _)| e).collect();
+    let mut missing: Vec<Entity> = q.iter(world).filter(|(_, m)| materials.get(&m.0).is_some_and(|m| m.kind.name == kind)).map(|(e, _)| e).collect();
+    let mut q = world.query_filtered::<(Entity, &MeshScriptMaterial2d), (Without<ScriptInstance>, Without<KeptMeshTag>)>();
+    let materials = world.resource::<Assets<ScriptMaterial2d>>();
+    missing.extend(q.iter(world).filter(|(_, m)| materials.get(&m.0).is_some_and(|m| m.kind.name == kind)).map(|(e, _)| e));
     for e in missing {
         set(world, e, kind, new, &Map::new(), None);
     }

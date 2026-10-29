@@ -7,6 +7,7 @@ pub mod bitmap_text;
 pub mod instance;
 pub mod kinds;
 pub mod layout;
+pub mod material2d;
 pub mod owned;
 pub mod pass;
 pub mod pixel2d;
@@ -19,6 +20,7 @@ pub use bitmap_text::{BitmapText, BitmapTextPlugin, BitmapTextSystems, SpriteFon
 pub use alpha::{Fade, FadeMaterial, MaterialAlpha, MaterialAlphaTargets, standard_of};
 pub use instance::ScriptInstance;
 pub use kinds::MaterialKinds;
+pub use material2d::{MeshScriptMaterial2d, ScriptMaterial2d};
 pub use render::{Kind, ScriptMaterial, ScriptMaterial3d, ScriptMaterialRenderPlugin};
 pub use pass::{CameraPasses, PassKinds, ScriptPass, ScriptPassPlugin};
 pub use pixel2d::{ClipMode, PixelCamera, Pixel2dPlugin, Pixel2dSystems, ScreenSize, SpriteClip, YSort};

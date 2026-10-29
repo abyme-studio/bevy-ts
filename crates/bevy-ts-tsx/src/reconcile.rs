@@ -703,6 +703,7 @@ pub fn insert(world: &mut World, e: Entity, r: &Resolved) {
         Target::Mesh2d(p) => intrinsics::insert_mesh2d(world, e, p),
         Target::Material2d(p) => intrinsics::insert_material2d(world, e, p, r.source.clone()),
         Target::ScriptMaterial { kind, props, gltf_material } => intrinsics::insert_script_material(world, e, kind, props, gltf_material.as_deref(), r.source.clone()),
+        Target::ScriptMaterial2d { kind, props } => intrinsics::insert_script_material2d(world, e, kind, props, r.source.clone()),
         Target::OwnedMaterial { asset, gltf_material } => intrinsics::insert_owned_material(world, e, *asset, gltf_material.as_deref(), r.source.clone()),
         Target::Pass { kind, props } => intrinsics::insert_pass(world, e, kind, props, r.source.clone()),
         Target::Ui(kind) => {
@@ -1010,7 +1011,7 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
                     Err(m) => log_error(world, format!("<{}> {m}", r.key), r.source.clone()),
                 }
             }
-            Target::ScriptMaterial { kind, props, gltf_material } => {
+            Target::ScriptMaterial { kind, props, .. } | Target::ScriptMaterial2d { kind, props } => {
                 // Rebuilt as a whole when an unbound prop changed; bound instance props keep what
                 // their binding last wrote, and go with the rebuild.
                 let unbound: Map<String, Value> = prev.fields.iter().filter(|(f, _)| !r.bound.contains_key(*f)).map(|(k, s)| (k.clone(), s.applied.clone())).collect();
@@ -1024,7 +1025,10 @@ fn update(world: &mut World, e: Entity, n: &RNode, stats: &mut ReconcileStats) -
                             _ => None,
                         };
                     }
-                    intrinsics::insert_script_material(world, e, kind, &all, gltf_material.as_deref(), r.source.clone());
+                    match &r.target {
+                        Target::ScriptMaterial { gltf_material, .. } => intrinsics::insert_script_material(world, e, kind, &all, gltf_material.as_deref(), r.source.clone()),
+                        _ => intrinsics::insert_script_material2d(world, e, kind, &all, r.source.clone()),
+                    }
                     stats.written += 1;
                 }
             }

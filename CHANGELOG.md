@@ -4,6 +4,10 @@ Changes a user of bevy-ts must act on, newest first.
 
 ## Unreleased
 
+- `material2d()` from `bevy-ts/material` and `<material2d kind>` beside a `<mesh2d>` draw it with
+  a WGSL file through Bevy's 2D pipeline, with params, textures and bindable instance params as
+  3D materials have. A name is one namespace across `material()`, `material2d()` and `pass()`
+  (docs/materials.md, 2D materials).
 - `pass()` from `bevy-ts/material` and `<pass kind>` on a `Camera2d` run a fullscreen WGSL fragment
   over the camera's image, with bindable params and engine-written `time`, `texel`, `size` and
   `view`; at most four kinds at once (docs/materials.md, Fullscreen passes).

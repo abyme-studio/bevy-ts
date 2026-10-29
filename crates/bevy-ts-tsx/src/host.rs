@@ -506,7 +506,7 @@ fn patch(world: &mut World, binding: u32, v: Value) {
             new.insert(prop.clone(), v.clone());
         }
         crate::ui::update(world, e, kind, &old, &new).map(|_| ())
-    } else if key == resolve::MATERIAL && owned.fields.contains_key("kind") {
+    } else if (key == resolve::MATERIAL || key == resolve::MATERIAL2D) && owned.fields.contains_key("kind") {
         // A script material's instance param: the entity's `ScriptInstance`, never the asset.
         let mut props: Map<String, Value> = owned.fields.iter().filter(|(k, s)| !s.applied.is_null() && k.as_str() != "kind" && k.as_str() != "gltfMaterial").map(|(k, s)| (k.clone(), s.applied.clone())).collect();
         props.insert(prop.clone(), v.clone());

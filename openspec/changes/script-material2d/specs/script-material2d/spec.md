@@ -67,7 +67,7 @@ A WESL or WGSL error in a 2D kind's file SHALL be reported in the terminal and o
 - **THEN** the error names `game::Planet` and `src/planet.wgsl:12`, and the previous planet keeps drawing
 
 ### Requirement: The 2D material's frame cost is measured
-A bench in `bench/material2d`, outside the workspace, SHALL draw a `Camera2d` under `PixelCamera` zoom 3 to a 1920×1080 image, headless, with arms `off`, `one` (a 200-art-px planet of three layers), and `n20`, `n100`, `n500` (48-art-px planets of three layers, a ring on every fifth), on shaders and textures the bench makes, 600 frames after 120 warm-up, arms alternated. It SHALL record per arm the median and p95 frame time, the machine's load and the commit in `bench/material2d/results/README.md`. `n100` SHALL add under 2 ms to `off`'s median frame in a run at load under 10.
+A bench in `bench/material2d`, outside the workspace, SHALL draw a `Camera2d` under `PixelCamera` zoom 3 to a 1920×1080 image, headless, with arms `off`, `one` (a 200-art-px planet of three layers), and `n20`, `n100`, `n200`, `n500` (48-art-px planets of three layers, a ring on every fifth), on shaders and textures the bench makes, 600 frames after 120 warm-up, arms alternated. It SHALL record per arm the median and p95 frame time, the machine's load and the commit in `bench/material2d/results/README.md`. `n200` is recorded for learn-planets and decides nothing. `n100` SHALL add under 2 ms to `off`'s median frame in a run at load under 10.
 
 #### Scenario: The bench's arms
 - **WHEN** `bench/material2d/run.sh 8` runs

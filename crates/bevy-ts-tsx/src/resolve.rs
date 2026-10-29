@@ -72,6 +72,8 @@ pub enum Target {
     /// `<material kind={K} ...params />`: a script material instance of kind `kind`. On a glTF
     /// scene root, `gltfMaterial` limits it to the scene's meshes with that material name.
     ScriptMaterial { kind: String, props: Map<String, Value>, gltf_material: Option<String> },
+    /// `<material2d kind={K} ...params />`: a script 2D material instance of kind `kind`.
+    ScriptMaterial2d { kind: String, props: Map<String, Value> },
     /// `<material asset={ref} />`: an owned script material, `Kind.add`'s ref number `asset`.
     OwnedMaterial { asset: u64, gltf_material: Option<String> },
     /// `<pass kind={K} ...params />` on a camera: a script pass of kind `kind`.
@@ -224,6 +226,21 @@ pub fn script_material(c: &ComponentDesc) -> Result<ScriptMaterialDesc, ScriptEr
     Ok(ScriptMaterialDesc { kind, props, gltf_material })
 }
 
+/// `<material2d kind={K} ...props />`: the kind's name and the other props.
+pub fn script_material2d(c: &ComponentDesc) -> Result<(String, Map<String, Value>), ScriptError> {
+    let mut props = c.props.clone();
+    let kind = match props.remove("kind") {
+        Some(Value::String(s)) => s,
+        Some(Value::Object(o)) if matches!(o.get("name"), Some(Value::String(_))) => o["name"].as_str().expect("checked").to_string(),
+        _ => return Err(err("<material2d kind={...}> takes a kind from material2d() in bevy-ts/material", &c.source)),
+    };
+    Ok((kind, props))
+}
+
+/// `<material2d kind>` on a sprite.
+pub const SPRITE_2D: &str =
+    "<material2d kind> does not draw a Sprite (its size lives in the sprite's own material): draw a <mesh2d shape=\"rectangle\"> with the image as a texture param instead";
+
 /// `<pass kind={K}>`'s kind name (`K` describes as `{ name }`).
 pub fn pass_kind(c: &ComponentDesc) -> Result<String, ScriptError> {
     match c.props.get("kind") {
@@ -339,7 +356,7 @@ pub fn resolve(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts, reg
         // arrives and written over the current value.
         Target::Reflect { .. } => {}
         // Instance params may be bound; the tsx check, which sees the kinds, fails any other.
-        Target::ScriptMaterial { .. } => {}
+        Target::ScriptMaterial { .. } | Target::ScriptMaterial2d { .. } => {}
         // Every pass param may be bound: it lives on the camera.
         Target::Pass { .. } => {}
         _ => return Err(err(format!("<{}> props cannot be bound yet; bind a component field or a UI prop", c.ty), &c.source)),
@@ -484,6 +501,11 @@ fn resolve_unbound(c: &ComponentDesc, ts: &dyn TsLookup, native: &NativeLayouts,
             let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             Ok(resolved(Target::Mesh2d(props), (controlled, BTreeMap::new(), BTreeMap::new())))
         }
+        ComponentKind::Intrinsic if c.ty == MATERIAL2D && c.props.contains_key("kind") => {
+            let (kind, props) = script_material2d(c)?;
+            let controlled = c.props.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            Ok(resolved(Target::ScriptMaterial2d { kind, props }, (controlled, BTreeMap::new(), BTreeMap::new())))
+        }
         ComponentKind::Intrinsic if c.ty == MATERIAL2D => {
             let props: Material2dProps = parse_props(c)?;
             props.check().map_err(|m| err(format!("<material2d>: {m}"), &c.source))?;
@@ -550,14 +572,21 @@ pub fn resolve_node(node: &NodeDesc, ts: &dyn TsLookup, native: &NativeLayouts, 
         return Err(err("give the colour on <material> or on <mesh color>, not both", &m.source));
     }
     let mesh2d_color = out.iter().any(|r| matches!(&r.target, Target::Mesh2d(Mesh2dProps(MeshProps { color: Some(_), .. }))));
-    if mesh2d_color && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Material2d(_))) {
+    if mesh2d_color && let Some(m) = out.iter().find(|r| matches!(r.target, Target::Material2d(_) | Target::ScriptMaterial2d { .. })) {
         return Err(err("give the colour on <material2d> or on <mesh2d color>, not both", &m.source));
     }
     // Bevy keeps 2D and 3D apart: a `Mesh2d` draws only with a 2D material, a `Mesh3d` with a 3D one.
     let is_3d = |r: &&Resolved| matches!(r.target, Target::Mesh(_) | Target::Material(_) | Target::ScriptMaterial { .. });
-    let is_2d = |r: &&Resolved| matches!(r.target, Target::Mesh2d(_) | Target::Material2d(_));
+    let is_2d = |r: &&Resolved| matches!(r.target, Target::Mesh2d(_) | Target::Material2d(_) | Target::ScriptMaterial2d { .. });
     if let (Some(a), Some(b)) = (out.iter().find(is_3d), out.iter().find(is_2d)) {
         return Err(err(format!("<{}> and <{}> on one entity: pair <mesh> with <material>, <mesh2d> with <material2d>", a.key, b.key), &b.source));
+    }
+    // Bevy draws a sprite as a unit quad whose size lives in its own material: a script 2D material
+    // in its place would draw a 1×1 quad.
+    if let Some(m) = out.iter().find(|r| matches!(r.target, Target::ScriptMaterial2d { .. }))
+        && node.components.iter().any(|c| c.kind == ComponentKind::Rust && c.ty == "Sprite")
+    {
+        return Err(err(SPRITE_2D, &m.source));
     }
     tilemap(&mut out)?;
     // World text owns its entity's mesh and material.

@@ -3,7 +3,8 @@
 //! kind gets its shaders rebuilt in place and its instances re-encoded by param name. A saved
 //! `.wgsl` file replaces its shaders in place with no generation at all.
 
-use crate::layout::{Bindings, ParamType};
+use crate::layout::{Bindings, ParamType, Space};
+use crate::material2d::ScriptMaterial2d;
 use crate::render::{Kind, ScriptMaterial};
 use crate::wgsl;
 use bevy::prelude::*;
@@ -67,6 +68,9 @@ pub struct MaterialDecl {
     #[serde(default)]
     pub vertex: Option<PathBuf>,
     pub alpha_mode: AlphaDecl,
+    /// `material2d()` declares a 2D kind; `material()` a 3D one.
+    #[serde(default)]
+    pub space: Space,
     #[serde(default)]
     pub location: Option<SourceLocation>,
 }
@@ -75,10 +79,16 @@ impl MaterialDecl {
     pub fn bindings(&self) -> Result<Bindings, String> {
         Bindings::new(&self.name, self.params.iter().map(|p| (p.name.as_str(), &p.ty)), &self.textures)?
             .with_instance(self.instance.iter().map(|p| (p.name.as_str(), &p.ty)))
+            .map(|b| b.in_space(self.space))
     }
 
+    /// A 2D kind takes only the three modes 2D draws.
     pub fn alpha_mode(&self) -> Result<AlphaMode, String> {
-        self.alpha_mode.parse()
+        let a = self.alpha_mode.parse()?;
+        match (self.space, a) {
+            (Space::D2, AlphaMode::Opaque | AlphaMode::Blend | AlphaMode::Mask(_)) | (Space::D3, _) => Ok(a),
+            (Space::D2, _) => Err(format!("alphaMode {a:?} is not a 2D mode; use \"opaque\", \"blend\" or {{ mask }}")),
+        }
     }
 
     /// What fails the load at the `material()` call: a schema that does not lay out, an unknown
@@ -148,8 +158,10 @@ pub struct KindState {
     pub kind: Arc<Kind>,
     pub fragment: Stage,
     pub vertex: Option<Stage>,
-    /// Instances by key, each with the props it was made from.
+    /// Instances by key, each with the props it was made from: a 3D kind's.
     pub instances: BTreeMap<String, (Handle<ScriptMaterial>, Map<String, Value>)>,
+    /// A 2D kind's instances, as `instances`.
+    pub instances2d: BTreeMap<String, (Handle<ScriptMaterial2d>, Map<String, Value>)>,
 }
 
 /// Every live kind, and the kinds the generation being applied declares.
@@ -170,6 +182,12 @@ pub fn check(world: &mut World, generation: u64, bytes: &[u8], location: Option<
     let mut decls = BTreeMap::new();
     for d in section.items {
         let at = d.at();
+        // One namespace across 2D and 3D: `bevy-ts/material` refuses the second call; a section
+        // written another way is refused here, at the second.
+        if let Some(first) = decls.get(&d.name) {
+            errors.push(ScriptError::at(format!("material {}: is declared twice; {}", d.name, declared(first)), at));
+            continue;
+        }
         errors.extend(d.problems().into_iter().map(|m| ScriptError::at(format!("material {}: {m}", d.name), at.clone())));
         decls.insert(d.name.clone(), d);
     }
@@ -178,6 +196,15 @@ pub fn check(world: &mut World, generation: u64, bytes: &[u8], location: Option<
     }
     world.resource_mut::<MaterialKinds>().pending = Some((generation, decls));
     Ok(())
+}
+
+/// Where a declaration was made, for an error naming it: `material2d game::Planet at game.tsx:3`.
+fn declared(d: &MaterialDecl) -> String {
+    let call = if d.space == Space::D2 { "material2d" } else { "material" };
+    match d.at() {
+        Some(l) => format!("{call} {} at {}:{} took the name", d.name, l.file, l.line),
+        None => format!("{call} {} took the name", d.name),
+    }
 }
 
 /// The section's apply: kinds made, rebuilt or dropped to match the generation.
@@ -199,6 +226,11 @@ pub fn apply(world: &mut World, generation: u64, present: bool) {
                 log_errors(world, generation, errors, "");
                 // Owned instances the generation added while it loaded.
                 reencode_owned(world, generation, &k);
+                kinds.insert(name, k);
+            }
+            // A kind whose space changed is a new kind: its instances are of the other asset type.
+            Some(old) if old.decl.space != decl.space => {
+                let k = rebuild(world, generation, decl, None);
                 kinds.insert(name, k);
             }
             Some(old) => {
@@ -275,9 +307,9 @@ fn build(
     old: Option<KindState>,
 ) -> KindState {
     let old_bindings = old.as_ref().map(|o| o.kind.bindings.clone());
-    let (mut fragment, vertex, instances) = match old {
-        Some(o) => (o.fragment, o.vertex, o.instances),
-        None => (new_stage(world, "fragment", &decl.fragment), None, BTreeMap::new()),
+    let (mut fragment, vertex, instances, instances2d) = match old {
+        Some(o) => (o.fragment, o.vertex, o.instances, o.instances2d),
+        None => (new_stage(world, "fragment", &decl.fragment), None, BTreeMap::new(), BTreeMap::new()),
     };
     fragment.file = decl.fragment.clone();
     let mut vertex = match (&decl.vertex, vertex) {
@@ -294,7 +326,7 @@ fn build(
         }
     }
     let kind = Arc::new(Kind::new(&decl.name, bindings, Some(fragment.handle.clone()), vertex.as_ref().map(|v| v.handle.clone()), alpha));
-    let mut state = KindState { decl, wanted: None, kind, fragment, vertex, instances };
+    let mut state = KindState { decl, wanted: None, kind, fragment, vertex, instances, instances2d };
     let keys: Vec<String> = state.instances.keys().cloned().collect();
     for key in keys {
         let (handle, props) = state.instances[&key].clone();
@@ -307,13 +339,33 @@ fn build(
                 generation,
             );
         }
-        let textures = textures_keeping(world, &state, &props, world.resource::<Assets<ScriptMaterial>>().get(&handle));
+        let old = world.resource::<Assets<ScriptMaterial>>().get(&handle).map(|m| (m.kind.clone(), m.textures.clone()));
+        let textures = textures_keeping(world, &state, &props, old.as_ref());
         let material = material.with_textures(textures);
         if let Some(mut m) = world.resource_mut::<Assets<ScriptMaterial>>().get_mut(&handle) {
             *m = material;
         }
     }
     state.instances.retain(|_, (h, _)| world.resource::<Assets<ScriptMaterial>>().contains(h));
+    let keys: Vec<String> = state.instances2d.keys().cloned().collect();
+    for key in keys {
+        let (handle, props) = state.instances2d[&key].clone();
+        let (material, dropped) = encode(&state, &props);
+        for p in dropped {
+            world.resource_mut::<ScriptLog>().push(
+                LogLevel::Warn,
+                format!("material {}: param {p} is gone; its value is dropped", state.decl.name),
+                state.decl.at(),
+                generation,
+            );
+        }
+        let old = world.resource::<Assets<ScriptMaterial2d>>().get(&handle).map(|m| (m.kind.clone(), m.textures.clone()));
+        let textures = textures_keeping(world, &state, &props, old.as_ref());
+        if let Some(mut m) = world.resource_mut::<Assets<ScriptMaterial2d>>().get_mut(&handle) {
+            *m = material.with_textures(textures).into();
+        }
+    }
+    state.instances2d.retain(|_, (h, _)| world.resource::<Assets<ScriptMaterial2d>>().contains(h));
     reencode_owned(world, generation, &state);
     if old_bindings.as_ref().map(Bindings::instance) != Some(state.kind.bindings.instance()) {
         crate::instance::reencode(world, &state.decl.name, old_bindings.as_ref(), &state.kind.bindings);
@@ -585,11 +637,11 @@ fn world_textures(world: &World, k: &KindState, props: &Map<String, Value>) -> R
 
 /// [`world_textures`] for an instance `old` already draws: a ref that no longer resolves (the
 /// script dropped it, or reloaded) keeps the image `old` holds under that texture's name.
-fn textures_keeping(world: &World, k: &KindState, props: &Map<String, Value>, old: Option<&ScriptMaterial>) -> Vec<Option<Handle<Image>>> {
+fn textures_keeping(world: &World, k: &KindState, props: &Map<String, Value>, old: Option<&(Arc<Kind>, Vec<Option<Handle<Image>>>)>) -> Vec<Option<Handle<Image>>> {
     let held = |t: &str| {
-        let old = old?;
-        let i = old.kind.bindings.textures().iter().position(|n| n == t)?;
-        old.textures.get(i).cloned().flatten()
+        let (kind, textures) = old?;
+        let i = kind.bindings.textures().iter().position(|n| n == t)?;
+        textures.get(i).cloned().flatten()
     };
     k.kind.bindings.textures().iter().map(|t| texture(world, t, props.get(t)).unwrap_or_else(|_| held(t))).collect()
 }
@@ -702,6 +754,23 @@ pub fn instance(world: &mut World, kind: &str, props: &Map<String, Value>) -> Re
     Ok(h)
 }
 
+/// The 2D instance for `kind` with `props`, as [`instance`] is for 3D.
+pub fn instance2d(world: &mut World, kind: &str, props: &Map<String, Value>) -> Result<Handle<ScriptMaterial2d>, String> {
+    let key = instance_key(props);
+    let kinds = world.resource::<MaterialKinds>();
+    let k = kinds.live.get(kind).ok_or_else(|| format!("no material {kind}"))?;
+    if let Some((h, _)) = k.instances2d.get(&key) {
+        return Ok(h.clone());
+    }
+    let (material, _) = encode(k, props);
+    let material = material.with_textures(world_textures(world, k, props).map_err(|e| format!("{kind}: {e}"))?);
+    let h = world.resource_mut::<Assets<ScriptMaterial2d>>().add(ScriptMaterial2d::from(material));
+    if let Some(k) = world.resource_mut::<MaterialKinds>().live.get_mut(kind) {
+        k.instances2d.insert(key, (h.clone(), props.clone()));
+    }
+    Ok(h)
+}
+
 /// `PostUpdate`, after the TSX reconcile: drops each instance only the cache holds. Every
 /// `ScriptMaterial3d`, a glTF mesh's clone included, shares the handle's `Arc`, so a count of 1
 /// means nothing draws it; dropping it frees the asset and its binding. A key removed and added
@@ -709,6 +778,7 @@ pub fn instance(world: &mut World, kind: &str, props: &Map<String, Value>) -> Re
 pub fn sweep(mut kinds: ResMut<MaterialKinds>) {
     for k in kinds.live.values_mut() {
         k.instances.retain(|_, (h, _)| !matches!(h, Handle::Strong(a) if Arc::strong_count(a) == 1));
+        k.instances2d.retain(|_, (h, _)| !matches!(h, Handle::Strong(a) if Arc::strong_count(a) == 1));
     }
 }
 

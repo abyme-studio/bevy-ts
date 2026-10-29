@@ -10,8 +10,9 @@ name = "bevy_ts_material"
 
 [dependencies]
 # `bevy_text` for world text's layout; "3d" builds it already. `bevy_sprite` for the pixel-2D
-# components' `Sprite`, which bevy-ts-tsx builds already.
-bevy = { workspace = true, features = ["3d", "bevy_text", "bevy_sprite"] }
+# components' `Sprite`, which bevy-ts-tsx builds already. `bevy_sprite_render` for script 2D
+# materials (`material2d.rs`), which the engine builds already.
+bevy = { workspace = true, features = ["3d", "bevy_text", "bevy_sprite", "bevy_sprite_render"] }
 # `reflect` for owned materials (`owned.rs`: reflect_asset, ts_hand_map).
 bevy-ts = { workspace = true, features = ["reflect"] }
 serde.workspace = true

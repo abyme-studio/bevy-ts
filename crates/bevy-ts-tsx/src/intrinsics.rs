@@ -17,7 +17,7 @@ use bevy_ts_material::kinds::AlphaDecl;
 use bevy::render::render_resource::Face;
 use bevy::sprite_render::{AlphaMode2d, ColorMaterial, MeshMaterial2d};
 use bevy_ts::backend::SourceLocation;
-use bevy_ts_material::{GltfMaterialFilter, ScriptMaterial3d};
+use bevy_ts_material::{GltfMaterialFilter, MeshScriptMaterial2d, ScriptMaterial3d};
 use crate::shapes::MeshShape;
 use crate::vertex_mesh::VertexMesh;
 use bevy::reflect::structs::Struct;
@@ -733,11 +733,42 @@ pub fn remove_mesh2d(world: &mut World, e: Entity, p: &Mesh2dProps) {
 
 pub fn insert_material2d(world: &mut World, e: Entity, p: &Material2dProps, at: Option<SourceLocation>) {
     let m = material2d_handle(world, p, at);
-    world.entity_mut(e).insert(MeshMaterial2d(m));
+    if world.get::<MeshScriptMaterial2d>(e).is_some() {
+        bevy_ts_material::instance::remove(world, e);
+    }
+    world.entity_mut(e).remove::<MeshScriptMaterial2d>().insert(MeshMaterial2d(m));
 }
 
 pub fn remove_material2d(world: &mut World, e: Entity) {
-    world.entity_mut(e).remove::<MeshMaterial2d<ColorMaterial>>();
+    if world.get::<MeshScriptMaterial2d>(e).is_some() {
+        bevy_ts_material::instance::remove(world, e);
+    }
+    world.entity_mut(e).remove::<(MeshMaterial2d<ColorMaterial>, MeshScriptMaterial2d)>();
+}
+
+/// `<material2d kind={K} .../>`: the kind's 2D instance for these props (equal props share one),
+/// in place of a `ColorMaterial`.
+pub fn insert_script_material2d(world: &mut World, e: Entity, kind: &str, props: &serde_json::Map<String, serde_json::Value>, at: Option<SourceLocation>) {
+    if !world.contains_resource::<bevy_ts_material::MaterialKinds>() {
+        crate::reconcile::log_error(world, "<material2d kind>: script materials need ScriptMaterialPlugin".into(), at);
+        return;
+    }
+    // A sprite a Rust system or another element gave the entity: see `resolve::SPRITE_2D`.
+    if world.get::<Sprite>(e).is_some() {
+        crate::reconcile::log_error(world, crate::resolve::SPRITE_2D.into(), at);
+        return;
+    }
+    match bevy_ts_material::instance::apply2d(world, e, kind, props, at.clone()) {
+        Ok(h) => {
+            let mut em = world.entity_mut(e);
+            em.remove::<MeshMaterial2d<ColorMaterial>>();
+            // The same handle again (only instance props changed) is not a change.
+            if em.get::<MeshScriptMaterial2d>().is_none_or(|m| m.0 != h) {
+                em.insert(MeshScriptMaterial2d(h));
+            }
+        }
+        Err(m) => crate::reconcile::log_error(world, format!("<material2d kind>: {m}"), at),
+    }
 }
 
 /// The entity's `<mesh>` props, so its material can pick the plain or the tangent mesh.

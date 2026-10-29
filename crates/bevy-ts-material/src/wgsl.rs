@@ -25,9 +25,10 @@ use wesl::syntax::{GlobalDeclaration, GlobalDeclarationNode, Ident, ImportConten
 /// declarations are order-free and WESL imports must come first, so the author's lines keep their
 /// numbers and anything past their last line is generated. A kind with instance params also needs
 /// Bevy's `get_tag`, imported at the start of the author's first line
-/// ([`INSTANCE_IMPORT`](crate::layout::INSTANCE_IMPORT)), which shifts only that line's columns.
+/// ([`INSTANCE_IMPORT`](crate::layout::INSTANCE_IMPORT), or its 2D form), which shifts only that
+/// line's columns.
 pub fn combine(text: &str, bindings: &Bindings, material: &str) -> String {
-    let mut s = if bindings.has_instance() { format!("{}{text}", crate::layout::INSTANCE_IMPORT) } else { text.to_string() };
+    let mut s = if bindings.has_instance() { format!("{}{text}", bindings.space().instance_import()) } else { text.to_string() };
     if !s.ends_with('\n') {
         s.push('\n');
     }
@@ -70,7 +71,7 @@ pub struct Subject {
 pub fn check(shaders: &Assets<Shader>, combined: &str, file: &Path, decl: &Subject, defs: &[ShaderDefVal]) -> Checked {
     let author_lines = combined.find("\n// bevy-ts: the params").map_or(combined.lines().count(), |i| combined[..i].lines().count());
     // The prepended import's columns are not the author's.
-    let shift = if combined.starts_with(crate::layout::INSTANCE_IMPORT) { crate::layout::INSTANCE_IMPORT.len() as u32 } else { 0 };
+    let shift = [crate::layout::INSTANCE_IMPORT, crate::layout::INSTANCE_IMPORT_2D].into_iter().find(|i| combined.starts_with(i)).map_or(0, |i| i.len() as u32);
     let at = |line: usize, column: u32| {
         let column = if line == 1 { column.saturating_sub(shift).max(1) } else { column };
         Some(SourceLocation { file: bevy_ts::backend::display_path(file), line: line as u32, column })

@@ -11,6 +11,8 @@ mod bitmap_text;
 mod pass;
 mod pass_render;
 mod pixel2d;
+mod material2d;
+mod material2d_render;
 mod pixel2d_render;
 mod scene;
 mod spike;

@@ -41,6 +41,7 @@ mod levels_walk;
 mod material_errors;
 mod material_params_render;
 mod materials;
+mod materials_2d;
 mod mesh_picking;
 mod mesh_update_bench;
 mod native_components;

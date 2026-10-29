@@ -102,14 +102,41 @@ pub(crate) fn textures_without_server(nodes: &[desc::NodeDesc], errors: &mut Vec
     }
 }
 
-/// Every `<material kind>` against the kinds the generation declares. Only instance params may be
-/// bound.
+/// Every `<material kind>` and `<material2d kind>` against the kinds the generation declares. Only
+/// instance params may be bound, and a kind draws only in its own space.
 fn check_script_materials(plugin: bool, kinds: &std::collections::BTreeMap<String, Option<bevy_ts_material::layout::Bindings>>, nodes: &[desc::NodeDesc], errors: &mut Vec<ScriptError>) {
+    use bevy_ts_material::layout::Space;
     for n in nodes {
+        for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::MATERIAL2D && c.props.contains_key("kind")) {
+            let Ok((kind, mut props)) = resolve::script_material2d(c) else { continue };
+            if !plugin {
+                errors.push(ScriptError::at("<material2d kind>: script materials need ScriptMaterialPlugin", c.source.clone()));
+                continue;
+            }
+            if let Some(Some(b)) = kinds.get(&kind)
+                && b.space() == Space::D3
+            {
+                errors.push(ScriptError::at(format!("<material2d>: {kind} is a 3D material (material()); draw it with <material kind> on a <mesh>, or declare it with material2d()"), c.source.clone()));
+                continue;
+            }
+            let bound: Vec<String> = props.iter().filter(|(_, v)| desc::binding_id(v).is_some()).map(|(p, _)| p.clone()).collect();
+            props.retain(|_, v| desc::binding_id(v).is_none());
+            if let Err(m) = bevy_ts_material::kinds::check_props(kinds, &kind, &props) {
+                errors.push(ScriptError::at(format!("<material2d>: {}", m.replace("declare it with material(", "declare it with material2d(")), c.source.clone()));
+            } else if let Err(m) = bevy_ts_material::kinds::check_bound(kinds, &kind, bound) {
+                errors.push(ScriptError::at(m.replace("<material>", "<material2d>"), c.source.clone()));
+            }
+        }
         for c in n.components.iter().filter(|c| c.kind == desc::ComponentKind::Intrinsic && c.ty == resolve::MATERIAL && c.props.contains_key("kind")) {
             let Ok(resolve::ScriptMaterialDesc { kind, mut props, .. }) = resolve::script_material(c) else { continue };
             if !plugin {
                 errors.push(ScriptError::at("<material kind>: script materials need ScriptMaterialPlugin", c.source.clone()));
+                continue;
+            }
+            if let Some(Some(b)) = kinds.get(&kind)
+                && b.space() == Space::D2
+            {
+                errors.push(ScriptError::at(format!("<material>: {kind} is a 2D material (material2d()); draw it with <material2d kind> on a <mesh2d>"), c.source.clone()));
                 continue;
             }
             let bound: Vec<String> = props.iter().filter(|(_, v)| desc::binding_id(v).is_some()).map(|(p, _)| p.clone()).collect();

@@ -5,8 +5,39 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// The bind group every material uses (`MATERIAL_BIND_GROUP_INDEX` in bevy_pbr).
+/// The bind group every 3D material uses (`MATERIAL_BIND_GROUP_INDEX` in bevy_pbr).
 pub const MATERIAL_GROUP: u32 = 3;
+
+/// The bind group every 2D material uses (`MATERIAL_2D_BIND_GROUP_INDEX` in bevy_sprite_render).
+pub const MATERIAL_2D_GROUP: u32 = 2;
+
+/// Which pipeline a kind draws with: Bevy's 3D mesh materials or its 2D ones. It sets the bind
+/// group of the generated declarations and where `get_tag` is imported from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Space {
+    #[serde(rename = "2d")]
+    D2,
+    #[default]
+    #[serde(rename = "3d")]
+    D3,
+}
+
+impl Space {
+    pub fn group(self) -> u32 {
+        match self {
+            Space::D2 => MATERIAL_2D_GROUP,
+            Space::D3 => MATERIAL_GROUP,
+        }
+    }
+
+    /// The import prepended to a kind with instance params, on the author's first line.
+    pub fn instance_import(self) -> &'static str {
+        match self {
+            Space::D2 => INSTANCE_IMPORT_2D,
+            Space::D3 => INSTANCE_IMPORT,
+        }
+    }
+}
 
 /// A param's element type, by the names `bevy-ts/material` exports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -330,6 +361,9 @@ pub const GET_TAG: &str = "bevy_ts_get_tag";
 /// imports come before every declaration, so it cannot be appended.
 pub const INSTANCE_IMPORT: &str = "import bevy_pbr::render::mesh_functions::get_tag as bevy_ts_get_tag; ";
 
+/// [`INSTANCE_IMPORT`] for a 2D kind: Bevy's 2D `get_tag`.
+pub const INSTANCE_IMPORT_2D: &str = "import bevy_sprite_render::mesh2d::functions::get_tag as bevy_ts_get_tag; ";
+
 /// The instance struct's padding field, which fills it to [`INSTANCE_BYTES`].
 const PAD: &str = "bevy_ts_pad";
 
@@ -343,6 +377,7 @@ pub struct Bindings {
     textures: Vec<String>,
     /// Per-entity params, laid out as params are, in a storage array indexed by `MeshTag`.
     instance: ParamsLayout,
+    space: Space,
 }
 
 impl Bindings {
@@ -369,7 +404,7 @@ impl Bindings {
                 }
             }
         }
-        Ok(Bindings { struct_name, params, textures: textures.to_vec(), instance: ParamsLayout::default() })
+        Ok(Bindings { struct_name, params, textures: textures.to_vec(), instance: ParamsLayout::default(), space: Space::D3 })
     }
 
     /// Adds per-entity `instance` params: at most [`INSTANCE_BYTES`], and no name equal to a
@@ -403,6 +438,16 @@ impl Bindings {
 
     pub fn instance(&self) -> &ParamsLayout {
         &self.instance
+    }
+
+    /// The same bindings for a kind of `space`: 3D unless set.
+    pub fn in_space(mut self, space: Space) -> Self {
+        self.space = space;
+        self
+    }
+
+    pub fn space(&self) -> Space {
+        self.space
     }
 
     /// Whether the kind has instance params, and so its entities a `ScriptInstance`.
@@ -461,6 +506,7 @@ impl Bindings {
     /// line (WGSL declarations are order-free and WESL imports must come first), so the author's
     /// lines keep their numbers.
     pub fn wgsl(&self, material: &str) -> String {
+        let g = self.space.group();
         let mut s = format!("\n// bevy-ts: the params and textures of {material}, generated from its TS schema.\n");
         if let Some(b) = self.params_binding() {
             s.push_str(&format!("struct {} {{\n", self.struct_name));
@@ -468,12 +514,12 @@ impl Bindings {
                 s.push_str(&format!("    {}: {},\n", f.name, f.ty.wgsl()));
             }
             s.push_str("}\n");
-            s.push_str(&format!("@group({MATERIAL_GROUP}) @binding({b}) var<uniform> params: {};\n", self.struct_name));
+            s.push_str(&format!("@group({g}) @binding({b}) var<uniform> params: {};\n", self.struct_name));
         }
         for (i, t) in self.textures.iter().enumerate() {
             let b = self.texture_binding(i);
-            s.push_str(&format!("@group({MATERIAL_GROUP}) @binding({b}) var {t}: texture_2d<f32>;\n"));
-            s.push_str(&format!("@group({MATERIAL_GROUP}) @binding({}) var {t}_sampler: sampler;\n", b + 1));
+            s.push_str(&format!("@group({g}) @binding({b}) var {t}: texture_2d<f32>;\n"));
+            s.push_str(&format!("@group({g}) @binding({}) var {t}_sampler: sampler;\n", b + 1));
         }
         if let Some(b) = self.instance_binding() {
             let name = self.instance_struct();
@@ -487,7 +533,7 @@ impl Bindings {
                 s.push_str(&format!("    {PAD}: array<u32, {}>,\n", (INSTANCE_BYTES - end) / 4));
             }
             s.push_str("}\n");
-            s.push_str(&format!("@group({MATERIAL_GROUP}) @binding({b}) var<storage, read> instances: array<{name}>;\n"));
+            s.push_str(&format!("@group({g}) @binding({b}) var<storage, read> instances: array<{name}>;\n"));
             s.push_str(&format!("fn instance(i: u32) -> {name} {{\n    return instances[{GET_TAG}(i)];\n}}\n"));
         }
         s
@@ -816,6 +862,23 @@ mod tests {
         let w = Bindings::new("k", [], &[]).unwrap().with_instance(full.iter().map(|(n, t)| (*n, t))).unwrap().wgsl("k");
         assert!(!w.contains("bevy_ts_pad"), "{w}");
         assert_eq!(Bindings::new("k", [], &[]).unwrap().with_instance([]).unwrap().instance_binding(), None);
+    }
+
+    #[test]
+    fn a_2d_kind_binds_at_group_2_and_imports_the_2d_get_tag() {
+        let p = [("color", B(Color))];
+        let i = [("seed", B(F32))];
+        let b = Bindings::new("game::Planet", p.iter().map(|(n, t)| (*n, t)), &["noise".into()]).unwrap().with_instance(i.iter().map(|(n, t)| (*n, t))).unwrap();
+        assert_eq!(b.space(), Space::D3);
+        let b = b.in_space(Space::D2);
+        let w = b.wgsl("game::Planet");
+        assert!(w.contains("@group(2) @binding(0) var<uniform> params: PlanetParams;"), "{w}");
+        assert!(w.contains("@group(2) @binding(1) var noise: texture_2d<f32>;"), "{w}");
+        assert!(w.contains("@group(2) @binding(2) var noise_sampler: sampler;"), "{w}");
+        assert!(w.contains("@group(2) @binding(3) var<storage, read> instances: array<PlanetInstance>;"), "{w}");
+        assert!(!w.contains("@group(3)"), "{w}");
+        assert_eq!(Space::D2.instance_import(), "import bevy_sprite_render::mesh2d::functions::get_tag as bevy_ts_get_tag; ");
+        assert_eq!(Space::D3.instance_import(), INSTANCE_IMPORT);
     }
 
     #[test]

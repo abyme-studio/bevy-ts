@@ -998,6 +998,19 @@ export interface Material2dProps {
   alphaMode?: "opaque" | "blend" | { mask: number };
   texture?: string;
   uvTransform?: UvTransform;
+  kind?: never;
+}
+
+/**
+ * `<material2d kind={Planet} sea="#24a" seed={3} />` beside a `<mesh2d>`: a script 2D material from
+ * `material2d()` in `bevy-ts/material`, with its params by name and its textures as asset paths or
+ * image refs. Checked against the kind's schema when the generation loads. Instance params
+ * (`seed={3}`, or bound, `seed={() => s()}`) go to the entity, not the shared asset. Not on a
+ * `Sprite`: draw a `<mesh2d shape="rectangle">` with the image as a texture param.
+ */
+export interface ScriptMaterial2dProps {
+  kind: { readonly name: string };
+  [param: string]: unknown;
 }
 
 /**
@@ -1081,7 +1094,7 @@ export declare namespace JSX {
     mesh: MeshProps;
     material: MaterialProps | ScriptMaterialProps | OwnedMaterialProps;
     mesh2d: Mesh2dProps;
-    material2d: Material2dProps;
+    material2d: Material2dProps | ScriptMaterial2dProps;
     pass: PassProps;
     worldText: WorldTextProps;
     text2d: Text2dProps;
