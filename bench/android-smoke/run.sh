@@ -67,7 +67,7 @@ if [[ ! -d "$ANDROID_AVD_HOME/bevy-ts-smoke.avd" ]]; then
     -k "system-images;android-34;google_apis;arm64-v8a" -d pixel_6 >/dev/null
 fi
 "$ANDROID_HOME/emulator/emulator" -avd bevy-ts-smoke -port $port -no-window -no-audio -no-boot-anim \
-  -no-snapshot -gpu swiftshader_indirect > "$cache/emulator.log" 2>&1 &
+  -no-snapshot -gpu swiftshader_indirect -memory 4096 -partition-size 16384 -wipe-data > "$cache/emulator.log" 2>&1 &
 emu=$!
 trap '"$adb" -s $serial emu kill >/dev/null 2>&1 || true; wait $emu 2>/dev/null || true' EXIT
 
@@ -84,7 +84,7 @@ log() { "$adb" -s $serial logcat -d -s bevy-ts-smoke:I 2>/dev/null; }
 # By the pid seen at start: the app may be gone by then.
 app_pid=
 app_log() {
-  { [[ -n "$app_pid" ]] && "$adb" -s $serial logcat -d --pid="$app_pid"; "$adb" -s $serial logcat -d -s DEBUG:V AndroidRuntime:E; } 2>&1 || true
+  { [[ -n "$app_pid" ]] && "$adb" -s $serial logcat -d --pid="$app_pid"; "$adb" -s $serial logcat -d -s DEBUG:V AndroidRuntime:E; "$adb" -s $serial logcat -d -b crash; } 2>&1 || true
 }
 logged() { log | grep -q -- "$1"; }
 count() { log | grep -c -- "$1" || true; }
@@ -105,6 +105,9 @@ copied=$("$adb" -s $serial shell run-as $pkg stat -c %s files/libbevy_ts_android
 tar -C "$out/game" -cf "$cache/game.tar" .
 "$adb" -s $serial push -q "$cache/game.tar" /data/local/tmp/game.tar >/dev/null
 "$adb" -s $serial shell "cat /data/local/tmp/game.tar | run-as $pkg sh -c 'mkdir -p files/games/$game && tar -C files/games/$game -xf -' && rm /data/local/tmp/game.tar"
+say "$("$adb" -s $serial shell df -h /data | tail -1 | tr -s ' ' | cut -d' ' -f2-4 | sed 's/ / size, /; s/ / used, /') free on /data"
+# A large game's push can leave Android restarting its system server: wait for it to be back.
+until_ok '"$adb" -s $serial shell service check activity 2>/dev/null | grep -q ": found"' 300 "the activity manager is up"
 "$adb" -s $serial logcat -G 16M >/dev/null 2>&1 || true
 "$adb" -s $serial logcat -c
 
