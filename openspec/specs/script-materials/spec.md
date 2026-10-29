@@ -65,11 +65,15 @@ A TSX `<material kind={...} />` SHALL resolve to a `ScriptMaterial` asset keyed 
 - **THEN** the other keeps drawing with the same handle
 
 ### Requirement: Render-world work beyond materials stays Rust
-Render passes, render-graph systems, compute pipelines, GPU readback and custom draw functions SHALL be written in the native crate. bevy-ts SHALL NOT run JS on the render thread or in the render world.
+Render passes other than script passes (script-passes), render-graph systems, compute pipelines, GPU readback and custom draw functions SHALL be written in the native crate. bevy-ts SHALL NOT run JS on the render thread or in the render world; a script pass's shader and params are data the engine draws, as a material's are.
 
 #### Scenario: A custom post-process
-- **WHEN** a project needs a post-processing pass
-- **THEN** it is a Rust system in `Core3d` in the native crate, and TS may set its settings through a layout-tier component on the camera
+- **WHEN** a project needs a post-processing pass that a script pass cannot express (a second texture, a render target, compute, or a `Camera3d`)
+- **THEN** it is a Rust system in `Core3d` or `Core2d` in the native crate, and TS may set its settings through a layout-tier component on the camera
+
+#### Scenario: A 2D grading pass
+- **WHEN** a project grades its `Camera2d`'s image with one fragment shader and params
+- **THEN** it is a script pass declared in TS, with no native crate
 
 ### Requirement: A script material on a glTF scene root draws the scene's meshes
 When an entity carries both `WorldAssetRoot` and `ScriptMaterial3d`, every mesh entity the scene instance spawned that holds a `MeshMaterial3d<StandardMaterial>` SHALL, once the instance is ready, draw with the root's `ScriptMaterial3d` instead, and its `StandardMaterial` handle SHALL be kept. A `<material kind={K} gltfMaterial="Name" />` (in Rust, `GltfMaterialFilter("Name")` on the root) SHALL limit this to meshes whose glTF material name (`GltfMaterialName`) is exactly `Name`. Entities not spawned by the scene instance, such as TSX children of the root, SHALL be left alone. A changed `ScriptMaterial3d` SHALL reach every swapped mesh the frame it changes; a changed filter SHALL restore meshes that stop matching and swap those that start. Removing `ScriptMaterial3d` SHALL restore each swapped mesh's own `StandardMaterial`. A scene spawned again (ready again) SHALL be swapped again. `material()` SHALL refuse a param or texture named `kind` or `gltfMaterial`, which `<material>` takes itself. `gltfMaterial` bound to a function SHALL fail as any bound `<material>` prop does.
