@@ -10,7 +10,8 @@
 #
 # SMOKE_PROJECT (a project folder, else examples/<game>), SMOKE_ENTRY (its entry, else the project's
 # own) and SMOKE_ENV (the engine's env, JSON) play another game under the name <game>; SETTLE is the
-# seconds to wait before each screenshot (5). abyme-game.mjs plays agent town's worlds this way.
+# seconds to wait before each screenshot (5), STARTED_WITHIN the seconds the first frame may take
+# (180). abyme-game.mjs plays agent town's worlds this way.
 #
 # Needs: dist/aarch64-linux-android/ (scripts/android), the SDK's build-tools 35, platform 34, the
 # emulator and system-images;android-34;google_apis;arm64-v8a. Nothing shows on screen.
@@ -105,7 +106,7 @@ copied=$("$adb" -s $serial shell run-as $pkg stat -c %s files/libbevy_ts_android
 tar -C "$out/game" -cf "$cache/game.tar" .
 "$adb" -s $serial push -q "$cache/game.tar" /data/local/tmp/game.tar >/dev/null
 "$adb" -s $serial shell "cat /data/local/tmp/game.tar | run-as $pkg sh -c 'mkdir -p files/games/$game && tar -C files/games/$game -xf -' && rm /data/local/tmp/game.tar"
-say "$("$adb" -s $serial shell df -h /data | tail -1 | tr -s ' ' | cut -d' ' -f2-4 | sed 's/ / size, /; s/ / used, /') free on /data"
+say "$("$adb" -s $serial shell df -h /data | tail -1 | awk '{ print $2 " size, " $3 " used, " $4 " free on /data" }')"
 # A large game's push can leave Android restarting its system server: wait for it to be back.
 until_ok '"$adb" -s $serial shell service check activity 2>/dev/null | grep -q ": found"' 300 "the activity manager is up"
 "$adb" -s $serial logcat -G 16M >/dev/null 2>&1 || true
@@ -114,7 +115,7 @@ until_ok '"$adb" -s $serial shell service check activity 2>/dev/null | grep -q "
 # Play: started from the library in filesDir.
 "$adb" -s $serial shell am start -W -n $pkg/.SmokeActivity --es game "$game" --es env64 "$env64" >/dev/null
 app_pid=$("$adb" -s $serial shell pidof $pkg | tr -d '\r')
-until_ok 'logged "\"event\":\"started\"" || logged "failed"' 180 "started"
+until_ok 'logged "\"event\":\"started\"" || logged "failed"' "${STARTED_WITHIN:-180}" "started"
 logged "failed" && { log; exit 1; }
 say "$(log | grep -o 'loaded .*' | head -1)"
 say "$(log | grep -o 'first frame in .*' | head -1)"

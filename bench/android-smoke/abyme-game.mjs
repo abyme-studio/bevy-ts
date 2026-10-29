@@ -58,6 +58,8 @@ const run = spawn(join(here, "run.sh"), [name], {
     ...(world === "learn" && { SMOKE_ENTRY: "src/learn/game.ts" }),
     SMOKE_ENV: JSON.stringify({ ABYME_URL: url }),
     SETTLE: process.env.SETTLE ?? "60", // SwiftShader compiles the world's shaders slowly
+    // A world's first frame on SwiftShader, on a loaded Mac, has taken over 180 s.
+    STARTED_WITHIN: process.env.STARTED_WITHIN ?? "900",
   },
 });
 const code = await new Promise((r) => run.on("exit", (c) => r(c ?? 1)));
