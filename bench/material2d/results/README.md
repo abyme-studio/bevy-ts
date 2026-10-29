@@ -1,32 +1,31 @@
 # Script 2D materials at 1920×1080 (script-material2d, design 8)
 
-Apple M5 Max, 128 GB, macOS 26.4, 2026-10-29. The machine was shared with other builds, at load
-150 to 165. Command: `bench/material2d/run.sh 3` (the `material2d-bench` process), at commit
-89d6f505b; the raw lines are in `runs.txt`. One `Camera2d` under `PixelCamera` zoom 3 draws
-48-art-px planets of three layers (sea, land, cloud; a ring on every fifth) into a 1920×1080
-image; `one` is a single 200-art-px planet. Rendering is not pipelined, and each frame waits for
-the GPU. 600 frames after 120 warm-up, with the arms alternated. 3 runs per arm: the operator
-asked for a result at whatever load there was, not 8 runs on a quiet machine.
+Apple M5 Max, 128 GB, macOS 26.4, 2026-10-30 08:33 to 08:35, at load 8.6 falling to 5.3 (1-min
+`uptime` before and after). Command: `bench/material2d/run.sh 8` (the `material2d-bench-8`
+process), at commit a91603f80; the raw lines are in `runs.txt`. One `Camera2d` under `PixelCamera`
+zoom 3 draws 48-art-px planets of three layers (sea, land, cloud; a ring on every fifth) into a
+1920×1080 image; `one` is a single 200-art-px planet. Rendering is not pipelined, and each frame
+waits for the GPU. 600 frames after 120 warm-up, with the arms alternated.
 
-| ms, 3 runs | off | one | n20 | n100 | n200 | n500 |
+| ms, 8 runs | off | one | n20 | n100 | n200 | n500 |
 |---|---|---|---|---|---|---|
-| frame, median of the run medians | 14.00 | 15.33 | 14.73 | 20.29 | 20.12 | 25.92 |
-| frame, lowest run median | 11.19 | 14.51 | 12.29 | 17.69 | 18.17 | 22.09 |
-| frame, highest run median | 17.98 | 16.54 | 16.60 | 27.76 | 27.17 | 27.82 |
-| frame p95, median of the run p95s | 44.64 | 45.94 | 52.99 | 57.77 | 50.63 | 56.04 |
-| transparent 2D pass, CPU, median | none | 0.006 | 0.023 | 0.072 | 0.13 | 0.30 |
-| opaque 2D pass, CPU, median | 0.001 | 0.014 | 0.014 | 0.015 | 0.015 | 0.015 |
+| frame, median of the run medians | 1.25 | 1.95 | 2.14 | 2.52 | 3.32 | 4.87 |
+| frame, lowest run median | 1.11 | 1.33 | 1.43 | 1.85 | 2.06 | 2.41 |
+| frame, highest run median | 1.36 | 2.04 | 3.09 | 5.21 | 5.99 | 6.01 |
+| frame p95, median of the run p95s | 1.47 | 2.23 | 2.51 | 4.49 | 5.47 | 5.92 |
+| transparent 2D pass, CPU, median | none | 0.001 | 0.008 | 0.031 | 0.057 | 0.129 |
+| opaque 2D pass, CPU, median | 0.000 | 0.002 | 0.002 | 0.002 | 0.002 | 0.003 |
 
-- Gate (`n100` under `off` + 2 ms, at load under 10): not met, and not decided. `n100` reads
-  6.3 ms over `off` (median of the run medians; 9.1, 9.8 and 3.7 ms run by run), but the run was
-  at load 150 to 165, where the spec says a run decides nothing. `off` alone swings 11 to 18 ms
-  between runs.
+- Gate (`n100` under `off` + 2 ms, at load under 10): met. `n100` reads 1.27 ms over `off`
+  (median of the run medians), within the 1.6 ms estimate.
 - Estimate (proposal, from the learn-planets research): 100 planets at most 1.6 ms of GPU, 500 at
-  most 8 ms. Under this load the frame time cannot place it: `n200` reads the same as `n100`, and
-  `n500` only 5.6 ms above it.
-- CPU: the transparent pass's encoding grows with the draws, about 0.6 µs a layer (0.30 ms at 500
-  planets, about 1,600 layers). Metal gives no GPU timestamps, so GPU time shows only in the frame
-  time.
+  most 8 ms. `n500` reads 3.6 ms over `off`.
+- Two runs of each of `n100`, `n200` and `n500` read 5 to 6 ms, the rest 2 to 4 ms; `off` held
+  1.1 to 1.4 ms throughout. The median places the gate; the slow runs are noted, not explained.
+- CPU: the transparent pass's encoding grows with the draws, about 0.25 µs a layer (0.13 ms at
+  500 planets, about 1,600 layers). Metal gives no GPU timestamps, so GPU time shows only in the
+  frame time.
 - `n200` is recorded for learn-planets and gates nothing.
-- Re-run on a quiet machine (load under 10) to decide the gate:
-  `abyme call processes start name=material2d-bench`.
+- Earlier batches in `runs.txt` decide nothing: 2026-10-29 at load 150 to 165 (3 runs, `n100`
+  6.3 ms over `off`), and 2026-10-30 06:32 at load 40 to 48 (2 runs, from a build-only start:
+  `seq 0` on macOS counts 1, 0).

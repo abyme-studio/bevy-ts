@@ -676,3 +676,461 @@ arm=off size=1920x1080 sprites=2000 frame_median_ms=4.850 frame_p95_ms=33.640 pa
 arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=4.554 frame_p95_ms=37.471 pass_cpu_median_ms=0.001 pass_cpu_p95_ms=0.002
 arm=grade size=1920x1080 sprites=2000 frame_median_ms=3.949 frame_p95_ms=13.383 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.001
 13:47  up  4:25, 1 user, load averages: 106.44 107.46 112.85
+gate: waiting for the machine's budget: waits its turn
+gate: granted, running
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.27
+   Compiling quote v1.0.47
+   Compiling syn v3.0.9
+   Compiling serde_core v1.0.229
+   Compiling bytemuck_derive v1.12.1
+   Compiling bytemuck v1.25.2
+   Compiling syn v2.0.119
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling bitflags v2.13.2
+   Compiling autocfg v1.5.1
+   Compiling serde v1.0.229
+   Compiling serde_derive v1.0.229
+   Compiling pin-project-lite v0.2.17
+   Compiling libm v0.2.16
+   Compiling foldhash v0.2.0
+   Compiling num-traits v0.2.19
+   Compiling objc2-encode v4.1.0
+   Compiling equivalent v1.0.3
+   Compiling smallvec v1.16.3
+   Compiling log v0.4.34
+   Compiling thiserror v2.0.21
+   Compiling thiserror-impl v2.0.21
+   Compiling cfg_aliases v0.2.2
+   Compiling hashbrown v0.17.1
+   Compiling winnow v1.0.4
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling indexmap v2.14.2
+   Compiling futures-core v0.3.34
+   Compiling toml_datetime v1.1.2+spec-1.1.0
+   Compiling toml_edit v0.25.17+spec-1.1.0
+   Compiling bevy_macro_utils v0.20.0
+   Compiling parking v2.2.1
+   Compiling objc2 v0.6.5
+   Compiling crossbeam-utils v0.8.23
+   Compiling futures-io v0.3.34
+   Compiling getrandom v0.4.3
+   Compiling once_cell v1.21.4
+   Compiling fastrand v2.5.0
+   Compiling event-listener v5.4.2
+   Compiling raw-window-handle v0.6.2
+   Compiling rustc-hash v1.1.0
+   Compiling naga-types v30.0.1
+   Compiling event-listener-strategy v0.5.4
+   Compiling futures-lite v2.6.1
+   Compiling concurrent-queue v2.5.0
+   Compiling hashbrown v0.16.1
+   Compiling version_check v0.9.5
+   Compiling uuid v1.28.0
+   Compiling static_assertions v1.1.0
+   Compiling unicode-segmentation v1.13.3
+   Compiling convert_case v0.10.0
+   Compiling wgpu-types v30.0.1
+   Compiling encase_derive_impl v0.12.1
+   Compiling typewit v1.15.2
+   Compiling unicode-xid v0.2.6
+   Compiling derive_more-impl v2.1.1
+   Compiling const_panic v0.2.17
+   Compiling async-channel v2.5.0
+   Compiling rand_core v0.10.1
+   Compiling typeid v1.0.3
+   Compiling rand v0.10.3
+   Compiling derive_more v2.1.1
+   Compiling encase_derive v0.12.1
+   Compiling block2 v0.6.2
+   Compiling arrayvec v0.7.8
+   Compiling spin v0.12.3
+   Compiling bevy_platform v0.20.0
+   Compiling encase v0.12.1
+   Compiling approx v0.5.1
+   Compiling smol_str v0.2.2
+   Compiling thread_local v1.1.10
+   Compiling atomic-waker v1.1.2
+   Compiling mutants v0.0.3
+   Compiling foldhash v0.1.5
+   Compiling erased-serde v0.4.10
+   Compiling rustc-hash v2.1.3
+   Compiling unsynn v0.3.0
+   Compiling hashbrown v0.15.5
+   Compiling glam v0.33.12
+   Compiling fixedbitset v0.5.7
+   Compiling disqualified v1.1.0
+   Compiling bevy_utils v0.20.0
+   Compiling petgraph v0.8.3
+   Compiling variadics_please v2.0.0
+   Compiling bevy_reflect_derive v0.20.0
+   Compiling assert_type_match v0.1.1
+   Compiling downcast-rs v2.0.2
+   Compiling bevy_ptr v0.20.0
+   Compiling inventory v0.3.25
+   Compiling bevy_reflect v0.20.0
+   Compiling objc2-core-foundation v0.3.2
+   Compiling zerocopy v0.8.63
+   Compiling async-task v4.7.1
+   Compiling slab v0.4.12
+   Compiling zerocopy-derive v0.8.63
+   Compiling memchr v2.8.3
+   Compiling slotmap v1.1.1
+   Compiling bevy_ecs_macro_logic v0.20.0
+   Compiling nix v0.31.3
+   Compiling async-executor v1.14.0
+   Compiling crossbeam-queue v0.3.14
+   Compiling find-msvc-tools v0.1.15
+   Compiling nonmax v0.5.5
+   Compiling shlex v2.0.1
+   Compiling cc v1.9.0
+   Compiling bevy_tasks v0.20.0
+   Compiling bevy_ecs_macros v0.20.0
+   Compiling dispatch2 v0.3.1
+   Compiling bumpalo v3.20.3
+   Compiling bevy_ecs v0.20.0
+   Compiling ctrlc v3.5.2
+   Compiling bevy_derive v0.20.0
+   Compiling bevy_app v0.20.0
+   Compiling tracing-core v0.1.36
+   Compiling half v2.7.1
+   Compiling tracing-attributes v0.1.31
+   Compiling either v1.19.0
+   Compiling tracing v0.1.44
+   Compiling objc2-io-kit v0.3.2
+   Compiling rustix v1.1.5
+   Compiling bevy_math v0.20.0
+   Compiling crossbeam-channel v0.5.17
+   Compiling errno v0.3.14
+   Compiling bevy_time v0.20.0
+   Compiling blake3 v1.8.7
+   Compiling piper v0.2.5
+   Compiling async-io v2.6.0
+   Compiling futures-task v0.3.34
+   Compiling blocking v1.7.0
+   Compiling polling v3.11.0
+   Compiling sysinfo v0.39.6
+   Compiling async-lock v3.4.2
+   Compiling futures-macro v0.3.34
+   Compiling constant_time_eq v0.4.2
+   Compiling const-fnv1a-hash v1.1.0
+   Compiling bevy_diagnostic v0.20.0
+   Compiling futures-util v0.3.34
+   Compiling async-fs v2.2.0
+   Compiling ron v0.12.2
+   Compiling stackfuture v0.3.1
+   Compiling async-broadcast v0.7.2
+   Compiling bevy_asset_macros v0.20.0
+   Compiling simd-adler32 v0.3.10
+   Compiling atomicow v1.2.0
+   Compiling bevy_asset v0.20.0
+   Compiling aho-corasick v1.1.5
+   Compiling adler2 v2.0.1
+   Compiling regex-syntax v0.8.11
+   Compiling crc32fast v1.5.2
+   Compiling regex-automata v0.4.18
+   Compiling synstructure v0.14.0
+   Compiling miniz_oxide v0.9.1
+   Compiling itertools v0.14.0
+   Compiling bevy_curve v0.20.0
+   Compiling flate2 v1.1.10
+   Compiling zerofrom-derive v0.1.8
+   Compiling miniz_oxide v0.8.9
+   Compiling fdeflate v0.3.7
+   Compiling pxfm v0.1.30
+   Compiling const_soft_float v0.1.4
+   Compiling constgebra v0.1.4
+   Compiling moxcms v0.8.1
+   Compiling png v0.18.1
+   Compiling zerofrom v0.1.8
+   Compiling bevy_color v0.20.0
+   Compiling yoke-derive v0.8.4
+   Compiling rand_distr v0.6.0
+   Compiling euclid v0.22.14
+   Compiling twox-hash v2.1.5
+   Compiling byteorder-lite v0.1.0
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.3
+   Compiling image v0.25.10
+   Compiling ruzstd v0.8.3
+   Compiling guillotiere v0.7.0
+   Compiling bevy_shape v0.20.0
+   Compiling hexasphere v19.0.0
+   Compiling bevy_transform v0.20.0
+   Compiling bevy_encase_derive v0.20.0
+   Compiling ktx2 v0.5.0
+   Compiling unicode-width v0.2.2
+   Compiling lazy_static v1.5.1
+   Compiling rectangle-pack v0.4.2
+   Compiling bevy_mikktspace v1.0.0
+   Compiling bevy_mesh v0.20.0
+   Compiling bevy_image v0.20.0
+   Compiling bevy_input v0.20.0
+   Compiling zerovec-derive v0.11.6
+   Compiling zerovec v0.11.8
+   Compiling sharded-slab v0.1.7
+   Compiling matchers v0.2.0
+   Compiling tracing-log v0.2.0
+   Compiling displaydoc v0.2.7
+   Compiling nu-ansi-term v0.50.3
+   Compiling lexical-util v1.0.7
+   Compiling tracing-subscriber v0.3.23
+   Compiling bevy_window v0.20.0
+   Compiling writeable v0.6.4
+   Compiling bevy_camera v0.20.0
+   Compiling bevy_log v0.20.0
+   Compiling lexical-write-integer v1.0.6
+   Compiling lexical-parse-integer v1.0.6
+   Compiling tinystr v0.8.4
+   Compiling litemap v0.8.3
+   Compiling fnv v1.0.7
+   Compiling logos-codegen v0.16.1
+   Compiling icu_locale_core v2.3.0
+   Compiling lexical-parse-float v1.0.6
+   Compiling lexical-write-float v1.0.6
+   Compiling potential_utf v0.1.6
+   Compiling zerotrie v0.2.5
+   Compiling objc2-foundation v0.3.2
+   Compiling naga v30.0.1
+   Compiling lalrpop-util v0.23.1
+   Compiling anstyle v1.0.14
+   Compiling parking_lot_core v0.9.12
+   Compiling bit-vec v0.9.1
+   Compiling bit-set v0.10.0
+   Compiling objc2-metal v0.3.2
+   Compiling icu_provider v2.3.1
+   Compiling lexical-core v1.0.6
+   Compiling logos-derive v0.16.1
+   Compiling codespan-reporting v0.13.1
+   Compiling itertools v0.15.0
+   Compiling objc2-core-graphics v0.3.2
+   Compiling scopeguard v1.2.0
+   Compiling itoa v1.0.18
+   Compiling utf8parse v0.2.2
+   Compiling utf8_iter v1.0.4
+   Compiling icu_collections v2.3.0
+   Compiling anstyle-parse v1.0.0
+   Compiling lock_api v0.4.14
+   Compiling objc2-quartz-core v0.3.2
+   Compiling wgsl-types v0.6.0
+   Compiling logos v0.16.1
+   Compiling lexical v7.0.5
+   Compiling annotate-snippets v0.12.16
+   Compiling wgpu-hal v30.0.1
+   Compiling serde_spanned v1.1.2
+   Compiling icu_properties_data v2.3.0
+   Compiling anstyle-query v1.1.5
+   Compiling colorchoice v1.0.5
+   Compiling toml_writer v1.1.3+spec-1.1.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstream v1.0.0
+   Compiling toml v1.1.8+spec-1.1.0
+   Compiling wgsl-parse v0.6.0
+   Compiling parking_lot v0.12.5
+   Compiling wgpu-naga-bridge v30.0.1
+   Compiling raw-window-metal v1.1.0
+   Compiling wesl-macros v0.6.0
+   Compiling libloading v0.8.9
+   Compiling profiling v1.0.18
+   Compiling icu_normalizer_data v2.3.0
+   Compiling wesl-core v0.1.0
+   Compiling glob v0.3.4
+   Compiling wesl v0.6.0
+   Compiling wgpu-core v30.0.1
+   Compiling font-types v0.12.7
+   Compiling core-foundation-sys v0.8.7
+   Compiling litrs v1.0.1
+   Compiling objc-sys v0.3.5
+   Compiling document-features v0.2.12
+   Compiling read-fonts v0.41.0
+   Compiling icu_properties v2.3.0
+   Compiling wgpu-core-deps-apple v30.0.1
+   Compiling bevy_shader v0.20.0
+   Compiling bevy_extract_macros v0.20.0
+   Compiling bevy_gizmos_macros v0.20.0
+   Compiling bevy_material_macros v0.20.0
+   Compiling wgpu v30.0.1
+   Compiling icu_locale_fallback_data v2.3.0
+   Compiling bevy_material v0.20.0
+   Compiling bevy_gizmos v0.20.0
+   Compiling icu_normalizer v2.3.0
+   Compiling zmij v1.0.23
+   Compiling icu_segmenter_data v2.3.0
+   Compiling objc2 v0.5.3
+   Compiling bevy_light v0.20.0
+   Compiling bevy_extract v0.20.0
+   Compiling bevy_render_macros v0.20.0
+   Compiling offset-allocator v0.2.0
+   Compiling weak-table v0.4.0
+   Compiling radium v0.7.0
+   Compiling serde_json v1.0.154
+   Compiling bevy_render v0.20.0 (/Users/rjm/.local/share/abyme/worktrees/bevy-ts/material2d-quiet-bench/vendor/bevy_render)
+   Compiling icu_locale_fallback v2.3.0
+   Compiling block2 v0.5.1
+   Compiling skrifa v0.44.0
+   Compiling generic-array v0.14.7
+   Compiling memmap2 v0.9.11
+   Compiling tap v1.0.1
+   Compiling inflections v1.1.1
+   Compiling parlance v0.1.1
+   Compiling dispatch v0.2.0
+   Compiling linebender_resource_handle v0.1.1
+   Compiling fontique v0.11.1
+   Compiling objc2-foundation v0.2.2
+   Compiling gltf-derive v1.4.1
+   Compiling wyz v0.5.1
+   Compiling icu_segmenter v2.3.0
+   Compiling bevy_core_pipeline v0.20.0
+   Compiling parley_data v0.11.1
+   Compiling harfrust v0.12.0
+   Compiling core-foundation v0.9.4
+   Compiling ring v0.17.14
+   Compiling accesskit v0.24.1
+   Compiling foreign-types-macros v0.2.4
+   Compiling yazi v0.2.1
+   Compiling bitflags v1.3.2
+   Compiling zeno v0.3.3
+   Compiling bytes v1.12.1
+   Compiling typenum v1.20.1
+   Compiling getrandom v0.3.4
+   Compiling foreign-types-shared v0.3.1
+   Compiling funty v2.0.0
+   Compiling percent-encoding v2.3.2
+   Compiling bitvec v1.1.1
+   Compiling foreign-types v0.5.0
+   Compiling http v1.5.0
+   Compiling swash v0.2.10
+   Compiling core-graphics-types v0.1.3
+   Compiling parley v0.11.1
+   Compiling gltf-json v1.4.1
+   Compiling objc2-app-kit v0.2.2
+   Compiling bevy_clipboard v0.20.0
+   Compiling bevy_animation_macros v0.20.0
+   Compiling winit v0.30.13
+   Compiling byteorder v1.5.0
+   Compiling httparse v1.10.1
+   Compiling sys-locale v0.3.2
+   Compiling bevy_text v0.20.0
+   Compiling gltf v1.4.1
+   Compiling bevy_animation v0.20.0
+   Compiling core-graphics v0.23.2
+   Compiling accesskit_consumer v0.38.0
+   Compiling bevy_picking v0.20.0
+   Compiling bevy_world_serialization v0.20.0
+   Compiling getrandom v0.2.17
+   Compiling radsort v0.1.1
+   Compiling cursor-icon v1.2.0
+   Compiling gilrs v0.11.2
+   Compiling base64 v0.23.1
+   Compiling dpi v0.1.2
+   Compiling zeroize v1.9.1
+   Compiling untrusted v0.9.0
+   Compiling vec_map v0.8.2
+   Compiling gilrs-core v0.6.8
+   Compiling rustls-pki-types v1.15.1
+   Compiling bevy_gltf v0.20.0
+   Compiling bevy_sprite v0.20.0
+   Compiling accesskit_macos v0.26.3
+   Compiling rand_core v0.9.5
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling ppv-lite86 v0.2.21
+   Compiling rustls v0.23.46
+   Compiling rand_chacha v0.9.0
+   Compiling digest v0.10.7
+   Compiling accesskit_winit v0.33.2
+   Compiling bevy_sprite_render v0.20.0
+   Compiling bevy_pbr v0.20.0
+   Compiling rustls-webpki v0.103.16
+   Compiling http-body v1.1.0
+   Compiling bevy_a11y v0.20.0
+   Compiling bevy_input_focus v0.20.0
+   Compiling bevy_scene_macros v0.20.0
+   Compiling bevy_state_macros v0.20.0
+   Compiling cpufeatures v0.2.17
+   Compiling subtle v2.6.1
+   Compiling try-lock v0.2.5
+   Compiling want v0.3.2
+   Compiling sha1 v0.10.7
+   Compiling bevy_state v0.20.0
+   Compiling bevy_scene v0.20.0
+   Compiling bevy_winit v0.20.0
+   Compiling bevy_gizmos_render v0.20.0
+   Compiling rand v0.9.5
+   Compiling bevy_gilrs v0.20.0
+   Compiling bevy_anti_alias v0.20.0
+   Compiling bevy_post_process v0.20.0
+   Compiling idna_adapter v1.2.2
+   Compiling core-foundation v0.10.1
+   Compiling security-framework-sys v2.17.0
+   Compiling tokio v1.53.3
+   Compiling data-encoding v2.11.1
+   Compiling utf-8 v0.7.6
+   Compiling tungstenite v0.28.0
+   Compiling hyper v1.12.0
+   Compiling security-framework v3.7.0
+   Compiling idna v1.1.0
+   Compiling bevy_internal v0.20.0
+   Compiling form_urlencoded v1.2.2
+   Compiling url v2.5.8
+   Compiling bevy v0.20.0
+   Compiling rustls-platform-verifier v0.7.1
+   Compiling smol-hyper v0.1.1
+   Compiling async-tungstenite v0.33.0
+   Compiling futures-rustls v0.26.0
+   Compiling http-body-util v0.1.5
+   Compiling bevy-ts v0.1.0 (/Users/rjm/.local/share/abyme/worktrees/bevy-ts/material2d-quiet-bench/crates/bevy-ts)
+   Compiling bevy-ts-material v0.1.0 (/Users/rjm/.local/share/abyme/worktrees/bevy-ts/material2d-quiet-bench/crates/bevy-ts-material)
+   Compiling fullscreen-pass-bench v0.0.0 (/Users/rjm/.local/share/abyme/worktrees/bevy-ts/material2d-quiet-bench/bench/fullscreen-pass)
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `fullscreen-pass-bench` (bin "fullscreen-pass-bench") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 28m 10s
+a91603f80
+ 6:31  up 21:09, 1 user, load averages: 44.71 46.12 39.46
+arm=off size=1920x1080 sprites=2000 frame_median_ms=9.760 frame_p95_ms=49.455 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=15.093 frame_p95_ms=55.002 pass_cpu_median_ms=0.001 pass_cpu_p95_ms=0.002
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=5.729 frame_p95_ms=56.805 pass_cpu_median_ms=0.001 pass_cpu_p95_ms=0.002
+arm=off size=1920x1080 sprites=2000 frame_median_ms=5.464 frame_p95_ms=61.669 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=7.021 frame_p95_ms=60.724 pass_cpu_median_ms=0.001 pass_cpu_p95_ms=0.002
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=10.191 frame_p95_ms=73.409 pass_cpu_median_ms=0.001 pass_cpu_p95_ms=0.002
+ 6:32  up 21:11, 1 user, load averages: 39.24 44.98 39.69
+gate: waiting for the machine's budget: waits its turn
+gate: granted, running
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `fullscreen-pass-bench` (bin "fullscreen-pass-bench") generated 1 warning
+    Finished `release` profile [optimized] target(s) in 0.40s
+a91603f80
+ 8:35  up 23:13, 1 user, load averages: 4.41 11.65 15.27
+arm=off size=1920x1080 sprites=2000 frame_median_ms=1.536 frame_p95_ms=2.570 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=1.450 frame_p95_ms=1.685 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=1.480 frame_p95_ms=1.821 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=off size=1920x1080 sprites=2000 frame_median_ms=1.594 frame_p95_ms=3.134 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=1.835 frame_p95_ms=2.002 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=1.799 frame_p95_ms=2.024 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=off size=1920x1080 sprites=2000 frame_median_ms=1.632 frame_p95_ms=2.120 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=1.498 frame_p95_ms=1.842 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=1.502 frame_p95_ms=1.818 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=off size=1920x1080 sprites=2000 frame_median_ms=1.591 frame_p95_ms=2.007 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=1.566 frame_p95_ms=1.920 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=1.460 frame_p95_ms=1.790 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=off size=1920x1080 sprites=2000 frame_median_ms=1.587 frame_p95_ms=2.679 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=1.483 frame_p95_ms=1.860 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=1.476 frame_p95_ms=1.871 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=off size=1920x1080 sprites=2000 frame_median_ms=1.416 frame_p95_ms=1.773 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=1.766 frame_p95_ms=2.614 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=1.447 frame_p95_ms=1.730 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=off size=1920x1080 sprites=2000 frame_median_ms=1.464 frame_p95_ms=1.854 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=1.468 frame_p95_ms=1.803 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=1.546 frame_p95_ms=1.973 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=off size=1920x1080 sprites=2000 frame_median_ms=1.397 frame_p95_ms=1.670 pass_cpu_median_ms=NaN pass_cpu_p95_ms=NaN
+arm=passthrough size=1920x1080 sprites=2000 frame_median_ms=1.604 frame_p95_ms=1.916 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+arm=grade size=1920x1080 sprites=2000 frame_median_ms=1.500 frame_p95_ms=1.829 pass_cpu_median_ms=0.000 pass_cpu_p95_ms=0.000
+ 8:35  up 23:14, 1 user, load averages: 4.53 11.00 14.92
