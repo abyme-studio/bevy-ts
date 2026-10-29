@@ -372,7 +372,12 @@ at z 1, all land at z 2) and each kind's layers batch.
 
 ### Cost
 
-COST_PLACEHOLDER
+Measured on an M5 Max at 1920×1080 under `PixelCamera` zoom 3, 48-art-px planets of three layers
+(`bench/material2d/results/README.md`). The machine was at load 150 to 165, so these numbers are
+loaded and the 2 ms gate for 100 planets is not yet decided: 100 planets read 6.3 ms over an empty
+frame, and an empty frame alone swung 11 to 18 ms between runs. The research's estimate, 1.6 ms of
+GPU for 100 planets and 8 ms for 500, stands until a quiet run. On the CPU, the 2D transparent pass
+encodes about 0.6 µs a layer: 0.07 ms at 100 planets, 0.3 ms at 500.
 
 Not yet: a script material on a `Sprite` (Bevy draws a sprite as a unit quad whose size, anchor and
 flip live in its own material; draw a `<mesh2d shape="rectangle">` with the image as a texture

@@ -26,11 +26,11 @@
 ## 5. Bench (rule 8)
 
 - [x] 5.1 `bench/material2d/` (`Cargo.toml` outside the workspace with the `bevy_render` patch as `bench/fullscreen-pass` has, `src/main.rs`, `shaders/sea.wgsl`, `land.wgsl`, `cloud.wgsl`, `ring.wgsl` with an integer hash at the research's hashes per pixel, `run.sh` sourcing `scripts/slot.sh`): 1920×1080 image target, `PixelCamera` zoom 3, waiting for the GPU every frame; arms `off`, `one`, `n20`, `n100`, `n200`, `n500` (design 8; `n200` recorded, not gated); median and p95 frame time and the 2D main pass span's CPU time over 600 frames after 120 warm-up, arms alternated; commit and `uptime` printed
-- [ ] 5.2 `material2d-bench` (`${RUNS:-3}` runs) and `material2d-bench-8` in `.abyme/processes.ts`, heavy, appending to `bench/material2d/results/runs.txt`; run it; `bench/material2d/results/README.md` with machine, load, commit, the table per arm and the verdict against the gate and the research estimate
+- [x] 5.2 `material2d-bench` (`${RUNS:-3}` runs) and `material2d-bench-8` in `.abyme/processes.ts`, heavy, appending to `bench/material2d/results/runs.txt`; run it; `bench/material2d/results/README.md` with machine, load, commit, the table per arm and the verdict against the gate and the research estimate
 
 ## 6. Docs and example
 
-- [ ] 6.1 `docs/materials.md`: "2D materials": declaring with `material2d()`, `<material2d kind>`, the appended WGSL at group 2 and the 2D imports, alpha modes, art pixels (quad space and world space, with the placement rule), Y-sort and layer z, batching and z bands, hot reload and errors, the measured cost from 5.2; its intro names 2D materials; "Not yet" drops script `Material2d` and names script sprite materials
+- [x] 6.1 `docs/materials.md`: "2D materials": declaring with `material2d()`, `<material2d kind>`, the appended WGSL at group 2 and the 2D imports, alpha modes, art pixels (quad space and world space, with the placement rule), Y-sort and layer z, batching and z bands, hot reload and errors, the measured cost from 5.2; its intro names 2D materials; "Not yet" drops script `Material2d` and names script sprite materials
 - [x] 6.2 `docs/2d.md`: the `<material2d>` section points at materials.md for `kind`; the coverage table gets a working row (`Material2d`, custom, `material2d()` and `<material2d kind>`, the 4.2 and 4.3 tests) that `two_d_doc` checks, and the "not planned" row keeps `Wireframe2d` and `SpriteMesh` and adds script sprite materials as a follow-up
 - [x] 6.3 `examples/shapes-2d`: `src/planet.wgsl` and a two-layer planet (`<mesh2d shape="rectangle">` with a sea kind and a land kind) under its camera; repo-made art only
 - [x] 6.4 `CHANGELOG.md`: one line under Unreleased
