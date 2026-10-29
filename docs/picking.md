@@ -86,8 +86,9 @@ first, as a `down` does.
 ```
 
 It answers `{ "queued": 3 }`. Every event also goes to the headless primary window by the same
-code as in viewport mode: `CursorMoved`, `MouseButtonInput`, `MouseWheel`, `PinchGesture`,
-`RotationGesture`, `DoubleTapGesture`, `KeyboardInput` and `Ime` ([viewport.md](viewport.md#typing)).
+code as in viewport mode: `CursorEntered`, `CursorMoved`, `CursorLeft`, `MouseButtonInput`,
+`MouseMotion`, `MouseWheel`, `PinchGesture`, `RotationGesture`, `DoubleTapGesture`, `KeyboardInput`
+and `Ime` ([viewport.md](viewport.md#typing)).
 So the window's cursor follows the pointer, `Cursor.position()` reads it as in a window, and
 `leave` clears it. All share one queue: the engine applies
 one event a frame in arrival order, so the move's hover is in place before the press (a click
