@@ -6,6 +6,7 @@
 //! none.
 
 use crate::play::Switches;
+use bevy::app::PluginGroupBuilder;
 use bevy::input_focus::directional_navigation::DirectionalNavigationPlugin;
 use bevy::input_focus::tab_navigation::TabNavigationPlugin;
 use bevy::picking::mesh_picking::{MeshPickingPlugin, MeshPickingSettings};
