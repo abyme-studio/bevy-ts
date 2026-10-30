@@ -1,0 +1,56 @@
+--------- beginning of main
+10-30 19:57:45.077  4374  4374 I ev.bevyts.smoke: Late-enabling -Xcheck:jni
+10-30 19:57:45.106  4374  4374 I ev.bevyts.smoke: Using CollectorTypeCC GC.
+10-30 19:57:45.182  4374  4374 D CompatibilityChangeReporter: Compat change id reported: 171979766; UID 10192; state: ENABLED
+10-30 19:57:45.182  4374  4374 D CompatibilityChangeReporter: Compat change id reported: 242716250; UID 10192; state: ENABLED
+10-30 19:57:45.216  4374  4374 W ziparchive: Unable to open '/data/app/~~gpLYQ1sZBfFWMYesxXjM3Q==/dev.bevyts.smoke-QbxSGLrNR8dwYLQ5NbuF4A==/base.dm': No such file or directory
+10-30 19:57:45.216  4374  4374 W ziparchive: Unable to open '/data/app/~~gpLYQ1sZBfFWMYesxXjM3Q==/dev.bevyts.smoke-QbxSGLrNR8dwYLQ5NbuF4A==/base.dm': No such file or directory
+10-30 19:57:45.217  4374  4374 D nativeloader: Configuring clns-6 for other apk /data/app/~~gpLYQ1sZBfFWMYesxXjM3Q==/dev.bevyts.smoke-QbxSGLrNR8dwYLQ5NbuF4A==/base.apk. target_sdk_version=34, uses_libraries=, library_path=/data/app/~~gpLYQ1sZBfFWMYesxXjM3Q==/dev.bevyts.smoke-QbxSGLrNR8dwYLQ5NbuF4A==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/dev.bevyts.smoke
+10-30 19:57:45.315  4374  4374 V GraphicsEnvironment: Currently set values for:
+10-30 19:57:45.315  4374  4374 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-30 19:57:45.315  4374  4374 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-30 19:57:45.315  4374  4374 V GraphicsEnvironment: ANGLE GameManagerService for dev.bevyts.smoke: false
+10-30 19:57:45.315  4374  4374 V GraphicsEnvironment: dev.bevyts.smoke is not listed in per-application setting
+10-30 19:57:45.315  4374  4374 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+10-30 19:57:45.329  4374  4400 D libEGL  : loaded /vendor/lib64/egl/libEGL_emulation.so
+10-30 19:57:45.330  4374  4400 D libEGL  : loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+10-30 19:57:45.332  4374  4400 D libEGL  : loaded /vendor/lib64/egl/libGLESv2_emulation.so
+10-30 19:57:45.417  4374  4374 I bevy-ts-smoke: loaded /data/user/0/dev.bevyts.smoke/files/libbevy_ts_android.so version 0.1.0 in 67 ms
+10-30 19:57:45.447  4374  4374 D CompatibilityChangeReporter: Compat change id reported: 210923482; UID 10192; state: ENABLED
+10-30 19:57:45.456  4374  4374 D CompatibilityChangeReporter: Compat change id reported: 237531167; UID 10192; state: DISABLED
+10-30 19:57:45.458  4374  4374 W OpenGLRenderer: Unknown dataspace 0
+10-30 19:57:45.570  4374  4398 W OpenGLRenderer: Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+10-30 19:57:45.571  4374  4398 W OpenGLRenderer: Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-30 19:57:45.573  4374  4374 I bevy-ts-smoke: surface created
+10-30 19:57:45.573  4374  4374 I bevy-ts-smoke: surface 1080x2062
+10-30 19:57:45.599  4374  4398 I Gralloc4: mapper 4.x is not supported
+10-30 19:57:45.606  4374  4398 E OpenGLRenderer: Unable to match the desired swap behavior.
+10-30 19:57:46.154  4374  4404 E platform: Failed to open rendernode: No such file or directory
+10-30 19:57:46.154  4374  4404 I androidemu: HealthMonitor enabled. Returning monitor.
+10-30 19:57:46.346  4374  4404 I log event: SystemInfo { os: "Android 14 on sdk_gphone64_arm64", kernel: "6.1.23-android14-4-00257-g7e35917775b8-ab9964412", cpu: "not available", core_count: "4", memory: "3.8 GiB" }log.target = "bevy_diagnostic::system_information_diagnostics_plugin::internal"; log.module_path = "bevy_diagnostic::system_information_diagnostics_plugin::internal"; log.file = "/Users/rjm/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_diagnostic-0.20.0/src/system_information_diagnostics_plugin.rs"; log.line = 273;
+10-30 19:57:46.427  4374  4404 I event vendor/bevy_render/src/renderer/mod.rs:310: AdapterInfo { name: "Apple M5 Max", vendor: 4203, device: 436470281, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "MoltenVK", driver_info: "1.4.0", backend: Vulkan, subgroup_min_size: 4, subgroup_max_size: 32, transient_saves_memory: Some(true), limit_bucket: None }
+10-30 19:57:47.531  4374  4404 I event /Users/rjm/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_pbr-0.20.0/src/clusGPU clustering isn't supported on this device; falling back to CPU clustering.
+10-30 19:57:47.531  4374  4404 I event vendor/bevy_render/src/batching/gpu_preprocessing.rs:1598: GPU preprocessing is fully supported on this device.
+10-30 19:57:48.663  4374  4404 I event crates/bevy-ts/src/log.rs:58: generation 1 applied: 21 systems in 1048.3 ms
+10-30 19:57:49.197  4374  4404 W event vendor/bevy_render/src/camera.rs:122: Entity 782v0 has a `Camera` component, but it doesn't have a render graph configured. Usually, adding a `Camera2d` or `Camera3d` component will work.
+10-30 19:57:49.197  4374  4404 W event vendor/bevy_render/src/camera.rs:122:         However, you may instead need to enable `bevy_core_pipeline`, or may want to manually add a `CameraRenderGraph` component to create a custom render graph.
+10-30 19:57:49.256  4374  4429 I bevy-ts-smoke: event {"event":"log","level":"info","message":"generation 1 applied: 21 systems in 1048.3 ms"}
+10-30 19:57:52.245  4374  4404 D goldfish_vulkan: ensureSyncDeviceFd: created sync device for current Vulkan process: 114
+10-30 19:57:52.252  4374  4404 I bevy-ts-smoke: first frame in 6679 ms
+10-30 19:57:52.252  4374  4404 I bevy-ts-smoke: event {"event":"started","inputs":["pointer","wheel","gesture","key","ime","touch","gamepad","focus","visible"],"js":"v8"}
+10-30 19:57:57.912  4374  4404 I event crates/bevy-ts/src/log.rs:58: agent-town: first records applied, ready hold released (data/data/dev.bevyts.smoke/files/games/agent-town/scripts/src/ready.ts:30:13)
+10-30 19:57:58.129  4374  4429 I bevy-ts-smoke: event {"event":"log","level":"info","message":"agent-town: first records applied, ready hold released","file":"data/data/dev.bevyts.smoke/files/games/agent-town/scripts/src/ready.ts","line":30}
+10-30 19:58:55.821  4374  4374 I bevy-ts-smoke: touch start
+10-30 19:58:55.823  4374  4374 I bevy-ts-smoke: touch end
+10-30 19:58:56.247  4374  4374 I bevy-ts-smoke: paused
+10-30 19:58:56.776  4374  4374 I bevy-ts-smoke: surface released in 2 ms
+10-30 19:58:57.860  4374  4374 I bevy-ts-smoke: resumed
+10-30 19:58:57.884  4374  4398 E OpenGLRenderer: Unable to match the desired swap behavior.
+10-30 19:58:57.890  4374  4374 I bevy-ts-smoke: surface created
+10-30 19:58:57.890  4374  4374 I bevy-ts-smoke: surface 1080x2062
+10-30 20:00:00.623  4374  4374 I bevy-ts-smoke: paused
+10-30 20:00:00.623  4374  4374 I bevy-ts-smoke: quit
+10-30 20:00:01.188  4374  4374 I bevy-ts-smoke: surface released in 6 ms
+10-30 20:00:01.331  4374  4404 I bevy-ts-smoke: event {"event":"exited","code":0}
+10-30 20:00:01.343  4374  4374 I bevy-ts-smoke: closed
+10-30 20:00:01.344  4374  4374 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=falsecallback=android.view.ViewRootImpl$$ExternalSyntheticLambda17@85112b8
