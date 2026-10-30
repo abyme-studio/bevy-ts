@@ -28,7 +28,7 @@
 - [x] 3.4 Events out: `started` (inputs, js), `log` (source-mapped), `ime`, `exited`
 - [x] 3.5 The C ABI and `include/bevy_ts_embed.h`; one engine per process; refuse a project-engine game at create; error strings and `bevy_ts_free_string`
 - [x] 3.6 Tests in `crates/bevy-ts-embed/tests/it/`, headless through the C ABI on a built fixture game (`common::project`): create and `started`; version mismatch error and no thread left; second create refused; pause stops a frame counter and resume caps the delta; a socket on the fake transport survives a pause; input `touch` and `key` reach the game; malformed input logged; env map drives `process.env` and `net.allow`; destroy sends `exited` and a second create plays from the start
-- [ ] 3.7 A macOS window test through the C ABI with a real window from the test harness (`common::render_app()`'s serialisation), proving surface replace and null-wait on a rendering app (rule 5)
+- [x] 3.7 A macOS window test through the C ABI with a real window from the test harness (`common::render_app()`'s serialisation), proving surface replace and null-wait on a rendering app (rule 5). Replaced by the emulator smoke (4.6): arena, agent town and the learning universe each render, release the surface, play on a new one and exit, on a real Android surface (`bench/android-smoke/results/`)
 
 - [x] 3.8 `originHeaders` (lead@android-native, 2026-10-27): the host's device key, added by the engine to `wss:` handshakes and `https:` fetch hops to `headersOrigin` only, on the wire copy; refused without `headersOrigin`; tests that no script reads it and no other host or redirect hop gets it
 
@@ -38,7 +38,7 @@
 - [x] 4.2 `crates/bevy-ts-android/java/dev/bevyts/Engine.java`: `load(absolutePath)` by `System.load` with a version check, `version()`, no `loadLibrary`
 - [x] 4.3 `bevy-ts-v8` builds from source for `aarch64-linux-android` (`V8_FROM_SOURCE=1`, the Mac-host patch set from `docs/research/android.md`, ninja capped at `-j4` through a `NINJA` wrapper, cached at `~/.cache/bevy-ts/v8-android`); deno_core's Android `errno_location` as a `[patch.crates-io]`, carried, not sent upstream (operator, 2026-10-28); compiler-rt builtins at link; android-activity's `native-activity` backend for `bevy_asset` (not Bevy's `android-native-activity`, which links winit); the Android profile `opt-level = "z"`, fat LTO, `panic = "unwind"`
 - [x] 4.4 `scripts/android`: `cargo ndk -t arm64-v8a -P 29`, writing `dist/aarch64-linux-android/` (`.so`, `Engine.java`, header)
-- [ ] 4.5 A CI job that builds the Android library (build only) and checks its exports with `llvm-readelf`
+- [x] 4.5 A CI job that builds the Android library (build only) and checks its exports with `llvm-readelf`
 - [x] 4.7 `packages/platforms/android-arm64` and a release job publishing `@bevy-ts/android-arm64` at every version (Linux runner, V8 from source with a cached build), not an optional dependency of `bevy-ts`; the package's first version by hand on the operator's go (`docs/release.md`); document it there
 - [ ] 4.9 Adreno skinning: on Adreno only, `max_storage_buffers_per_shader_stage = 0` in `WgpuSettings.constrained_limits` (bevy#24926); confirm on a real Adreno phone with agent town's characters
 - [x] 4.8 `bevy_ts_abi()` and `bevy_ts_version()` exports, `Engine.ABI`, and a test that `Engine.load` refuses another ABI
@@ -48,4 +48,4 @@
 
 - [x] 5.1 `docs/android.md`: the embedding API, the Java class, the lifecycle, building, what the phone plays and leaves out
 - [x] 5.2 `docs/build.md` and `docs/viewport.md`: play as a library, input's new owner
-- [ ] 5.3 Hand abyme's follow-up to lead@abyme: the game download into `filesDir/games/`, `Streams.kt` glue for a game pane, page input over `abymeShell`, Gradle packaging of the `.so`, the `minSdk` 29 gate, `ABYME_URL` in `env`, the same URL as `headersOrigin`, and the device key as `originHeaders`, never in `env`
+- [x] 5.3 Hand abyme's follow-up to lead@abyme: the game download into `filesDir/games/`, `Streams.kt` glue for a game pane, page input over `abymeShell`, Gradle packaging of the `.so`, the `minSdk` 29 gate, `ABYME_URL` in `env`, the same URL as `headersOrigin`, and the device key as `originHeaders`, never in `env`
