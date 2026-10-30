@@ -1,0 +1,62 @@
+--------- beginning of main
+10-30 20:10:44.955  4435  4435 I ev.bevyts.smoke: Late-enabling -Xcheck:jni
+10-30 20:10:44.979  4435  4435 I ev.bevyts.smoke: Using CollectorTypeCC GC.
+10-30 20:10:45.206  4435  4435 D CompatibilityChangeReporter: Compat change id reported: 171979766; UID 10192; state: ENABLED
+10-30 20:10:45.207  4435  4435 D CompatibilityChangeReporter: Compat change id reported: 242716250; UID 10192; state: ENABLED
+10-30 20:10:45.227  4435  4435 W ziparchive: Unable to open '/data/app/~~rp3lBYNDROlzCjEiU10s4Q==/dev.bevyts.smoke-_Jp5Y4fznD0B-EGtWu1ewg==/base.dm': No such file or directory
+10-30 20:10:45.227  4435  4435 W ziparchive: Unable to open '/data/app/~~rp3lBYNDROlzCjEiU10s4Q==/dev.bevyts.smoke-_Jp5Y4fznD0B-EGtWu1ewg==/base.dm': No such file or directory
+10-30 20:10:45.229  4435  4435 D nativeloader: Configuring clns-6 for other apk /data/app/~~rp3lBYNDROlzCjEiU10s4Q==/dev.bevyts.smoke-_Jp5Y4fznD0B-EGtWu1ewg==/base.apk. target_sdk_version=34, uses_libraries=, library_path=/data/app/~~rp3lBYNDROlzCjEiU10s4Q==/dev.bevyts.smoke-_Jp5Y4fznD0B-EGtWu1ewg==/lib/arm64, permitted_path=/data:/mnt/expand:/data/user/0/dev.bevyts.smoke
+10-30 20:10:45.243  4435  4435 V GraphicsEnvironment: Currently set values for:
+10-30 20:10:45.243  4435  4435 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+10-30 20:10:45.243  4435  4435 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+10-30 20:10:45.244  4435  4435 V GraphicsEnvironment: ANGLE GameManagerService for dev.bevyts.smoke: false
+10-30 20:10:45.244  4435  4435 V GraphicsEnvironment: dev.bevyts.smoke is not listed in per-application setting
+10-30 20:10:45.244  4435  4435 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+10-30 20:10:45.262  4435  4456 D libEGL  : loaded /vendor/lib64/egl/libEGL_emulation.so
+10-30 20:10:45.269  4435  4456 D libEGL  : loaded /vendor/lib64/egl/libGLESv1_CM_emulation.so
+10-30 20:10:45.272  4435  4456 D libEGL  : loaded /vendor/lib64/egl/libGLESv2_emulation.so
+10-30 20:10:45.408  4435  4435 I bevy-ts-smoke: loaded /data/user/0/dev.bevyts.smoke/files/libbevy_ts_android.so version 0.1.0 in 135 ms
+10-30 20:10:45.459  4435  4435 D CompatibilityChangeReporter: Compat change id reported: 210923482; UID 10192; state: ENABLED
+10-30 20:10:45.466  4435  4435 D CompatibilityChangeReporter: Compat change id reported: 237531167; UID 10192; state: DISABLED
+10-30 20:10:45.469  4435  4435 W OpenGLRenderer: Unknown dataspace 0
+10-30 20:10:45.555  4435  4454 W OpenGLRenderer: Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+10-30 20:10:45.558  4435  4454 W OpenGLRenderer: Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-30 20:10:45.588  4435  4435 I bevy-ts-smoke: surface created
+10-30 20:10:45.588  4435  4435 I bevy-ts-smoke: surface 1080x2062
+10-30 20:10:45.608  4435  4454 I Gralloc4: mapper 4.x is not supported
+10-30 20:10:45.619  4435  4454 E OpenGLRenderer: Unable to match the desired swap behavior.
+10-30 20:10:45.914  4435  4457 E platform: Failed to open rendernode: No such file or directory
+10-30 20:10:45.914  4435  4457 I androidemu: HealthMonitor enabled. Returning monitor.
+10-30 20:10:45.991  4435  4457 I log event: SystemInfo { os: "Android 14 on sdk_gphone64_arm64", kernel: "6.1.23-android14-4-00257-g7e35917775b8-ab9964412", cpu: "not available", core_count: "4", memory: "3.8 GiB" }log.target = "bevy_diagnostic::system_information_diagnostics_plugin::internal"; log.module_path = "bevy_diagnostic::system_information_diagnostics_plugin::internal"; log.file = "/Users/rjm/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_diagnostic-0.20.0/src/system_information_diagnostics_plugin.rs"; log.line = 273;
+10-30 20:10:46.020  4435  4457 I event vendor/bevy_render/src/renderer/mod.rs:310: AdapterInfo { name: "Apple M5 Max", vendor: 4203, device: 436470281, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "MoltenVK", driver_info: "1.4.0", backend: Vulkan, subgroup_min_size: 4, subgroup_max_size: 32, transient_saves_memory: Some(true), limit_bucket: None }
+10-30 20:10:46.556  4435  4457 I event /Users/rjm/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_pbr-0.20.0/src/clusGPU clustering isn't supported on this device; falling back to CPU clustering.
+10-30 20:10:46.556  4435  4457 I event vendor/bevy_render/src/batching/gpu_preprocessing.rs:1598: GPU preprocessing is fully supported on this device.
+10-30 20:10:46.906  4435  4457 W event vendor/bevy_render/src/camera.rs:122: Entity 521v0 has a `Camera` component, but it doesn't have a render graph configured. Usually, adding a `Camera2d` or `Camera3d` component will work.
+10-30 20:10:46.906  4435  4457 W event vendor/bevy_render/src/camera.rs:122:         However, you may instead need to enable `bevy_core_pipeline`, or may want to manually add a `CameraRenderGraph` component to create a custom render graph.
+10-30 20:10:46.907  4435  4457 I event crates/bevy-ts/src/log.rs:58: generation 1 applied: 8 systems in 331.0 ms
+10-30 20:10:47.094  4435  4481 I bevy-ts-smoke: event {"event":"log","level":"info","message":"generation 1 applied: 8 systems in 331.0 ms"}
+10-30 20:10:47.564  4435  4457 D goldfish_vulkan: ensureSyncDeviceFd: created sync device for current Vulkan process: 114
+10-30 20:10:47.570  4435  4457 I bevy-ts-smoke: first frame in 1982 ms
+10-30 20:10:47.571  4435  4457 I bevy-ts-smoke: event {"event":"started","inputs":["pointer","wheel","gesture","key","ime","touch","gamepad","focus","visible"],"js":"v8"}
+10-30 20:10:49.019  4435  4457 I event crates/bevy-ts/src/log.rs:58: agent-town: first records applied, ready hold released (data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/ready.ts:30:13)
+10-30 20:10:49.022  4435  4457 W event crates/bevy-ts/src/log.rs:59: a signal is read outside a binding, so it will never update; wrap it: {() => ...} (file:///data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/galaxy.tsx:120:13) (data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/galaxy.tsx:120:13)
+10-30 20:10:49.022  4435  4457 W event crates/bevy-ts/src/log.rs:59: a signal is read outside a binding, so it will never update; wrap it: {() => ...} (file:///data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/galaxy.tsx:121:44) (data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/galaxy.tsx:121:44)
+10-30 20:10:49.022  4435  4457 W event crates/bevy-ts/src/log.rs:59: a signal is read outside a binding, so it will never update; wrap it: {() => ...} (file:///data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/universe.tsx:96:69) (data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/universe.tsx:96:69)
+10-30 20:10:49.073  4435  4480 I bevy-ts-smoke: event {"event":"log","level":"info","message":"agent-town: first records applied, ready hold released","file":"data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/ready.ts","line":30}
+10-30 20:10:49.073  4435  4480 I bevy-ts-smoke: event {"event":"log","level":"warn","message":"a signal is read outside a binding, so it will never update; wrap it: {() => ...} (file:///data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/galaxy.tsx:120:13)","file":"data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/galaxy.tsx","line":120}
+10-30 20:10:49.073  4435  4480 I bevy-ts-smoke: event {"event":"log","level":"warn","message":"a signal is read outside a binding, so it will never update; wrap it: {() => ...} (file:///data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/galaxy.tsx:121:44)","file":"data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/galaxy.tsx","line":121}
+10-30 20:10:49.073  4435  4480 I bevy-ts-smoke: event {"event":"log","level":"warn","message":"a signal is read outside a binding, so it will never update; wrap it: {() => ...} (file:///data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/universe.tsx:96:69)","file":"data/data/dev.bevyts.smoke/files/games/learning-universe/scripts/src/heimdall-bevy/starmap/universe.tsx","line":96}
+10-30 20:11:49.633  4435  4435 I bevy-ts-smoke: touch start
+10-30 20:11:49.634  4435  4435 I bevy-ts-smoke: touch end
+10-30 20:11:50.030  4435  4435 I bevy-ts-smoke: paused
+10-30 20:11:50.586  4435  4435 I bevy-ts-smoke: surface released in 3 ms
+10-30 20:11:51.600  4435  4435 I bevy-ts-smoke: resumed
+10-30 20:11:51.626  4435  4454 E OpenGLRenderer: Unable to match the desired swap behavior.
+10-30 20:11:51.628  4435  4435 I bevy-ts-smoke: surface created
+10-30 20:11:51.628  4435  4435 I bevy-ts-smoke: surface 1080x2062
+10-30 20:12:52.337  4435  4435 I bevy-ts-smoke: paused
+10-30 20:12:52.337  4435  4435 I bevy-ts-smoke: quit
+10-30 20:12:53.019  4435  4435 I bevy-ts-smoke: surface released in 2 ms
+10-30 20:12:53.089  4435  4457 I bevy-ts-smoke: event {"event":"exited","code":0}
+10-30 20:12:53.091  4435  4435 I bevy-ts-smoke: closed
+10-30 20:12:53.092  4435  4435 W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=falsecallback=android.view.ViewRootImpl$$ExternalSyntheticLambda17@7238d46
