@@ -36,7 +36,7 @@ The opening handshake SHALL send no `Origin` header, as Deno and other native ru
 - **THEN** no connection is attempted, `close` fires with 1006, and the log says the engine sends no `Origin`
 
 ### Requirement: Connections only to allowed hosts
-The engine SHALL check every `WebSocket` URL, every `fetch` URL and every redirect hop against the allowlist before any DNS lookup or socket. An allowlist entry SHALL be `host` (any port), `host:port`, or a URL whose host and port are taken (a URL without a port takes its scheme's: 80 for `http:`/`ws:`, 443 for `https:`/`wss:`); the scheme of an entry SHALL NOT limit the schemes allowed to that host and port. Host names compare case-insensitively and literally (`localhost` does not allow `127.0.0.1`). A refused `WebSocket` SHALL open no socket: the constructor SHALL succeed, then `error` and `close` (1006) SHALL fire on the next delivery. A refused `fetch` SHALL open no socket and its promise SHALL reject with a `TypeError` on the next delivery. In both cases the log SHALL name the origin and say to add it to `net.allow` in `bevy-ts.json`. A `WebSocket` with a `headers` option SHALL be refused the same way when its URL is `ws:` and its host is not loopback (`localhost`, `127.0.0.0/8`, `::1`), the log saying headers are sent in clear only over loopback and to use `wss:`. Over `wss:` the `headers` option SHALL be sent to any allowed host. An empty allowlist SHALL refuse everything.
+The engine SHALL check every `WebSocket` URL, every `fetch` URL and every redirect hop against the allowlist before any DNS lookup or socket. An allowlist entry SHALL be `host` (any port), `host:port`, or a URL whose host and port are taken (a URL without a port takes its scheme's: 80 for `http:`/`ws:`, 443 for `https:`/`wss:`); the scheme of an entry SHALL NOT limit the schemes allowed to that host and port. Host names compare case-insensitively and literally (`localhost` does not allow `127.0.0.1`). A refused `WebSocket` SHALL open no socket: the constructor SHALL succeed, then `error` and `close` (1006) SHALL fire on the next delivery. A refused `fetch` SHALL open no socket and its promise SHALL reject with a `TypeError` on the next delivery. In both cases the log SHALL name the origin and say to add it to `net.allow` in `bevy-ts.json`. A `wss:` URL to an allowed host SHALL open over TLS, verifying the server's certificate against the webpki root store and the URL's host name; a failed verification SHALL fail the open as a dropped connection does (`error`, then `close` with 1006), the log naming the TLS error. A `WebSocket` URL of `https:` SHALL be read as `wss:`, as `http:` is read as `ws:`. A `WebSocket` with a `headers` option SHALL be refused the same way as a host not allowed unless its host is loopback (`localhost`, `127.0.0.0/8`, `::1`), or its scheme is `wss:` and its host and port are the origin the embedding host named in `headersOrigin` (engine-embedding), the log saying headers are sent only to loopback or the host's named origin over `wss:`. An engine with no named origin (the CLI, an embedding without `headersOrigin`) SHALL send `WebSocket` headers to loopback, or over `wss:` to any allowed host. A `fetch`'s own headers SHALL follow fetch's rules, unchanged by `headersOrigin`: the device key never reaches a script's headers, as the host passes it as `originHeaders`, which the engine alone adds (engine-embedding). An empty allowlist SHALL refuse everything.
 
 #### Scenario: Not allowed
 - **WHEN** `net.allow` is `["127.0.0.1:4477"]` and a script opens `ws://example.com/`
@@ -44,18 +44,26 @@ The engine SHALL check every `WebSocket` URL, every `fetch` URL and every redire
 
 #### Scenario: A key to another machine
 - **WHEN** `net.allow` has `10.0.0.5:4477` and a script opens `ws://10.0.0.5:4477/` with `{ headers: { authorization: "Bearer k" } }`
-- **THEN** no connection is attempted, `close` fires with 1006, and the log says headers are sent in clear only over loopback
+- **THEN** no connection is attempted, `close` fires with 1006, and the log says headers are sent only to loopback or the host's named origin over `wss:`
 
 #### Scenario: TLS
-- **WHEN** `net.allow` has `abyme.example:443` and a script opens `wss://abyme.example/api/stream` with `{ headers: { authorization: "Bearer k" } }`
-- **THEN** the connection is attempted over TLS and the handshake carries the `authorization` header
+- **WHEN** `net.allow` has `mac.tail.ts.net:8443`, the embedding host named `headersOrigin` `https://mac.tail.ts.net:8443`, and a script opens `wss://mac.tail.ts.net:8443/api/stream` with `{ headers: { authorization: "Bearer k" } }`
+- **THEN** the connection opens over TLS and the handshake request carries the `authorization` header
+
+#### Scenario: A key to another allowed TLS host
+- **WHEN** `net.allow` has `mac.tail.ts.net:8443` and `other.example.com`, `headersOrigin` is `https://mac.tail.ts.net:8443`, and a script opens `wss://other.example.com/` with headers
+- **THEN** no connection is attempted, `close` fires with 1006, and the log says headers are sent only to loopback or the host's named origin over `wss:`
+
+#### Scenario: A certificate that does not verify
+- **WHEN** a script opens an allowed `wss:` URL whose server presents a self-signed certificate
+- **THEN** `error` fires, then `close` with 1006, and the log names the TLS error
 
 #### Scenario: A fetch not allowed
 - **WHEN** `net.allow` is `["127.0.0.1:4477"]` and a script calls `fetch("https://example.com/")`
 - **THEN** no connection is attempted, the promise rejects with a `TypeError`, and the log says `example.com:443` is not in `net.allow`
 
 ### Requirement: Network and environment settings in the project file
-`bevy-ts.json` SHALL accept `net.allow`, an array of allowlist entries, and `env`, an array of environment variable names. An entry of the form `${NAME}` SHALL be read from the environment when the engine starts; an unset or empty variable SHALL add nothing. `process.env` SHALL show exactly the names in `env` that are set, read when the engine starts, and nothing else; it SHALL be the same frozen-in-content object for the whole run. Both default to empty. `bevy-ts dev` SHALL read them when it starts the engine; a change to them SHALL apply when the engine next starts. `bevy-ts build` SHALL write both, unexpanded, into `game/game.json` as `net` and `env`, and a shipped game SHALL read them from there, expanding `${NAME}` from its own environment at start. A `game.json` without them SHALL mean both empty.
+`bevy-ts.json` SHALL accept `net.allow`, an array of allowlist entries, and `env`, an array of environment variable names. An entry of the form `${NAME}` SHALL be read from the environment when the engine starts; an unset or empty variable SHALL add nothing. `process.env` SHALL show exactly the names in `env` that are set, read when the engine starts, and nothing else; it SHALL be the same frozen-in-content object for the whole run. Both default to empty. `bevy-ts dev` SHALL read them when it starts the engine; a change to them SHALL apply when the engine next starts. `bevy-ts build` SHALL write both, unexpanded, into `game/game.json` as `net` and `env`, and a shipped game SHALL read them from there, expanding `${NAME}` from its own environment at start. An engine started by an embedding host SHALL take the environment from the host's `env` map instead of the process environment, for both `${NAME}` and `process.env`. A `game.json` without them SHALL mean both empty.
 
 #### Scenario: The abyme client finds abymed
 - **WHEN** `bevy-ts.json` has `"net": { "allow": ["127.0.0.1:4477", "${ABYME_URL}"] }` and `"env": ["ABYME_URL", "ABYME_KEY"]`, and the engine starts with `ABYME_URL=http://127.0.0.1:5000` and `HOME` set
@@ -64,6 +72,10 @@ The engine SHALL check every `WebSocket` URL, every `fetch` URL and every redire
 #### Scenario: A built game
 - **WHEN** that project is built and the built game starts with `ABYME_URL` unset
 - **THEN** `game/game.json` holds `"${ABYME_URL}"` as written, and the game may connect only to `127.0.0.1:4477`
+
+#### Scenario: An embedded game
+- **WHEN** that built game is created by an embedding host with `env: { "ABYME_URL": "https://mac.tail.ts.net:8443" }` while the process environment has `ABYME_URL=http://127.0.0.1:5000`
+- **THEN** a script may connect to `mac.tail.ts.net:8443` and not to `127.0.0.1:5000`, and `process.env.ABYME_URL` is the host's value
 
 ### Requirement: Events and timers reach JS once a frame
 Socket I/O SHALL run off the main thread. The engine SHALL deliver, in `First`, after time advances and after a pending generation is applied and before the backend is pumped, every socket event received since the last delivery, then every timer that is due, in one call into JS; it SHALL make no call into JS when no event is pending and no timer is due. Requests a script makes (open, send, close) SHALL reach the I/O side by the next delivery. Delivery SHALL run every frame in play mode, paused or not, and never in edit mode. Within one delivery, a connection's events SHALL keep their order, and microtasks queued by callbacks SHALL run before the delivery returns. A callback SHALL run outside any system: a host call (a Rust param) made from it SHALL throw the existing "only while a system runs" error, and its effect on the world waits for a system to read the state it set.

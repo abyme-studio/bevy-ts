@@ -23,6 +23,10 @@ The engine SHALL check every `WebSocket` URL against the allowlist before any DN
 - **WHEN** a script opens an allowed `wss:` URL whose server presents a self-signed certificate
 - **THEN** `error` fires, then `close` with 1006, and the log names the TLS error
 
+#### Scenario: A fetch not allowed
+- **WHEN** `net.allow` is `["127.0.0.1:4477"]` and a script calls `fetch("https://example.com/")`
+- **THEN** no connection is attempted, the promise rejects with a `TypeError`, and the log says `example.com:443` is not in `net.allow`
+
 ### Requirement: Network and environment settings in the project file
 `bevy-ts.json` SHALL accept `net.allow`, an array of allowlist entries, and `env`, an array of environment variable names. An entry of the form `${NAME}` SHALL be read from the environment when the engine starts; an unset or empty variable SHALL add nothing. `process.env` SHALL show exactly the names in `env` that are set, read when the engine starts, and nothing else; it SHALL be the same frozen-in-content object for the whole run. Both default to empty. `bevy-ts dev` SHALL read them when it starts the engine; a change to them SHALL apply when the engine next starts. `bevy-ts build` SHALL write both, unexpanded, into `game/game.json` as `net` and `env`, and a shipped game SHALL read them from there, expanding `${NAME}` from its own environment at start. An engine started by an embedding host SHALL take the environment from the host's `env` map instead of the process environment, for both `${NAME}` and `process.env`. A `game.json` without them SHALL mean both empty.
 
