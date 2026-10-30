@@ -23,7 +23,12 @@ export function camera(commands: Commands) {
 app.addSystems(Startup, camera);
 
 app.scene("s", () => (
-  <entity name="cube" onPointerClick={({ button }) => console.log(`cube clicked ${button}`)}>
+  <entity
+    name="cube"
+    onPointerClick={({ button }) => console.log(`cube clicked ${button}`)}
+    onPointerOver={() => console.log("cube over")}
+    onPointerOut={() => console.log("cube out")}
+  >
     <Transform />
     <mesh shape="cuboid" size={[1, 1, 1]} color="#ff8800" />
   </entity>
@@ -85,21 +90,21 @@ pub(crate) fn pointer(kind: &str, x: f64, y: f64) -> Value {
 fn a_test_clicks_a_mesh_headless() {
     let (_dir, _engine, rx, port) = dev("headless-pointer-click", r#"{ "meshPicking": true }"#);
     common::wait_for(&rx, &["generation 1 applied"], LAUNCH);
-    // A few frames for the camera and the cube's bounds: each request is answered on a frame after
-    // the one before it, however slow the machine.
-    for _ in 0..10 {
-        post(port, "bevy-ts/hello", Value::Null).unwrap();
-    }
     assert_eq!(post(port, "bevy-ts/hello", Value::Null).unwrap()["viewport"], false);
 
-    // The cube fills the middle of the 960×540 image.
+    // The cube fills the middle of the 960×540 image; (10, 10) is empty.
     let (x, y) = (480.0, 270.0);
-    let r = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("move", x, y), pointer("down", x, y), pointer("up", x, y)] })).unwrap();
-    assert_eq!(r, json!({ "queued": 3 }));
-    let lines = common::wait_for(&rx, &["cube clicked"], BOUND);
-    std::thread::sleep(Duration::from_millis(300));
-    let clicks = lines.iter().chain(rx.try_iter().collect::<Vec<_>>().iter()).filter(|l| l.contains("cube clicked")).count();
-    assert_eq!(clicks, 1);
+    let input = |events: Vec<Value>| post(port, "bevy-ts/viewport_input", json!({ "events": events })).unwrap();
+    // The cube is picked once the camera and its bounds are up, however many frames a loaded
+    // machine takes: a resting pointer is cast again each frame, so wait for the over.
+    assert_eq!(input(vec![pointer("move", x, y)]), json!({ "queued": 1 }));
+    let mut lines = common::wait_for(&rx, &["cube over"], BOUND);
+    assert_eq!(input(vec![pointer("down", x, y), pointer("up", x, y)]), json!({ "queued": 2 }));
+    common::wait_more(&rx, &mut lines, &["cube clicked"], BOUND);
+    // Moving off ends what the click could still bring: every line before the out counts.
+    input(vec![pointer("move", 10.0, 10.0)]);
+    common::wait_more(&rx, &mut lines, &["cube out"], BOUND);
+    assert_eq!(lines.iter().filter(|l| l.contains("cube clicked")).count(), 1, "{lines:?}");
     assert!(lines.iter().any(|l| l.contains("cube clicked primary")), "{lines:?}");
 
     // A touch is refused, naming it, and nothing of the request applies: the pointer and key in it
@@ -110,8 +115,12 @@ fn a_test_clicks_a_mesh_headless() {
     assert!(e.contains("touch"), "{e}");
     let e = post(port, "bevy-ts/viewport_input", json!({ "events": [pointer("move", x, y)], "viewport": 1 })).unwrap_err();
     assert!(e.contains("viewport 1"), "{e}");
-    std::thread::sleep(Duration::from_millis(300));
-    assert!(!rx.try_iter().any(|l| l.contains("cube clicked")), "a refused request applied");
+    // Over the cube and off it again: a refused request that applied would click before the out.
+    input(vec![pointer("move", x, y)]);
+    let mut lines = common::wait_for(&rx, &["cube over"], BOUND);
+    input(vec![pointer("move", 10.0, 10.0)]);
+    common::wait_more(&rx, &mut lines, &["cube out"], BOUND);
+    assert!(!lines.iter().any(|l| l.contains("cube clicked")), "a refused request applied: {lines:?}");
     // The rest of the viewport stays unserved headless.
     assert!(post(port, "bevy-ts/viewport_attach", json!({ "w": 10, "h": 10, "scale": 1 })).unwrap_err().contains("viewport_attach"));
 }
