@@ -73,7 +73,14 @@ fi
 "$ANDROID_HOME/emulator/emulator" -avd bevy-ts-smoke -port $port -no-window -no-audio -no-boot-anim \
   -no-snapshot -gpu swiftshader_indirect -memory 4096 -partition-size 16384 > "$cache/emulator.log" 2>&1 &
 emu=$!
-trap '"$adb" -s $serial emu kill >/dev/null 2>&1 || true; wait $emu 2>/dev/null || true' EXIT
+# Stopped within 30 s: a hung emulator answers no `emu kill`, and waiting on it held run.sh a day.
+stop_emulator() {
+  timeout 10 "$adb" -s $serial emu kill >/dev/null 2>&1 || true
+  for _ in $(seq 30); do kill -0 $emu 2>/dev/null || break; sleep 1; done
+  kill -9 $emu 2>/dev/null || true
+  wait $emu 2>/dev/null || true
+}
+trap stop_emulator EXIT
 
 # Waits until `$1` returns true, at most `$2` seconds; else fails naming `$3`.
 until_ok() {
