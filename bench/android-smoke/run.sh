@@ -11,7 +11,8 @@
 # SMOKE_PROJECT (a project folder, else examples/<game>), SMOKE_ENTRY (its entry, else the project's
 # own) and SMOKE_ENV (the engine's env, JSON) play another game under the name <game>; SETTLE is the
 # seconds to wait before each screenshot (5), STARTED_WITHIN the seconds the first frame may take
-# (180). abyme-game.mjs plays agent town's worlds this way.
+# (180), SMOKE_GPU the emulator's `-gpu` (swiftshader_indirect; `host` renders on the Mac's GPU,
+# still with no window). abyme-game.mjs plays agent town's worlds this way.
 #
 # Needs: dist/aarch64-linux-android/ (scripts/android), the SDK's build-tools 35, platform 34, the
 # emulator and system-images;android-34;google_apis;arm64-v8a. Nothing shows on screen.
@@ -71,7 +72,7 @@ if [[ ! -d "$ANDROID_AVD_HOME/bevy-ts-smoke.avd" ]]; then
     -k "system-images;android-34;google_apis;arm64-v8a" -d pixel_6 >/dev/null
 fi
 "$ANDROID_HOME/emulator/emulator" -avd bevy-ts-smoke -port $port -no-window -no-audio -no-boot-anim \
-  -no-snapshot -gpu swiftshader_indirect -memory 4096 -partition-size 16384 > "$cache/emulator.log" 2>&1 &
+  -no-snapshot -gpu "${SMOKE_GPU:-swiftshader_indirect}" -memory 4096 -partition-size 16384 > "$cache/emulator.log" 2>&1 &
 emu=$!
 # Stopped within 30 s: a hung emulator answers no `emu kill`, and waiting on it held run.sh a day.
 stop_emulator() {
@@ -167,7 +168,7 @@ first=$(log | grep -o 'first frame in [0-9]* ms' | head -1 | grep -o '[0-9]*')
 {
   echo "# Android smoke: $game"
   echo
-  echo "$(date -u +%Y-%m-%dT%H:%MZ), emulator API 34 arm64 (SwiftShader), bevy-ts $(log | grep -o 'version [^ ]*' | head -1 | cut -d' ' -f2)."
+  echo "$(date -u +%Y-%m-%dT%H:%MZ), emulator API 34 arm64 (-gpu ${SMOKE_GPU:-swiftshader_indirect}), bevy-ts $(log | grep -o 'version [^ ]*' | head -1 | cut -d' ' -f2)."
   echo
   echo "| | |"
   echo "|---|---|"

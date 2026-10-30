@@ -60,6 +60,9 @@ const run = spawn(join(here, "run.sh"), [name], {
     SETTLE: process.env.SETTLE ?? "60", // SwiftShader compiles the world's shaders slowly
     // A world's first frame on SwiftShader, on a loaded Mac, has taken over 180 s.
     STARTED_WITHIN: process.env.STARTED_WITHIN ?? "900",
+    // SwiftShader draws agent town's world slower than its swap chain waits: every frame timed
+    // out, and the wait for the GPU to idle held a surface release 53 s. The Mac's GPU, no window.
+    SMOKE_GPU: process.env.SMOKE_GPU ?? "host",
   },
 });
 const code = await new Promise((r) => run.on("exit", (c) => r(c ?? 1)));
