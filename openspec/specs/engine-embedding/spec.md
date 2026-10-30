@@ -1,7 +1,7 @@
 # engine-embedding Specification
 
 ## Purpose
-TBD - created by archiving change android-native. Update Purpose after archive.
+bevy-ts as a library a host app drives through a C ABI: create an engine on a built game folder and a native window, give it surfaces, pause, resume, input and the game's environment, get its events back, and destroy it; the device key goes only to the origin the host names.
 
 ## Requirements
 

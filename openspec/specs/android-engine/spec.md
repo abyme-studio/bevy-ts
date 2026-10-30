@@ -1,7 +1,7 @@
 # android-engine Specification
 
 ## Purpose
-TBD - created by archiving change android-native. Update Purpose after archive.
+The engine as a library for an Android app: `libbevy_ts_android.so` for arm64, the `dev.bevyts.Engine` class that loads it by path and drives it over JNI, the window from a `Surface` with no winit, and how it is built and shipped.
 
 ## Requirements
 
