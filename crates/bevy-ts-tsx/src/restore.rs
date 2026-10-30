@@ -120,7 +120,7 @@ pub fn changes(world: &World, root: &str) -> Option<Changes> {
     let now = world.read_change_tick();
     let derived = derived(world);
     let skip: Vec<_> = derived.iter().copied().chain(recomputed(world)).collect();
-    let touched = |er: &EntityRef, skip: &[ComponentId]| er.archetype().iter_components().filter(|c| !skip.contains(c)).any(|c| er.get_change_ticks_by_id(c).is_some_and(|t| t.is_changed(b.tick, now)));
+    let touched = |er: &EntityRef, skip: &[ComponentId]| counted(world, er, skip).any(|c| er.get_change_ticks_by_id(c).is_some_and(|t| t.is_changed(b.tick, now)));
     let part_changed = |e: Entity, arch: ArchetypeId| world.get_entity(e).map_or(true, |er| er.archetype().id() != arch || touched(&er, &skip));
     let state = |id: u64| {
         let Some(n) = b.nodes.get(&id) else { return Change::Respawn };
@@ -146,6 +146,13 @@ pub fn changes(world: &World, root: &str) -> Option<Changes> {
     let mut out = Changes::default();
     walk(kept, &state, &mut out);
     Some(out)
+}
+
+/// The entity's components a scan or a write-back judges: all but `skip`, except that an `Aabb` on
+/// an entity with `NoAutoAabb` counts, since `calculate_bounds` does not compute it there.
+fn counted<'a>(world: &World, er: &'a EntityRef, skip: &'a [ComponentId]) -> impl Iterator<Item = ComponentId> + 'a {
+    let own = er.contains::<bevy::camera::visibility::NoAutoAabb>().then(|| world.components().component_id::<bevy::camera::primitives::Aabb>()).flatten();
+    er.archetype().iter_components().filter(move |c| Some(*c) == own || !skip.contains(c))
 }
 
 enum Change {
@@ -174,7 +181,8 @@ pub fn recomputed(world: &World) -> Vec<ComponentId> {
         // `mark_dirty_trees`, set where `Transform` changed and on each ancestor.
         c.component_id::<bevy::transform::components::TransformTreeChanged>(),
         // `calculate_bounds`, from `Mesh3d` and its mesh asset: it changes when the asset loads
-        // after the start, with nothing of the game touched.
+        // after the start, with nothing of the game touched. Not on an entity with `NoAutoAabb`,
+        // which it skips (`counted`).
         c.component_id::<bevy::camera::primitives::Aabb>(),
     ]
     .into_iter()
@@ -220,7 +228,7 @@ pub fn write_back(world: &mut World, root: &str, paths: &[Vec<String>]) -> Vec<V
         };
         // Changed since the baseline means rewritten just now.
         let restored = Some(er.archetype().id()) == arch
-            && er.archetype().iter_components().filter(|c| !skip.contains(c)).all(|c| er.get_change_ticks_by_id(c).is_none_or(|t| !t.is_changed(tick, now) || t.is_changed(before, now)));
+            && counted(world, &er, &skip).all(|c| er.get_change_ticks_by_id(c).is_none_or(|t| !t.is_changed(tick, now) || t.is_changed(before, now)));
         if !restored {
             failed.push(p.clone());
         }

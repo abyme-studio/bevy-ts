@@ -380,3 +380,29 @@ fn bevy_computes_a_written_back_meshs_bounds_again() {
     // Recomputed: `Aabb`, which `calculate_bounds` writes where `Mesh3d` changed.
     assert_eq!(*app.world().get::<Aabb>(b).unwrap(), bounds, "Bevy bounds the level's mesh again");
 }
+
+/// `calculate_bounds` skips an entity with `NoAutoAabb` (world text's labels): its `Aabb` is
+/// whoever wrote it, so a Stop that left it to Bevy kept the play's bounds.
+#[test]
+fn bounds_on_a_no_auto_aabb_node_are_a_play_change() {
+    use bevy::camera::primitives::Aabb;
+    use bevy::camera::visibility::NoAutoAabb;
+    let (mut app, b) = meshed();
+    app.world_mut().entity_mut(b).insert(NoAutoAabb);
+    app.update();
+    let bounds = *app.world().get::<Aabb>(b).unwrap();
+    restore::take_baselines(app.world_mut());
+    // The play moves `b` and bounds it itself, as world text does for a label it lays out again.
+    app.world_mut().get_mut::<Transform>(b).unwrap().translation.x = 2.0;
+    app.world_mut().entity_mut(b).insert(Aabb::from_min_max(Vec3::ZERO, Vec3::splat(9.0)));
+    app.update();
+    let c = restore::changes(app.world(), ROOT).unwrap();
+    assert_eq!(c.write, [p("arena/b")]);
+    let failed = restore::write_back(app.world_mut(), ROOT, &c.write);
+    assert_eq!(failed, [p("arena/b")], "the Aabb is not tsx's and Bevy will not compute it: respawn");
+    restore::restore_root(app.world_mut(), ROOT, &failed);
+    app.update();
+    let b2 = entity(&app, "arena/b").unwrap();
+    assert_ne!(b2, b, "b respawned");
+    assert_eq!(*app.world().get::<Aabb>(b2).unwrap(), bounds, "bounds from the level's mesh, as a spawn gets them");
+}

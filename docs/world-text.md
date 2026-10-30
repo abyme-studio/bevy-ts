@@ -67,7 +67,9 @@ commands.spawn((
 `TextColor`, `TextLayout`, `LineHeight`, `Transform`, `Visibility` and `NotShadowCaster`. In Rust,
 `LineHeight::Px` is world units. The label's `Mesh3d`, `MeshMaterial3d<WorldTextMaterial>` and
 `Aabb` are world text's: a script or system that writes them is not supported. Removing
-`WorldText` removes them. `WorldTextPlugin` is in the engine; a Rust app adds it beside Bevy's
+`WorldText` removes them. A label has `NoAutoAabb`, so Bevy never bounds it: a Stop that finds its
+`Aabb` changed since the play started respawns the label rather than write it back, and world text
+lays it out and bounds it again. `WorldTextPlugin` is in the engine; a Rust app adds it beside Bevy's
 `DefaultPlugins`.
 
 ## How it works
