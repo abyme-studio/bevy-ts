@@ -12,7 +12,12 @@ public final class Engine implements AutoCloseable {
     /** The C ABI this class speaks: {@link #load} refuses a library of another. */
     public static final int ABI = 1;
 
-    /** Events, one JSON object each: started, log, ime, exited (last). On the engine's thread. */
+    /**
+     * Events, one JSON object each: started, log, ime, exited (last). On the engine's thread: call
+     * no {@link Engine} method from it, but post to a {@code Handler}. Every method holds the
+     * engine's monitor, and {@link #surface} with null and {@link #close} hold it while the engine
+     * thread must run, so a call from here would block that thread until they time out.
+     */
     public interface Listener {
         void onEvent(String json);
     }

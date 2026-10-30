@@ -49,7 +49,11 @@ engine.close();                              // stops, sends exited, joins
 - Width and height are physical pixels, `scale` pixels per point (`DisplayMetrics.density`).
 - Events come one JSON object per call, on the engine's thread: `started` (`inputs`, `js`), `log`
   (`level`, `message`, `file`, `line`, source-mapped to the TS), `ime` (`enabled`, `disabled`) and
-  `exited` (`code`, `message`), last. Never call `surface(null, ...)` or `close()` from the listener.
+  `exited` (`code`, `message`), last. Call no `Engine` method from the listener: post to a
+  `Handler`. Every method holds the engine's monitor, and `surface(null, ...)` and `close()` hold it
+  while they wait on the engine's thread, so a call from the listener would block that thread until
+  they time out. (The C ABI has no monitor: from its callback, every call but `bevy_ts_destroy` and
+  `bevy_ts_surface` with a null window may be made.)
 
 ## The lifecycle
 
@@ -57,9 +61,11 @@ The engine runs frames only while it is resumed and has a surface. `pause` stops
 current frame; the world, its scripts, sockets and timers are kept, and the first frame after
 `resume` sees a delta capped at Bevy's maximum, so game time does not jump. `surface(null)` drops the
 GPU surface and the engine's reference to the `ANativeWindow` (it holds its own, from
-`ANativeWindow_acquire`) and returns once both are gone, within 2 s. The next surface draws the same
-world. `close` closes every socket with 1001 and returns within 5 s; a new engine may then be
-created.
+`ANativeWindow_acquire`) and returns once both are gone, within 2 s. The deadline wins: if a long
+frame keeps the engine past it, `surface(null)` returns before the release. The next surface draws
+the same world. `close` closes every socket with 1001 and returns within 5 s; a new engine may then
+be created. A `close` that times out leaves the engine counted as running, so no engine can be
+created again in that process.
 
 ## Building
 

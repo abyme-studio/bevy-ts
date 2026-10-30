@@ -57,10 +57,10 @@ jobs:
             # linux-x64 ubuntu-24.04
             # linux-arm64 ubuntu-24.04-arm
             # win32-x64 windows-2025
-          # @bevy-ts/android-arm64 is built and published at every release; its first version
-          # went out by hand, then its trusted publisher (docs/release.md). False makes its
-          # publish a dry run.
-          ANDROID_PUBLISH: true
+          # @bevy-ts/android-arm64 is built at every release. Its first version goes out by hand,
+          # then its trusted publisher is set (docs/release.md); only then is this true. False
+          # makes its publish a dry run.
+          ANDROID_PUBLISH: false
         run: |
           echo "android=$ANDROID_PUBLISH" >> "$GITHUB_OUTPUT"
           rows=$(printf '%s\n' "$PLATFORMS" | sed -e 's/#.*//' | awk 'NF')
