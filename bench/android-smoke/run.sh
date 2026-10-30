@@ -59,7 +59,8 @@ out=$cache/game-$game
   || { grep -v ld64 target/android-smoke-cli.log >&2; exit 1; }
 project=${SMOKE_PROJECT:-examples/$game}
 # --copy-sources: the phone cannot read an asset source on this Mac (agent town's `~/` stardew).
-./target/debug/bevy-ts build "$project" --out "$out" --copy-sources ${SMOKE_ENTRY:+--entry "$SMOKE_ENTRY"} >/dev/null
+# --entry is read from the working directory, so SMOKE_ENTRY (the project's) is put under it.
+./target/debug/bevy-ts build "$project" --out "$out" --copy-sources ${SMOKE_ENTRY:+--entry "$project/$SMOKE_ENTRY"} >/dev/null
 env64=$(printf '%s' "${SMOKE_ENV:-{\}}" | base64 | tr -d '\n')
 settle=${SETTLE:-5}
 
