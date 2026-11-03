@@ -41,6 +41,7 @@
 - [x] 4.5 A CI job that builds the Android library (build only) and checks its exports with `llvm-readelf`
 - [x] 4.7 `packages/platforms/android-arm64` and a release job publishing `@bevy-ts/android-arm64` at every version (Linux runner, V8 from source with a cached build), not an optional dependency of `bevy-ts`; its publish off (`ANDROID_PUBLISH: false`) until the package's first version goes out by hand on the operator's go, then its trusted publisher and `true`, an item after this change; document it in `docs/release.md`
 - [ ] 4.9 Adreno skinning: on Adreno only, `max_storage_buffers_per_shader_stage = 0` in `WgpuSettings.constrained_limits` (bevy#24926); confirm on a real Adreno phone with agent town's characters
+  - The real-Adreno check was skipped by the operator's decision (2026-11-03): no phone takeover, the emulator only.
 - [x] 4.8 `bevy_ts_abi()` and `bevy_ts_version()` exports, `Engine.ABI`, and a test that `Engine.load` refuses another ABI
 - [x] 4.6 A smoke run on a headless emulator (`emulator -no-window`), from `bench/android-smoke/` outside the gate: a minimal Java host creates the engine on a `SurfaceView`, plays `examples/arena`, reports `started`, a tap and `exited`. loading the `.so` by path from the app's `filesDir`. Record the stripped and gzipped `.so` sizes and the first-frame time
 
