@@ -1,7 +1,7 @@
 ## 0. Before
 
-- [ ] 0.1 compose-regression has landed on main and this branch is rebased on it; check `compose.rs` still has `prepare`/`finish` and `build_list`, else adapt decision 4 to its structure first
-- [ ] 0.2 Bench first (6.1, 6.2): record today's split with the compose fix in, before any change
+- [x] 0.1 compose-regression has landed on main and this branch is rebased on it; check `compose.rs` still has `prepare`/`finish` and `build_list`, else adapt decision 4 to its structure first. compose-regression never landed (no branch, no commit on main, 2026-11-05); `compose.rs` has `prepare`/`finish` and `build_list` as decision 4 assumes. The full path keeps today's compose cost
+- [ ] 0.2 Bench first (6.1, 6.2): record today's split, before any change
 
 ## 1. Writer (`crates/bevy-ts-levels/src/writer.rs`)
 

@@ -35,7 +35,7 @@ None.
 - Tests: `crates/bevy-ts-levels` unit tests for units and `prepare_at`; `crates/bevy-ts-levels/tests/it/levels.rs` for the partial reconcile and its equivalence with the full path; `crates/bevy-ts-tsx/tests/it/reconcile.rs` for placement and rekey.
 - Bench: `bench/edit-split/` (new crate, outside the workspace, as `docs/testing.md` rule 8 says). Results in `docs/research/touched-path-reconcile.md`.
 - Docs: `docs/levels.md` (what a write reconciles, when it takes the full path).
-- Assumes compose-regression's fix lands first and keeps compose's `prepare`/`finish` split and its per-entry build. The full path then costs about 44 ms of compose, not 165 to 276. If its fix restructures compose, `prepare_at` follows the new structure.
+- Builds on compose's `prepare`/`finish` split and its per-entry build as main has them. compose-regression did not land, so the full path keeps today's 165 to 276 ms of compose at 20,000 entities.
 - Needs the operator's go:
   - **Performance: an edit's cost changes.** Target under 50 ms at 20,000 entities and under 8 ms at 2,000 (today 358 to 447 ms and about 26 ms). The full path costs under 1 ms more than today (deciding the units). The trade-off: a partial reconcile that misses a dependency leaves the world stale until the next full reconcile (a save from outside, a reload). The equivalence test runs every op kind against the full path to guard it.
   - **A new pattern: partial compose.** levels composes a level filtered to key paths, a second way into compose next to the whole-level one. The alternative is the expansion cache (parked), which takes about 50 ms off and leaves compose and the diff whole.

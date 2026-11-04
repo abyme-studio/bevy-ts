@@ -43,13 +43,14 @@ At 2,000 entities today's write is about 26 ms (levels-scale); the plan's target
    - `delete`: the path, removed.
    - `reparent`: the old path, removed, and the new one.
    - `rename`, and an unnamed entity the writer named with the positional names after it: each old path removed, each new path. `rekey` has moved the entities already; the unit reconciles them in place.
-   Units are reduced to the highest: none under another. Alternative: diff the old and new parse. Rejected for writes: the writer already knows, and the diff is the external-change stage's.
+   - an add, restore, delete or rename of an unnamed entity (`#n`) shifts the positional names of the siblings after it without a rename: its parent is the unit (the top level: the full path).
+   Units are mapped through the batch's later renames and positional shifts, as `created` is, so they name paths in the new text. Units are reduced to the highest: none under another. Alternative: diff the old and new parse. Rejected for writes: the writer already knows, and the diff is the external-change stage's.
 
 2. **Units map into each root.** For each open level the file is in, `placements` already maps a file name path to the root's key path (`Placement::key_of`). A unit that does not map sends that root down the full path.
 
 3. **The unit rises to the instance.** Walking a unit's key path from the top of the root, the first ancestor whose base is a scene component instance becomes the unit: the instance's children are its expansion merged with the file's overrides, so they compose together. An include ancestor does not stop the walk: an include is read, not expanded.
 
-4. **`compose::prepare_at(path, files, schema, tolerant, units)`.** The same walk as `prepare`, with a key-path trie in `Env`. `build_list` builds an entry only if its key is on a unit's path; at or under a unit it builds everything. Ancestors are built with their patches and frames, their other children skipped. Only the units' instances become `ExpandRequest`s. `Prepared::finish` gives `Composed` with `nodes` as `(key path, Option<NodeDesc>)` per unit (`None`: not found, so removed), and `owners`, `scenes`, `missing`, warnings and asset paths for the units only. `prepare` and `prepare_at` share `build_list`; the whole-level compose is `prepare_at` with no filter. One owner, so the two cannot drift.
+4. **`compose::prepare_at(path, files, schema, tolerant, units)`.** The same walk as `prepare`, with a key-path trie in `Env`, walked by key path, not by each file's name path: an include of one top entity merges it at the including entity's key, an include of several puts them under it. A scene component instance met above a unit (decision 3) restarts the walk with the instance as the unit. `build_list` builds an entry only if its key is on a unit's path; at or under a unit it builds everything. Ancestors are built with their patches and frames, their other children skipped. Only the units' instances become `ExpandRequest`s. `Prepared::finish` gives `Composed` with `nodes` as `(key path, Option<NodeDesc>)` per unit (`None`: not found, so removed), and `owners`, `scenes`, `missing`, warnings and asset paths for the units only. `prepare` and `prepare_at` share `build_list`; the whole-level compose is `prepare_at` with no filter. One owner, so the two cannot drift.
 
 5. **Per-path state in `LevelRoot`.** `owners`, `scenes` and `missing` are already by key path: a unit replaces the entries at and under it. `warnings` and `assets` become by key path too (the node they arose under; file-level warnings under the empty path, which only the full path replaces). `applied` takes the written file's new hash. `files` stays: a batch that adds or removes an include takes the full path.
 
@@ -79,7 +80,7 @@ At 2,000 entities today's write is about 26 ms (levels-scale); the plan's target
 
 ## Migration Plan
 
-Lands after compose-regression. No protocol or file format change. Rollback: revert, or `PartialEdits(false)`.
+compose-regression did not land (checked 2026-11-05): the full path keeps today's compose, 165 to 276 ms at 20,000 entities; the partial path does not depend on it. No protocol or file format change. Rollback: revert, or `PartialEdits(false)`.
 
 ## Open Questions
 
