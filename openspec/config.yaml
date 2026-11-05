@@ -30,3 +30,7 @@ schema: spec-driven
 #     archive:
 #       guidance:
 #         - Summarize the archive outcome before finishing
+
+rules:
+  tasks:
+    - Test tasks are optional; none is required before landing or before a task is marked done
