@@ -574,7 +574,7 @@ fn load(env: &mut Env, path: &str, at: Option<(&FileCtx, Span)>, keys: &[String]
 /// takes the including entity's key path, `keys`, and filter).
 #[allow(clippy::too_many_arguments)]
 fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[String], keys: &[String], filter: Filter, merged: bool) -> Result<Vec<LNode>, ScriptError> {
-    let mut names = HashSet::new();
+    let mut names: HashSet<&str> = HashSet::new();
     let mut unnamed = 0;
     let mut out = Vec::new();
     for e in &list.items {
@@ -583,7 +583,7 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
         }
         let (key, name) = match e.name() {
             Some(n) => {
-                if !names.insert(n.name.clone()) {
+                if !names.insert(&n.name) {
                     return Err(ctx.err(format!("two siblings are named {:?}; names are unique among siblings", n.name), n.span));
                 }
                 (n.name.clone(), Some(n.name.clone()))
@@ -594,6 +594,11 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
                 (key, None)
             }
         };
+        // Outside the units: its key and place among its siblings only, built in no other way.
+        if !merged && matches!(filter.child(&key), Filter::Stub) {
+            out.push(LNode { key, name, ctx: ctx.clone(), span: e.span, name_path: Vec::new(), base: Base::None, patches: Vec::new(), children: Vec::new(), missing: Vec::new(), stub: true, kept: BTreeMap::new() });
+            continue;
+        }
         let (key_path, mut filter) = if merged {
             (keys.to_vec(), filter)
         } else {
@@ -787,7 +792,8 @@ fn keep(l: &LNode, prefix: &[String], out: &mut Vec<KeptOverride>) {
 fn finish(l: LNode, key: Option<String>, fin: &mut Fin, parent: &[String], frames: &[Frame], out: &mut Composed) -> Result<NodeDesc, Vec<ScriptError>> {
     let key = key.unwrap_or_else(|| l.key.clone());
     if l.stub {
-        return Ok(NodeDesc { name: l.name, ..empty(&key, &l.ctx.at(l.span)) });
+        // Outside the units, and dropped once they are taken: no place to look up.
+        return Ok(NodeDesc { key, ty: "entity".into(), name: l.name, ref_id: None, slot: None, on: BTreeMap::new(), source: Vec::new(), components: Vec::new(), children: Vec::new() });
     }
     let mut path = parent.to_vec();
     path.push(key.clone());

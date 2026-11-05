@@ -1264,20 +1264,25 @@ pub fn shift_level(world: &mut World, path: &str, file: &str, moves: &crate::wri
             shift(l);
         }
     }
-    let writes: Vec<(Entity, Option<(Vec<OwnerFrame>, Option<ScenePlacement>)>, Option<MissingComponents>)> = {
+    let writes: Vec<(Entity, Option<Vec<OwnerFrame>>, Option<MissingComponents>)> = {
         let tree = world.resource::<TsxTree>();
         let r = &world.resource::<Levels>().roots[path];
         let e = |k: &Vec<String>| tree.entity(node_id(&root, k));
-        let a = instances.iter().filter_map(|k| Some((e(k)?, Some((r.owners.get(k)?.iter().map(OwnerFrame::from).collect(), r.scenes.get(k).cloned())), None)));
+        let a = instances.iter().filter_map(|k| Some((e(k)?, Some(r.owners.get(k)?.iter().map(OwnerFrame::from).collect()), None)));
         let b = placeholders.iter().filter_map(|k| Some((e(k)?, None, Some(MissingComponents(r.missing.get(k)?.clone())))));
         a.chain(b).collect()
     };
-    for (e, inst, missing) in writes {
-        if let Some((owners, scene)) = inst
+    for (e, owners, missing) in writes {
+        if let Some(owners) = owners
             && let Some(mut i) = world.get_mut::<LevelInstance>(e)
         {
             i.owners = owners;
-            i.scene = scene;
+            // Its placement's places move as the root's did, with no copy of its props.
+            if let Some(s) = i.scene.as_mut() {
+                s.props.iter_mut().filter_map(|p| p.location.as_mut()).for_each(|l| {
+                    shift(l);
+                });
+            }
         }
         if let Some(m) = missing
             && let Ok(mut em) = world.get_entity_mut(e)

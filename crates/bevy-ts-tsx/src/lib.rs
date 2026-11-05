@@ -587,20 +587,26 @@ pub fn shift_sources(world: &mut World, root: &str, file: &str, map: &dyn Fn(u32
                     *l = m;
                 }
             }
-            if n.comps.iter().any(|r| r.source.as_ref().is_some_and(|l| moved(l).is_some()) || r.overrides.values().any(|l| moved(l).is_some())) {
+            let fix = |r: &mut crate::resolve::Resolved| {
+                if let Some(m) = r.source.as_ref().and_then(moved) {
+                    r.source = Some(m);
+                }
+                for l in r.overrides.values_mut() {
+                    if let Some(m) = moved(l) {
+                        *l = m;
+                    }
+                }
+            };
+            // Held only here: moved in place, with no copy of each component's value.
+            if let Some(comps) = std::sync::Arc::get_mut(&mut n.comps) {
+                comps.iter_mut().for_each(fix);
+            } else if n.comps.iter().any(|r| r.source.as_ref().is_some_and(|l| moved(l).is_some()) || r.overrides.values().any(|l| moved(l).is_some())) {
                 n.comps = n
                     .comps
                     .iter()
                     .map(|r| {
                         let mut r = r.clone();
-                        if let Some(m) = r.source.as_ref().and_then(moved) {
-                            r.source = Some(m);
-                        }
-                        for l in r.overrides.values_mut() {
-                            if let Some(m) = moved(l) {
-                                *l = m;
-                            }
-                        }
+                        fix(&mut r);
                         r
                     })
                     .collect();
