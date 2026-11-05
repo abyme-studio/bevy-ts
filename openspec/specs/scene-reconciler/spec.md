@@ -77,7 +77,7 @@ All mounts and unmounts one host call returns for a `<Show>` or `<For>` slot SHA
 - **THEN** the reconcile checks only the new group's nodes for despawn, and no other group's entity is written
 
 ### Requirement: Applying a root at key paths
-`bevy-ts-tsx` SHALL apply a root at given key paths only: for each path, the subtree at that path SHALL be reconciled against a given resolved subtree (`reconcile`), or despawned and spawned again from it (`respawn`), or despawned when none is given. Nodes outside the given subtrees SHALL NOT be written, and their change ticks SHALL NOT move. A spawned subtree SHALL be placed under its described parent in description order. A respawned node SHALL clear its tombstone. The root's retained tree, its kept resolved tree and `tsx_tree+watch` SHALL be updated for the given paths as a whole-root reconcile updates them. This is the one primitive for partial applies: a Stop's restore and a level write's reconcile both use it.
+`bevy-ts-tsx` SHALL apply a root at given key paths only: for each path, the subtree at that path SHALL be reconciled against a given resolved subtree (`reconcile`), or despawned and spawned again from it (`respawn`), or despawned when none is given. Nodes outside the given subtrees SHALL NOT be written, and their change ticks SHALL NOT move. A spawned subtree SHALL be placed under its described parent in description order, in the world and in the root's kept resolved tree. A respawned node SHALL clear its tombstone. The root's retained tree, its kept resolved tree and `tsx_tree+watch` SHALL be updated for the given paths as a whole-root reconcile updates them. This is the one primitive for partial applies: a Stop's restore and a level write's reconcile both use it.
 
 #### Scenario: Respawning one enemy
 - **WHEN** a root holds enemies `a`, `b` and `c`, and the root is applied at `b` with `respawn`
@@ -90,6 +90,10 @@ All mounts and unmounts one host call returns for a `<Show>` or `<For>` slot SHA
 #### Scenario: A tombstoned node
 - **WHEN** enemy `a` is tombstoned and the root is applied at `a` with `respawn`
 - **THEN** `a` exists again and its tombstone is gone
+
+#### Scenario: A new node between two
+- **WHEN** a root holds `a` and `c`, and is applied at a new `b` described between them, with `reconcile`
+- **THEN** `tsx_tree` and the kept resolved tree list `a`, `b`, `c` in that order
 
 ### Requirement: An external root keeps its resolved tree
 After applying a root a Rust plugin describes (an external root, such as a level), `bevy-ts-tsx` SHALL keep the resolved tree it applied, shared and not copied, until the root is applied again or unmounted. A partial apply SHALL replace only the subtrees it was given. A restart SHALL drop every kept tree.
@@ -143,3 +147,10 @@ Given a root with a baseline and its kept resolved tree, `bevy-ts-tsx` SHALL ans
 #### Scenario: Bounds Bevy does not compute
 - **WHEN** enemy `b` has `NoAutoAabb` and a system moved it and wrote its `Aabb`
 - **THEN** `b` is not written back: it respawns, and its `Aabb` is the one a spawn gives it
+
+### Requirement: A rekey moves the kept tree
+When a node of an external root moves to a new key path (`rekey`), its node in the root's kept resolved tree SHALL move with it, so a later partial apply at the new path finds the node's own description.
+
+#### Scenario: A rename then an edit
+- **WHEN** `G7` is rekeyed to `Boss`, then the root is applied at `Boss` with a description equal to `G7`'s
+- **THEN** nothing is written, and `Boss` keeps `G7`'s entity
