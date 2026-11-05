@@ -349,7 +349,7 @@ pub fn scene_level(world: &World, scene: &str) -> Option<String> {
 /// expanded in JS, under the same rules as an `app.scene` root. A resolve error touches nothing.
 /// Call it from an exclusive system or a section apply step, at a frame boundary.
 pub fn reconcile_external(world: &mut World, name: &str, location: Option<bevy_ts::backend::SourceLocation>, nodes: &[desc::NodeDesc]) -> Result<ReconcileStats, ScriptError> {
-    let resolved: std::sync::Arc<[reconcile::RNode]> = resolve_tree(world, name, nodes, (&[], &[]))?.into();
+    let resolved = std::sync::Arc::new(resolve_tree(world, name, nodes, (&[], &[]))?);
     world.resource_mut::<TsxTree>().external.insert(name.to_string());
     let stats = apply_root(world, name, location, &resolved, None, reconcile::Prune::Root);
     let mut tree = world.resource_mut::<TsxTree>();
@@ -357,6 +357,53 @@ pub fn reconcile_external(world: &mut World, name: &str, location: Option<bevy_t
         state.resolved = Some(resolved);
     }
     tree.journal.close();
+    Ok(stats)
+}
+
+/// Why [`reconcile_external_at`] did not apply: the caller reconciles the whole root instead.
+#[derive(Debug)]
+pub enum AtError {
+    /// The root has no kept tree to patch.
+    NoKeptTree,
+    /// A unit's parent is not in the kept tree.
+    NoParent(Vec<String>),
+    /// A unit's new or kept subtree holds a binding, handler, ref or slot: their ids belong to
+    /// the expansion call that made them.
+    Callbacks(Vec<String>),
+    Resolve(ScriptError),
+}
+
+/// [`reconcile_external`] at key paths only (`touched-path-reconcile`): each unit's new
+/// description (`None`: gone) at its index among its siblings, resolved under its parent's key
+/// path and types, diffed against what is live. Nothing outside the units is read or written.
+pub fn reconcile_external_at(world: &mut World, name: &str, units: &[(Vec<String>, Option<desc::NodeDesc>, usize)]) -> Result<ReconcileStats, AtError> {
+    let kept = world.resource::<TsxTree>().roots.get(name).and_then(|s| s.resolved.clone()).ok_or(AtError::NoKeptTree)?;
+    let mut resolved: Vec<(Vec<String>, Option<reconcile::RNode>, Option<usize>)> = Vec::new();
+    for (path, node, index) in units {
+        let Some((_, parent)) = path.split_last() else { return Err(AtError::NoParent(Vec::new())) };
+        if reconcile::find_node(&kept, path).is_some_and(|k| restore::callbacks(std::slice::from_ref(k))) {
+            return Err(AtError::Callbacks(path.clone()));
+        }
+        let Some(n) = node else {
+            resolved.push((path.clone(), None, None));
+            continue;
+        };
+        let types = match parent {
+            [] => Vec::new(),
+            p => reconcile::find_node(&kept, p).ok_or_else(|| AtError::NoParent(path.clone()))?.types.clone(),
+        };
+        let r = resolve_tree(world, name, std::slice::from_ref(n), (parent, &types)).map_err(AtError::Resolve)?.pop().expect("one node");
+        if restore::callbacks(std::slice::from_ref(&r)) {
+            return Err(AtError::Callbacks(path.clone()));
+        }
+        resolved.push((path.clone(), Some(r), Some(*index)));
+    }
+    // Held here, the kept tree would be copied to patch.
+    drop(kept);
+    resolved.sort_by_key(|(_, n, i)| (n.is_some(), *i));
+    let items: Vec<(Vec<String>, Option<&reconcile::RNode>, Option<usize>)> = resolved.iter().map(|(p, n, i)| (p.clone(), n.as_ref(), *i)).collect();
+    let stats = reconcile::apply_placed(world, name, &items, reconcile::AtMode::Reconcile);
+    world.resource_mut::<TsxTree>().moved.retain(|_, r| r != name);
     Ok(stats)
 }
 
@@ -380,6 +427,7 @@ pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> u
     if moves.iter().any(|(_, _, p)| tree.entities.contains_key(&desc::node_id(root, p)) && !moves.iter().any(|(_, old, _)| *old == desc::node_id(root, p))) {
         return 0;
     }
+    rekey_kept(world, root, from, to);
     if moves.is_empty() {
         return 0;
     }
@@ -429,6 +477,121 @@ pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> u
         }
     }
     moves.len()
+}
+
+/// Moves the kept tree's node at `from` to `to` with its subtree, ids and paths rewritten: in
+/// its place when the parent is the same, else last under the new parent (a reconcile puts it
+/// at its index), else out.
+fn rekey_kept(world: &mut World, root: &str, from: &[String], to: &[String]) {
+    fn rewrite(n: &mut reconcile::RNode, root: &str, from: usize, to: &[String]) {
+        n.path = to.iter().chain(&n.path[from..]).cloned().collect();
+        n.id = desc::node_id(root, &n.path);
+        for c in &mut n.children {
+            rewrite(c, root, from, to);
+        }
+    }
+    fn list<'a>(nodes: &'a mut Vec<reconcile::RNode>, parent: &[String]) -> Option<&'a mut Vec<reconcile::RNode>> {
+        match parent.split_first() {
+            None => Some(nodes),
+            Some((first, rest)) => list(&mut nodes.iter_mut().find(|n| n.path.last() == Some(first))?.children, rest),
+        }
+    }
+    let mut tree = world.resource_mut::<TsxTree>();
+    let Some(kept) = tree.roots.get_mut(root).and_then(|s| s.resolved.as_mut()) else { return };
+    let (Some((_, fp)), Some((_, tp))) = (from.split_last(), to.split_last()) else { return };
+    if reconcile::find_node(kept, from).is_none() {
+        return;
+    }
+    let kept = std::sync::Arc::make_mut(kept);
+    let Some(l) = list(kept, fp) else { return };
+    let Some(i) = l.iter().position(|n| n.path.last() == from.last()) else { return };
+    let mut n = l.remove(i);
+    rewrite(&mut n, root, from.len(), to);
+    if fp == tp {
+        l.insert(i, n);
+    } else if let Some(l) = list(kept, tp) {
+        l.retain(|c| c.path.last() != to.last());
+        l.push(n);
+    }
+}
+
+/// Moves the places of `file` in `root` (each node's source, each component's source and
+/// overrides, tombstones, the kept tree) by `map`, as a write that moved lines leaves them: what
+/// a partial reconcile does not rebuild. Writes only what moves.
+pub fn shift_sources(world: &mut World, root: &str, file: &str, map: &dyn Fn(u32, u32) -> (u32, u32)) {
+    use bevy_ts::backend::SourceLocation;
+    let moved = |l: &SourceLocation| -> Option<SourceLocation> {
+        if l.file != file {
+            return None;
+        }
+        let (line, column) = map(l.line, l.column);
+        ((line, column) != (l.line, l.column)).then(|| SourceLocation { file: l.file.clone(), line, column })
+    };
+    let shift = |l: &mut SourceLocation| -> bool {
+        match moved(l) {
+            Some(m) => {
+                *l = m;
+                true
+            }
+            None => false,
+        }
+    };
+    let comp_moves = |c: &tree::OwnedComponent| c.source.as_ref().is_some_and(|l| moved(l).is_some()) || c.overrides.values().any(|l| moved(l).is_some());
+    let mut q = world.query::<&mut TsxNode>();
+    for mut n in q.iter_mut(world) {
+        if n.root != root || !(n.source.iter().any(|l| moved(l).is_some()) || n.components.values().any(comp_moves)) {
+            continue;
+        }
+        let n = &mut *n;
+        n.source.iter_mut().for_each(|l| {
+            shift(l);
+        });
+        for c in n.components.values_mut() {
+            c.source.iter_mut().for_each(|l| {
+                shift(l);
+            });
+            c.overrides.values_mut().for_each(|l| {
+                shift(l);
+            });
+        }
+    }
+    fn walk(nodes: &mut [reconcile::RNode], moved: &dyn Fn(&SourceLocation) -> Option<SourceLocation>) {
+        for n in nodes {
+            for l in &mut n.source {
+                if let Some(m) = moved(l) {
+                    *l = m;
+                }
+            }
+            if n.comps.iter().any(|r| r.source.as_ref().is_some_and(|l| moved(l).is_some()) || r.overrides.values().any(|l| moved(l).is_some())) {
+                n.comps = n
+                    .comps
+                    .iter()
+                    .map(|r| {
+                        let mut r = r.clone();
+                        if let Some(m) = r.source.as_ref().and_then(moved) {
+                            r.source = Some(m);
+                        }
+                        for l in r.overrides.values_mut() {
+                            if let Some(m) = moved(l) {
+                                *l = m;
+                            }
+                        }
+                        r
+                    })
+                    .collect();
+            }
+            walk(&mut n.children, moved);
+        }
+    }
+    let mut tree = world.resource_mut::<TsxTree>();
+    for t in tree.tombstones.values_mut().filter(|t| t.root == root) {
+        t.source.iter_mut().for_each(|l| {
+            shift(l);
+        });
+    }
+    if let Some(k) = tree.roots.get_mut(root).and_then(|s| s.resolved.as_mut()) {
+        walk(std::sync::Arc::make_mut(k), &moved);
+    }
 }
 
 /// Unmounts an external root and forgets it.

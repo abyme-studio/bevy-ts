@@ -103,6 +103,20 @@ with `viewport_select`.
   everything but `set` and `revert`, which write overrides. Edit the prefab, or open the included
   level and write it.
 
+## What a write reconciles
+
+A write reconciles only what it changed: the entities its operations name, each with what is
+under it. An entity under a scene component instance reconciles its instance, which expands
+alone; an included file's entity reconciles in every level that includes it. Every other entity
+of the level is neither composed nor written, so its ticks do not move, and the places it lists
+(`tsx_tree`'s sources, `LevelInstance`'s lines) move with the lines the write moved.
+
+The whole level reconciles instead, as it did before, when the batch adds or removes an include,
+changes the file's one top entity, or renumbers unnamed top entities; when the level is a scene's
+sidecar, is waiting to reconcile, or failed its last reconcile; and when an entity the write
+changed, or its instance's scene, holds a binding, a handler, a ref or a slot. A change made on
+disk by something else (a reload, or a write's rebase) reconciles the whole level too.
+
 ## What to add
 
 `bevy-ts/level_catalog` lists the scene components of the running generation a level can place,

@@ -71,7 +71,7 @@ fn entity(app: &App, path: &str) -> Option<Entity> {
     app.world().resource::<TsxTree>().entity(bevy_ts_tsx::desc::node_id(ROOT, &p(path))).filter(|e| app.world().get_entity(*e).is_ok())
 }
 
-fn kept(app: &App) -> Arc<[RNode]> {
+fn kept(app: &App) -> Arc<Vec<RNode>> {
     app.world().resource::<TsxTree>().roots[ROOT].resolved.clone().expect("kept")
 }
 
@@ -405,4 +405,90 @@ fn bounds_on_a_no_auto_aabb_node_are_a_play_change() {
     let b2 = entity(&app, "arena/b").unwrap();
     assert_ne!(b2, b, "b respawned");
     assert_eq!(*app.world().get::<Aabb>(b2).unwrap(), bounds, "bounds from the level's mesh, as a spawn gets them");
+}
+
+fn desc(v: Value) -> NodeDesc {
+    serde_json::from_value(v).unwrap()
+}
+
+fn children(app: &App, path: &str) -> Vec<Entity> {
+    app.world().get::<Children>(entity(app, path).unwrap()).unwrap().iter().collect()
+}
+
+fn kept_keys(app: &App, path: &str) -> Vec<String> {
+    find_node(&kept(app), &p(path)).unwrap().children.iter().map(|c| c.path.last().unwrap().clone()).collect()
+}
+
+#[test]
+fn a_new_node_goes_between_two() {
+    let mut app = mounted();
+    let before: Vec<(Entity, Vec<_>)> = ["a", "b", "c", "d"].iter().map(|k| entity(&app, &format!("arena/{k}")).unwrap()).map(|e| (e, changed_ticks(&app, e))).collect();
+    app.world_mut().increment_change_tick();
+    let stats = bevy_ts_tsx::reconcile_external_at(app.world_mut(), ROOT, &[(p("arena/n"), Some(desc(enemy("n", 1.0))), 2)]).unwrap();
+    assert_eq!(stats.spawned, 1);
+    let n = entity(&app, "arena/n").unwrap();
+    let order: Vec<Entity> = before.iter().map(|(e, _)| *e).collect();
+    assert_eq!(children(&app, "arena")[..5], [order[0], order[1], n, order[2], order[3]], "in the world");
+    assert_eq!(kept_keys(&app, "arena"), ["a", "b", "n", "c", "d"], "in the kept tree");
+    for (e, ticks) in &before {
+        assert_eq!(&changed_ticks(&app, *e), ticks, "a sibling is not written");
+    }
+}
+
+#[test]
+fn a_rekeyed_node_applied_as_it_was_writes_nothing() {
+    let mut app = mounted();
+    let b = entity(&app, "arena/b").unwrap();
+    assert_eq!(bevy_ts_tsx::rekey(app.world_mut(), ROOT, &p("arena/b"), &p("arena/z")), 1);
+    assert_eq!(kept_keys(&app, "arena"), ["a", "z", "c", "d"], "the kept tree moved with it");
+    let ticks = changed_ticks(&app, b);
+    app.world_mut().increment_change_tick();
+    let mut z = enemy("z", 0.0);
+    z["name"] = json!("b");
+    let stats = bevy_ts_tsx::reconcile_external_at(app.world_mut(), ROOT, &[(p("arena/b"), None, 0), (p("arena/z"), Some(desc(z)), 1)]).unwrap();
+    assert_eq!((stats.spawned, stats.despawned, stats.written), (0, 0, 0));
+    assert_eq!(entity(&app, "arena/z"), Some(b));
+    assert_eq!(changed_ticks(&app, b), ticks);
+}
+
+#[test]
+fn a_removed_node_despawns_and_its_siblings_keep_their_ticks() {
+    let mut app = mounted();
+    let c = entity(&app, "arena/c").unwrap();
+    let others: Vec<(Entity, Vec<_>)> = ["a", "b", "d"].iter().map(|k| entity(&app, &format!("arena/{k}")).unwrap()).map(|e| (e, changed_ticks(&app, e))).collect();
+    app.world_mut().increment_change_tick();
+    let stats = bevy_ts_tsx::reconcile_external_at(app.world_mut(), ROOT, &[(p("arena/c"), None, 0)]).unwrap();
+    assert_eq!(stats.despawned, 1);
+    assert!(app.world().get_entity(c).is_err());
+    assert_eq!(kept_keys(&app, "arena"), ["a", "b", "d"]);
+    for (e, ticks) in &others {
+        assert_eq!(&changed_ticks(&app, *e), ticks);
+    }
+}
+
+#[test]
+fn a_unit_with_a_callback_is_refused() {
+    let mut app = mounted();
+    let mut b = enemy("b", 0.0);
+    b["on"] = json!({ "click": 3 });
+    let r = bevy_ts_tsx::reconcile_external_at(app.world_mut(), ROOT, &[(p("arena/b"), Some(desc(b)), 1)]);
+    assert!(matches!(r, Err(bevy_ts_tsx::AtError::Callbacks(_))), "{r:?}");
+    assert!(matches!(bevy_ts_tsx::reconcile_external_at(app.world_mut(), "level:none.bsn", &[]), Err(bevy_ts_tsx::AtError::NoKeptTree)));
+}
+
+#[test]
+fn shifted_sources_move_only_what_is_below() {
+    let mut app = mounted();
+    let at = |line: u32| json!({ "file": "arena.bsn", "line": line, "column": 1 });
+    let mut nodes = level(0.0);
+    for (i, c) in nodes[0].children.iter_mut().enumerate() {
+        c.source = vec![serde_json::from_value(at(10 * (i as u32 + 1))).unwrap()];
+    }
+    bevy_ts_tsx::reconcile_external(app.world_mut(), ROOT, None, &nodes).unwrap();
+    // Lines from 25 on move up by 3.
+    bevy_ts_tsx::shift_sources(app.world_mut(), ROOT, "arena.bsn", &|l, c| if l >= 25 { (l - 3, c) } else { (l, c) });
+    let lines: Vec<u32> = ["a", "b", "c", "d"].iter().map(|k| app.world().get::<bevy_ts_tsx::TsxNode>(entity(&app, &format!("arena/{k}")).unwrap()).unwrap().source[0].line).collect();
+    assert_eq!(lines, [10, 20, 27, 37]);
+    let kept_lines: Vec<u32> = find_node(&kept(&app), &p("arena")).unwrap().children.iter().map(|c| c.source[0].line).collect();
+    assert_eq!(kept_lines, [10, 20, 27, 37]);
 }

@@ -263,10 +263,18 @@ pub fn derived(world: &World) -> Vec<bevy::ecs::component::ComponentId> {
 /// Whether anything under the root holds a JS callback: a binding, a handler, a ref or a slot.
 /// Each holds an id into the isolate a Stop throws away.
 pub fn has_callbacks(world: &World, root: &str) -> bool {
-    fn any(nodes: &[RNode]) -> bool {
-        nodes.iter().any(|n| n.slot.is_some() || n.ref_id.is_some() || !n.on.is_empty() || n.comps.iter().any(|c| !c.bound.is_empty()) || any(&n.children))
-    }
-    world.resource::<TsxTree>().roots.get(root).and_then(|s| s.resolved.as_deref()).is_some_and(any)
+    world.resource::<TsxTree>().roots.get(root).and_then(|s| s.resolved.as_deref()).is_some_and(|k| callbacks(k))
+}
+
+/// Whether a resolved subtree holds a binding, a handler, a ref or a slot.
+pub fn callbacks(nodes: &[RNode]) -> bool {
+    nodes.iter().any(|n| n.slot.is_some() || n.ref_id.is_some() || !n.on.is_empty() || n.comps.iter().any(|c| !c.bound.is_empty()) || callbacks(&n.children))
+}
+
+/// [`has_callbacks`] for the kept subtree at `path` only.
+pub fn has_callbacks_at(world: &World, root: &str, path: &[String]) -> bool {
+    let kept = world.resource::<TsxTree>().roots.get(root).and_then(|s| s.resolved.clone());
+    kept.as_deref().and_then(|k| crate::reconcile::find_node(k, path)).is_some_and(|n| callbacks(std::slice::from_ref(n)))
 }
 
 /// The key paths of the root's tombstones.
@@ -292,7 +300,6 @@ pub fn highest(mut paths: Vec<Vec<String>>) -> Vec<Vec<String>> {
 pub fn restore_root(world: &mut World, root: &str, paths: &[Vec<String>]) -> crate::tree::ReconcileStats {
     let Some(kept) = world.resource::<TsxTree>().roots.get(root).and_then(|s| s.resolved.clone()) else { return Default::default() };
     let paths = highest(paths.to_vec());
-    let by_id = crate::reconcile::index(&kept);
-    let items: Vec<(Vec<String>, Option<&RNode>)> = paths.iter().map(|p| (p.clone(), by_id.get(&crate::desc::node_id(root, p)).copied())).collect();
+    let items: Vec<(Vec<String>, Option<&RNode>)> = paths.iter().map(|p| (p.clone(), crate::reconcile::find_node(&kept, p))).collect();
     crate::reconcile::apply_at(world, root, &items, crate::reconcile::AtMode::Respawn)
 }

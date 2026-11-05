@@ -246,19 +246,43 @@ pub fn index(nodes: &[RNode]) -> HashMap<u64, &RNode> {
     out
 }
 
-/// Replaces (or with `None` removes) the node at `path` in a resolved tree; a new one goes last
-/// among its siblings.
-fn replace_node(nodes: &mut Vec<RNode>, path: &[String], with: Option<RNode>) {
-    let Some((first, rest)) = path.split_first() else { return };
+/// Replaces (or with `None` removes) the node at `path` in a resolved tree. With `index`, a new
+/// node goes there among its siblings, and one elsewhere moves there; without, a new one goes
+/// last. Whether its sibling list changed.
+fn replace_node(nodes: &mut Vec<RNode>, path: &[String], with: Option<RNode>, index: Option<usize>) -> bool {
+    let Some((first, rest)) = path.split_first() else { return false };
     let at = nodes.iter().position(|n| n.path.last() == Some(first));
     match (at, rest.is_empty(), with) {
-        (Some(i), true, Some(n)) => nodes[i] = n,
+        (Some(i), true, Some(n)) => match index.filter(|j| *j != i) {
+            Some(j) => {
+                nodes.remove(i);
+                nodes.insert(j.min(nodes.len()), n);
+                true
+            }
+            None => {
+                nodes[i] = n;
+                false
+            }
+        },
         (Some(i), true, None) => {
             nodes.remove(i);
+            true
         }
-        (None, true, Some(n)) => nodes.push(n),
-        (Some(i), false, with) => replace_node(&mut nodes[i].children, rest, with),
-        _ => {}
+        (None, true, Some(n)) => {
+            nodes.insert(index.unwrap_or(nodes.len()).min(nodes.len()), n);
+            true
+        }
+        (Some(i), false, with) => replace_node(&mut nodes[i].children, rest, with, index),
+        _ => false,
+    }
+}
+
+/// The sibling list `path` is in, in a resolved tree.
+fn siblings<'a>(nodes: &'a [RNode], path: &[String]) -> Option<&'a [RNode]> {
+    match path.len() {
+        0 => None,
+        1 => Some(nodes),
+        n => find_node(nodes, &path[..n - 1]).map(|p| &p.children[..]),
     }
 }
 
@@ -267,13 +291,19 @@ fn replace_node(nodes: &mut Vec<RNode>, path: &[String], with: Option<RNode>) {
 /// parent in description order, its tombstones cleared. The root's state, its kept tree and the
 /// watch journal follow, as [`apply_root`] keeps them. Paths are disjoint: none under another.
 pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RNode>)], mode: AtMode) -> ReconcileStats {
+    let placed: Vec<(Vec<String>, Option<&RNode>, Option<usize>)> = items.iter().map(|(p, n)| (p.clone(), *n, None)).collect();
+    apply_placed(world, root, &placed, mode)
+}
+
+/// [`apply_at`], each node put at its index among its siblings in the kept tree (none: where it
+/// is, or last). Siblings of one list go removals first, then by index.
+pub fn apply_placed(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RNode>, Option<usize>)], mode: AtMode) -> ReconcileStats {
     let mut stats = ReconcileStats::default();
     let mut tree = world.remove_resource::<TsxTree>().unwrap_or_default();
-    let kept = tree.roots.get(root).and_then(|r| r.resolved.clone());
-    let described = kept.as_deref().map(index).unwrap_or_default();
-    let mut patched: Option<Vec<RNode>> = None;
+    // Taken out, so a patch copies it only when someone else holds it.
+    let mut kept = tree.roots.get_mut(root).and_then(|r| r.resolved.take());
     let mut slots = Vec::new();
-    for (path, node) in items {
+    for (path, node, index) in items {
         let Some(id) = (!path.is_empty()).then(|| node_id(root, path)) else { continue };
         let parent = match path.len() {
             1 => None,
@@ -283,7 +313,14 @@ pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RN
                 None => continue,
             },
         };
-        let old = rows_at(world, &tree, described.get(&id).copied(), root, path, id);
+        let described = kept.as_deref().and_then(|k| find_node(k, path));
+        let old = rows_at(world, &tree, described, root, path, id);
+        // The kept tree is unchanged when the node given is its own.
+        let own = match (described, node) {
+            (Some(a), Some(b)) => std::ptr::eq(a, *b),
+            (None, None) => true,
+            _ => false,
+        };
         if mode == AtMode::Respawn {
             clear(world, &mut tree, root, path, &old, &mut stats);
         }
@@ -294,7 +331,7 @@ pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RN
         }
         let state = tree.roots.entry(root.to_string()).or_default();
         state.nodes.extend(seen.iter().copied());
-        // The node keeps its index among its siblings; its subtree is recorded again.
+        // Its subtree is recorded again.
         if let Some(n) = node {
             record_order(&mut state.order, &n.children, &mut Vec::new());
         }
@@ -309,34 +346,28 @@ pub fn apply_at(world: &mut World, root: &str, items: &[(Vec<String>, Option<&RN
                 }
             }
         }
-        // The kept tree: unchanged when the node given is its own.
-        if let Some(k) = &kept {
-            let own = match (described.get(&id).copied().filter(|_| patched.is_none()).or_else(|| patched.as_ref().map_or_else(|| find_node(k, path), |p| find_node(p, path))), node) {
-                (Some(a), Some(b)) => std::ptr::eq(a, *b),
-                (None, None) => true,
-                _ => false,
-            };
-            if !own {
-                replace_node(patched.get_or_insert_with(|| k.to_vec()), path, node.map(|n| (*n).clone()));
+        if !own
+            && let Some(k) = kept.as_mut()
+            && replace_node(Arc::make_mut(k), path, node.map(|n| (*n).clone()), *index)
+            && let (Some(list), Some(state)) = (siblings(k, path), tree.roots.get_mut(root))
+        {
+            // Its list gained, lost or reordered a node: each sibling's index again.
+            for (i, n) in list.iter().enumerate() {
+                state.order.insert(n.id, i as u32);
             }
         }
         if tree.journal.open.added.len() > added || mode == AtMode::Respawn {
             let list = (root.to_string(), tree.parent_row(root, path));
             tree.journal.open.ordered.push(list);
         }
-        if let Some(p) = parent {
-            let pid = node_id(root, &path[..path.len() - 1]);
-            let d = match &patched {
-                Some(p) => find_node(p, &path[..path.len() - 1]),
-                None => described.get(&pid).copied(),
-            };
-            if let Some(d) = d {
-                order_children(world, &tree, p, d);
-            }
+        if let Some(p) = parent
+            && let Some(d) = kept.as_deref().and_then(|k| find_node(k, &path[..path.len() - 1]))
+        {
+            order_children(world, &tree, p, d);
         }
     }
-    if let (Some(p), Some(state)) = (patched, tree.roots.get_mut(root)) {
-        state.resolved = Some(p.into());
+    if let Some(state) = tree.roots.get_mut(root) {
+        state.resolved = kept;
     }
     tree.last = stats.clone();
     tree.reconciles += 1;

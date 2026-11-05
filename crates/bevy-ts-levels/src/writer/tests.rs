@@ -522,3 +522,77 @@ fn written_lookup_at_scale() {
         println!("| {n} | {each_ms:.1} | {once_ms:.1} |");
     }
 }
+
+fn units(w: &Written) -> Vec<(String, bool)> {
+    w.units.iter().map(|(u, gone)| (u.join("/"), *gone)).collect()
+}
+
+fn u(path: &str, gone: bool) -> (String, bool) {
+    (path.into(), gone)
+}
+
+#[test]
+fn units_of_each_op_kind() {
+    let comp = |op: fn(Vec<String>) -> Op| units(&ok(ARENA, &[op(p("Shelf"))]));
+    assert_eq!(units(&ok(ARENA, &[set("EnemyB", "Transform", "translation.x", f(5.0))])), [u("EnemyB", false)]);
+    assert_eq!(units(&ok(ARENA, &[Op::SetProp { path: p("EnemyB"), prop: "hp".into(), value: f(9.0), field: false }])), [u("EnemyB", false)]);
+    assert_eq!(units(&ok(ARENA, &[add("", Some("New"), scene("game::Enemy"), vec![], None)])), [u("New", false)]);
+    assert_eq!(units(&ok(ARENA, &[add("Shelf", Some("Lamp"), Base::None, vec![], None)])), [u("Shelf/Lamp", false)]);
+    assert_eq!(units(&ok(ARENA, &[Op::Delete { path: p("EnemyA") }])), [u("EnemyA", true)]);
+    assert_eq!(units(&ok(ARENA, &[Op::Rename { path: p("EnemyA"), to: "Boss".into() }])), [u("Boss", false), u("EnemyA", true)]);
+    assert_eq!(comp(|path| Op::AddComponent { path, component: "Marker".into(), fields: vec![], text: None }), [u("Shelf", false)]);
+    assert_eq!(comp(|path| Op::RemoveComponent { path, component: "Transform".into() }), [u("Shelf", false)]);
+}
+
+#[test]
+fn a_reparent_is_two_units_and_a_reorder_one() {
+    let src = "#A Marker\n--\n#B Marker\n--\n#C Marker\n";
+    assert_eq!(units(&ok(src, &[Op::Reparent { path: p("A"), parent: p("C"), index: None }])), [u("A", true), u("C/A", false)]);
+    assert_eq!(units(&ok(src, &[Op::Reparent { path: p("A"), parent: p(""), index: Some(2) }])), [u("A", false)]);
+}
+
+#[test]
+fn renumbered_unnamed_siblings_are_units() {
+    // Naming #0 renames #1 and #2 down: each old place goes, each new one is there.
+    let src = "Crate Transform\n--\nCrate Transform\n--\nCrate Transform\n";
+    let w = ok(src, &[set("#0", "Transform", "translation.x", f(1.0))]);
+    let name = w.renamed[0].1.join("/");
+    assert_eq!(units(&w), [u("#0", false), u("#1", false), u("#2", true), u(&name, false)]);
+    // Putting in or taking out an unnamed entity renumbers the rest: its parent is the unit, and
+    // at the top level that is the whole file.
+    assert_eq!(units(&ok("#A Marker\n--\nCrate\n--\nCrate\n", &[Op::Delete { path: p("#1") }])), [u("", false)]);
+    let room = "#Room\nChildren [\n    Crate\n    --\n    #Lamp Marker\n]\n";
+    assert_eq!(units(&ok(room, &[Op::Restore { parent: p("Room"), index: 0, text: "Marker".into() }])), [u("Room", false)]);
+}
+
+#[test]
+fn units_under_another_are_reduced_to_it() {
+    let w = ok(ARENA, &[set("Shelf", "Transform", "scale.x", f(2.0)), add("Shelf", Some("Lamp"), Base::None, vec![], None), Op::Delete { path: p("EnemyA") }]);
+    assert_eq!(units(&w), [u("EnemyA", true), u("Shelf", false)]);
+}
+
+#[test]
+fn the_new_text_comes_parsed() {
+    let w = ok(ARENA, &[Op::Delete { path: p("EnemyA") }]);
+    assert_eq!(w.parsed.source, w.text);
+    assert_eq!(ok(ARENA, &[]).parsed.source, ARENA);
+}
+
+#[test]
+fn moves_map_what_a_write_shifted() {
+    let src = "#A Marker\n--\n#B Marker\nTransform\n--\n#C Marker\n";
+    // A delete moves what follows up; what is before stays.
+    let w = ok(src, &[Op::Delete { path: p("B") }]);
+    assert_eq!(w.text, "#A Marker\n--\n#C Marker\n");
+    assert_eq!((w.moves.map(1, 4), w.moves.map(6, 4)), ((1, 4), (3, 4)));
+    // A rename moves the rest of its line along it.
+    let w = ok(src, &[Op::Rename { path: p("A"), to: "Alpha".into() }]);
+    assert_eq!((w.moves.map(1, 4), w.moves.map(3, 1)), ((1, 8), (3, 1)));
+    // An add at the end, or a set that keeps its line, moves nothing.
+    assert!(ok(src, &[add("", Some("D"), Base::None, vec![], None)]).moves.is_empty());
+    assert!(ok(ARENA, &[set("EnemyB", "Transform", "translation.x", f(5.0))]).moves.is_empty());
+    // Ops compose in order: a reparent then a delete before what moved.
+    let w = ok(src, &[Op::Reparent { path: p("A"), parent: p("C"), index: None }, Op::Delete { path: p("B") }]);
+    assert_eq!(w.text, "#C Marker\nChildren [\n    #A Marker\n]\n");
+    assert_eq!(w.moves.map(6, 1), (1, 1));
+}

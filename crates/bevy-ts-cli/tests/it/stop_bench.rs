@@ -136,7 +136,7 @@ fn kept_bytes(app: &App) -> usize {
             })
             .sum()
     }
-    app.world().resource::<bevy_ts_tsx::TsxTree>().roots[ROOT].resolved.as_deref().map_or(0, walk)
+    app.world().resource::<bevy_ts_tsx::TsxTree>().roots[ROOT].resolved.as_deref().map_or(0, |k| walk(k))
 }
 
 /// One size and arm: three end-to-end Stops, then three split ones.

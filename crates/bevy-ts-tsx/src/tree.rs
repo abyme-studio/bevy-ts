@@ -218,7 +218,7 @@ pub struct RootState {
     pub order: HashMap<u64, u32>,
     /// An external root's resolved tree as last applied, shared with the template cache: what a
     /// Stop respawns from without composing.
-    pub resolved: Option<std::sync::Arc<[crate::reconcile::RNode]>>,
+    pub resolved: Option<std::sync::Arc<Vec<crate::reconcile::RNode>>>,
     /// The root as the game started, while nothing has applied it since.
     pub baseline: Option<crate::restore::Baseline>,
 }

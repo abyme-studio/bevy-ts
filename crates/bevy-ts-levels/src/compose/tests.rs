@@ -245,7 +245,8 @@ fn identity_rules() {
     let keys: Vec<&str> = c.nodes.iter().map(|n| n.key.as_str()).collect();
     assert_eq!(keys, ["#0", "B", "#1"]);
     assert_eq!(c.warnings.len(), 2);
-    assert!(c.warnings[0].message.contains("unnamed entity"));
+    assert!(c.warnings[0].1.message.contains("unnamed entity"));
+    assert_eq!(c.warnings[0].0, key(&["#0"]), "by the key path it arose under");
 }
 
 #[test]
@@ -413,4 +414,109 @@ fn strict_mode_fails_as_before() {
     let mut fs = files(&[("a.bsn", "#B @Drone { @throw: true }")]);
     let e = compose("a.bsn", &mut fs, &TestSchema, &mut TestExpander::default(), false).unwrap_err();
     assert_eq!(e[0].message, "Drone exploded");
+}
+
+/// A compose at `units`, and its expander's calls.
+fn at(list: &[(&str, &str)], units: &[&[&str]]) -> (Composed, TestExpander) {
+    let mut fs = files(list);
+    let mut ex = TestExpander::default();
+    let units: Vec<Vec<String>> = units.iter().map(|u| key(u)).collect();
+    let prepared = prepare_at(list[0].0, &mut fs, &TestSchema, false, Some(&units)).unwrap_or_else(|e| panic!("{e:?}"));
+    let expansions = if prepared.requests.is_empty() { Vec::new() } else { ex.expand(&prepared.requests).unwrap() };
+    (prepared.finish(expansions).unwrap_or_else(|e| panic!("{e:?}")), ex)
+}
+
+/// The node at a key path of a whole compose, with its index.
+fn node_at<'a>(nodes: &'a [NodeDesc], path: &[String]) -> Option<(&'a NodeDesc, usize)> {
+    let (last, above) = path.split_last()?;
+    let mut list = nodes;
+    for seg in above {
+        list = &list.iter().find(|n| &n.key == seg)?.children;
+    }
+    list.iter().position(|n| &n.key == last).map(|i| (&list[i], i))
+}
+
+/// Each unit of a compose at units is what the whole compose has there: its node, its index, and
+/// its owners, scenes and placeholders.
+fn same_as_whole(list: &[(&str, &str)], part: &Composed) {
+    let whole = ok(list);
+    for (path, node, index) in part.units.as_ref().expect("a compose at units") {
+        let want = node_at(&whole.nodes, path);
+        assert_eq!(node.as_ref().map(|n| (n, *index)), want.map(|(n, i)| (n, i)), "{path:?}");
+        let under = |m: &BTreeMap<Vec<String>, Vec<Frame>>| m.iter().filter(|(k, _)| k.starts_with(path)).map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>();
+        assert_eq!(under(&part.owners), under(&whole.owners), "owners under {path:?}");
+        let scenes = |m: &BTreeMap<Vec<String>, ScenePlacement>| m.iter().filter(|(k, _)| k.starts_with(path)).map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>();
+        assert_eq!(scenes(&part.scenes), scenes(&whole.scenes), "scenes under {path:?}");
+    }
+    assert!(part.nodes.is_empty());
+}
+
+fn grunts(n: usize) -> String {
+    (0..n).map(|i| format!("#G{i}\n@Grunt {{ @hp: {}.0 }}\nTransform {{ translation: Vec3 {{ x: {i}.0 }} }}\n", 100 + i)).collect::<Vec<_>>().join("--\n")
+}
+
+#[test]
+fn one_of_many_instances_expands_alone() {
+    let level = grunts(6);
+    let list = [("levels/arena.bsn", level.as_str())];
+    let (c, ex) = at(&list, &[&["G3"]]);
+    assert_eq!(ex.calls.iter().map(Vec::len).collect::<Vec<_>>(), [1], "one request");
+    assert_eq!(ex.calls[0][0].props["hp"], json!(103.0));
+    assert_eq!(c.units.as_ref().unwrap()[0].2, 3, "its index among the tops");
+    assert_eq!(c.owners.keys().cloned().collect::<Vec<_>>(), [key(&["G3"]), key(&["G3", "eye"])]);
+    same_as_whole(&list, &c);
+}
+
+#[test]
+fn a_path_under_an_include_with_an_outer_override() {
+    let list = [
+        ("levels/arena.bsn", "#RoomA :\"rooms/room.bsn\" Children [ #Floor Transform { translation: Vec3 { y: 1.0 } } ]\n--\n#RoomB Transform"),
+        ("rooms/room.bsn", "#Room Transform Children [ #Floor Transform { scale: Vec3(10.0, 1.0, 10.0) } -- #Wall Transform ]"),
+    ];
+    let (c, _) = at(&list, &[&["RoomA", "Floor"]]);
+    let floor = c.units.as_ref().unwrap()[0].1.as_ref().unwrap();
+    assert_eq!(props(floor, "Transform")["translation"], json!([0.0, 1.0, 0.0]), "the outer override");
+    assert_eq!(props(floor, "Transform")["scale"], json!([10.0, 1.0, 10.0]), "the included value");
+    same_as_whole(&list, &c);
+    let (c, _) = at(&list, &[&["RoomA", "Wall"]]);
+    assert_eq!(c.units.as_ref().unwrap()[0].2, 1);
+    same_as_whole(&list, &c);
+    // A group include's tops are under the including entity.
+    let group = [("a.bsn", "#G :\"b.bsn\""), ("b.bsn", "#One Transform -- #Two Transform")];
+    let (c, _) = at(&group, &[&["G", "Two"]]);
+    assert_eq!(c.units.as_ref().unwrap()[0].2, 1);
+    same_as_whole(&group, &c);
+}
+
+#[test]
+fn a_removed_path_has_no_node() {
+    let level = grunts(3);
+    let (c, ex) = at(&[("a.bsn", level.as_str())], &[&["G7"], &["G1"]]);
+    let units = c.units.unwrap();
+    assert_eq!((units[0].0.clone(), units[0].1.is_none()), (key(&["G7"]), true));
+    assert!(units[1].1.is_some());
+    assert_eq!(ex.calls[0].len(), 1);
+}
+
+#[test]
+fn an_inner_prefab_path_rises_to_its_instance() {
+    let list = [("a.bsn", "#E @Grunt Children [ #eye Transform { translation: Vec3 { y: 0.8 } } ]\n--\n#F @Grunt")];
+    let (c, ex) = at(&list, &[&["E", "eye"]]);
+    assert_eq!(c.units.as_ref().unwrap().iter().map(|u| u.0.clone()).collect::<Vec<_>>(), [key(&["E"])]);
+    assert_eq!(ex.calls[0].len(), 1, "E only");
+    same_as_whole(&list, &c);
+    // Through an include: the included top is the instance, merged into the including entity.
+    let list = [("a.bsn", "#Boss :\"boss.bsn\" Children [ #eye Transform { translation: Vec3 { y: 2.0 } } ]\n--\n#Other Transform"), ("boss.bsn", "#B @Grunt { @hp: 500.0 }")];
+    let (c, _) = at(&list, &[&["Boss", "eye"]]);
+    assert_eq!(c.units.as_ref().unwrap()[0].0, key(&["Boss"]));
+    same_as_whole(&list, &c);
+}
+
+#[test]
+fn warnings_come_from_the_units_only() {
+    let list = [("a.bsn", "Transform -- #B Transform -- Transform")];
+    assert!(at(&list, &[&["B"]]).0.warnings.is_empty());
+    let (c, _) = at(&list, &[&["#1"]]);
+    assert_eq!(c.warnings.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>(), [key(&["#1"])]);
+    same_as_whole(&list, &c);
 }

@@ -1,11 +1,13 @@
 //! Where one level write's time goes (openspec change `touched-path-reconcile`, task 6.2): a
 //! level of N `@enemies::Grunt` instances (two entities each), the level and Stop benches' level,
 //! and five kinds of write on it (a move, a prop edit, an add, a delete, a rename), each timed by
-//! step. Prints one `RESULT` line per size, arm and kind: wall ms, medians of `EDITS` writes.
+//! step. Prints one `RESULT` line per size, arm and kind: wall ms, medians of `EDITS` writes. The
+//! arms: `whole` (`PartialEdits(false)`, every write reconciles the level whole, as before the
+//! change) and `partial`.
 //! `--summary <file>` reads those lines back and prints the medians across runs as a table.
 
 use bevy::prelude::*;
-use bevy_ts_levels::edit::{WriteRequest, write_level};
+use bevy_ts_levels::edit::{EditSteps, PartialEdits, WriteRequest, write_level};
 use bevy_ts_levels::engine::{Levels, LevelsPlugin};
 use bevy_ts_levels::route::loaded_hash;
 use bevy_ts_levels::writer::{Base, Op, WValue};
@@ -34,7 +36,7 @@ const LEVEL: &str = "levels/arena.bsn";
 /// Writes per kind, per arm: the median is the 4th.
 const EDITS: usize = 7;
 const KINDS: [&str; 5] = ["move", "prop", "add", "delete", "rename"];
-const STEPS: [&str; 7] = ["writer", "parse", "compose", "expand", "reconcile", "stamp", "other"];
+const STEPS: [&str; 8] = ["writer", "parse", "shift", "compose", "expand", "reconcile", "stamp", "other"];
 
 fn level(n: usize) -> String {
     (0..n)
@@ -77,15 +79,15 @@ fn median(mut v: Vec<f64>) -> f64 {
     v[v.len() / 2]
 }
 
-/// The `k`th write of a kind, on its own instance.
+/// The `k`th write of a kind, on its own instance (`k` is unique across arms).
 fn op(kind: &str, n: usize, k: usize) -> Op {
     let g = |i: usize| format!("G{}", (i * 997 + 13) % n);
     match kind {
         "move" => Op::Set { path: vec![g(k)], component: "Transform".into(), field: vec!["translation".into(), "x".into()], value: WValue::Float { v: 0.5 + k as f64, f32: true }, containers: vec!["Vec3".into()] },
-        "prop" => Op::SetProp { path: vec![g(k + EDITS)], prop: "hp".into(), value: WValue::Float { v: 200.0 + k as f64, f32: true }, field: false },
+        "prop" => Op::SetProp { path: vec![g(k + 100)], prop: "hp".into(), value: WValue::Float { v: 200.0 + k as f64, f32: true }, field: false },
         "add" => Op::Add { parent: vec![], name: Some(format!("New{k}")), base: Base::Scene { component: "enemies::Grunt".into(), props: vec![], fields: vec![] }, patches: vec![], asset: None },
-        "delete" => Op::Delete { path: vec![g(k + 2 * EDITS)] },
-        "rename" => Op::Rename { path: vec![g(k + 3 * EDITS)], to: format!("Renamed{k}") },
+        "delete" => Op::Delete { path: vec![g(k + 200)] },
+        "rename" => Op::Rename { path: vec![g(k + 300)], to: format!("Renamed{k}") },
         _ => unreachable!(),
     }
 }
@@ -101,16 +103,24 @@ fn write(app: &mut App, op: Op, id: u64) -> (f64, BTreeMap<&'static str, f64>) {
 }
 
 /// The engine's record of the last write, by step; "other" is the total less the rest.
-fn steps(_world: &World, _total: f64) -> BTreeMap<&'static str, f64> {
-    BTreeMap::new()
+fn steps(world: &World, total: f64) -> BTreeMap<&'static str, f64> {
+    let s = world.resource::<EditSteps>();
+    let mut out = BTreeMap::from([("writer", s.writer), ("parse", s.parse), ("shift", s.shift), ("compose", s.compose), ("expand", s.expand), ("reconcile", s.reconcile), ("stamp", s.stamp)]);
+    out.insert("other", total - out.values().sum::<f64>());
+    out
 }
 
-fn arm(app: &mut App, n: usize, arm: &str) {
+fn arm(app: &mut App, n: usize, arm: &str, first: usize) {
+    app.insert_resource(PartialEdits(arm == "partial"));
     for kind in KINDS {
         let mut totals = Vec::new();
         let mut by_step: BTreeMap<&str, Vec<f64>> = BTreeMap::new();
-        for k in 0..EDITS {
+        let mut whole = Vec::new();
+        for k in first..first + EDITS {
             let (total, steps) = write(app, op(kind, n, k), k as u64);
+            if let Some(why) = &app.world().resource::<EditSteps>().why {
+                whole.push(why.clone());
+            }
             totals.push(total);
             for (s, v) in steps {
                 by_step.entry(s).or_default().push(v);
@@ -123,6 +133,9 @@ fn arm(app: &mut App, n: usize, arm: &str) {
             }
         }
         println!("{line}");
+        if arm == "partial" && !whole.is_empty() {
+            println!("WHOLE n={} op={kind}: {}", n * 2, whole.join("; "));
+        }
     }
 }
 
@@ -138,8 +151,9 @@ fn run(n: usize) {
         }
     }
     // The first write after a load pays for warming caches: one untimed.
-    write(&mut app, op("move", n, EDITS + 1), 999);
-    arm(&mut app, n, "today");
+    write(&mut app, op("move", n, 99), 999);
+    arm(&mut app, n, "whole", 0);
+    arm(&mut app, n, "partial", EDITS);
     drop(app);
     let _ = std::fs::remove_dir_all(dir);
 }

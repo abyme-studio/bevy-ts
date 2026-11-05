@@ -1613,3 +1613,139 @@ game::Health { max: 900.0 }
         assert_eq!(missing(&f, chest)[0].1, MissingReason::Unregistered);
     }
 }
+
+/// A write reconciles what it changed (`touched-path-reconcile`): the partial path, its equal the
+/// whole path, and when a write takes the whole path.
+mod partial {
+    use super::*;
+    use bevy_ts_levels::edit::{EditSteps, PartialEdits, WriteRequest, WriteResult, write_level};
+    use bevy_ts_levels::engine::content_hash;
+    use bevy_ts_levels::writer::{Base, Op, WValue};
+    use std::collections::BTreeMap;
+
+    fn p(s: &str) -> Vec<String> {
+        s.split('/').map(String::from).collect()
+    }
+
+    fn arena(name: &str, partial: bool) -> Fixture {
+        let mut f = fixture(&format!("partial-{name}-{partial}"), &[("levels/arena.bsn", ARENA), ("levels/room.bsn", ROOM)]);
+        f.app.insert_resource(PartialEdits(partial));
+        f.load(&["levels/arena.bsn"]);
+        f.settle();
+        f
+    }
+
+    fn write_to(f: &mut Fixture, file: &str, ops: Vec<Op>) -> WriteResult {
+        let now = std::fs::read_to_string(f.dir.join(file)).unwrap();
+        write_level(f.app.world_mut(), WriteRequest { id: 1, file: file.into(), base: content_hash(now.as_bytes()), ops })
+    }
+
+    fn write(f: &mut Fixture, ops: Vec<Op>) -> WriteResult {
+        write_to(f, "levels/arena.bsn", ops)
+    }
+
+    fn steps(f: &Fixture) -> EditSteps {
+        f.app.world().resource::<EditSteps>().clone()
+    }
+
+    fn ticks(f: &Fixture, e: Entity) -> Vec<bevy::ecs::change_detection::Tick> {
+        let er = f.app.world().entity(e);
+        er.archetype().iter_components().filter_map(|c| er.get_change_ticks_by_id(c)).map(|t| t.changed).collect()
+    }
+
+    /// Every level entity: its key path, node, `LevelInstance`, `Transform`, parent's key path and
+    /// index among its siblings as `tsx_tree` lists them.
+    fn snapshot(f: &mut Fixture) -> BTreeMap<Vec<String>, String> {
+        let world = f.app.world_mut();
+        let order = world.resource::<TsxTree>().roots["level:levels/arena.bsn"].order.clone();
+        let mut q = world.query::<(Entity, &TsxNode, Option<&LevelInstance>, Option<&Transform>, Option<&ChildOf>)>();
+        let rows: Vec<_> = q.iter(world).map(|(_, n, i, t, c)| (n.key_path.clone(), format!("{n:?} {i:?} {t:?} {:?} {:?}", c.and_then(|c| world.get::<TsxNode>(c.parent())).map(|p| &p.key_path), order.get(&n.id)))).collect();
+        rows.into_iter().collect()
+    }
+
+    fn ops() -> Vec<(&'static str, Vec<Op>)> {
+        let set = Op::Set { path: p("EnemyB"), component: "Transform".into(), field: p("translation/x"), value: WValue::Float { v: 5.0, f32: true }, containers: vec!["Vec3".into()] };
+        vec![
+            ("set", vec![set]),
+            ("add-at-index", vec![Op::Restore { parent: vec![], index: 1, text: "#New\nTransform { translation: Vec3 { y: 2.0 } }".into() }]),
+            ("delete", vec![Op::Delete { path: p("EnemyA") }]),
+            ("reparent", vec![Op::Reparent { path: p("EnemyB"), parent: p("EnemyA"), index: None }]),
+            ("rename", vec![Op::Rename { path: p("EnemyA"), to: "Grunt".into() }]),
+            ("component-add", vec![Op::AddComponent { path: p("RoomB"), component: "game::Health".into(), fields: vec![("max".into(), WValue::Float { v: 9.0, f32: true })], text: None }]),
+            ("component-remove", vec![Op::RemoveComponent { path: p("EnemyB"), component: "Health".into() }]),
+            ("room-floor", vec![Op::Set { path: p("RoomB/Floor"), component: "Transform".into(), field: p("translation/y"), value: WValue::Float { v: 1.0, f32: true }, containers: vec!["Vec3".into()] }]),
+        ]
+    }
+
+    #[test]
+    fn each_op_kind_reconciles_only_what_it_changed() {
+        for (name, ops) in ops() {
+            let mut f = arena(name, true);
+            let (room_a, floor_a) = (f.by_name("RoomA"), f.app.world().resource::<TsxTree>().entity(bevy_ts_tsx::desc::node_id("level:levels/arena.bsn", &p("RoomA/Floor"))).unwrap());
+            let before = (ticks(&f, room_a), ticks(&f, floor_a));
+            f.app.world_mut().increment_change_tick();
+            let r = write(&mut f, ops);
+            assert_eq!(r.status, "written", "{name}: {r:?}");
+            let s = steps(&f);
+            assert!(s.partial, "{name}: whole because {:?}", s.why);
+            assert_eq!(f.by_name("RoomA"), room_a, "{name}: an untouched entity stays");
+            assert_eq!((ticks(&f, room_a), ticks(&f, floor_a)), before, "{name}: nor is it written");
+        }
+    }
+
+    #[test]
+    fn partial_and_whole_reconciles_agree() {
+        for (name, ops) in ops() {
+            let (mut whole, mut part) = (arena(&format!("{name}-eq"), false), arena(&format!("{name}-eq"), true));
+            let (a, b) = (write(&mut whole, ops.clone()), write(&mut part, ops));
+            assert_eq!((a.status, b.status), ("written", "written"), "{name}");
+            assert!(!steps(&whole).partial && steps(&part).partial, "{name}: {:?}", steps(&part).why);
+            assert_eq!(snapshot(&mut part), snapshot(&mut whole), "{name}");
+            let (rw, rp) = (&whole.app.world().resource::<Levels>().roots["levels/arena.bsn"], &part.app.world().resource::<Levels>().roots["levels/arena.bsn"]);
+            assert_eq!((&rp.owners, &rp.scenes, &rp.missing, &rp.warnings, &rp.assets, &rp.applied), (&rw.owners, &rw.scenes, &rw.missing, &rw.warnings, &rw.assets, &rw.applied), "{name}");
+        }
+    }
+
+    #[test]
+    fn what_takes_the_whole_path() {
+        // An include added.
+        let mut f = arena("include", true);
+        let r = write(&mut f, vec![Op::Add { parent: vec![], name: Some("RoomC".into()), base: Base::None, patches: vec![], asset: Some("levels/room.bsn".into()) }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(steps(&f).why.unwrap().contains("includes"));
+        // A level whose last reconcile failed.
+        f.app.world_mut().resource_mut::<Levels>().roots.get_mut("levels/arena.bsn").unwrap().error = Some(bevy_ts::backend::ScriptError::new("broken"));
+        let r = write(&mut f, vec![Op::Rename { path: p("EnemyA"), to: "Grunt".into() }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(steps(&f).why.unwrap().contains("failed"));
+        // An included file's one top entity changed.
+        let hut = "#Hut\nTransform\n--\n#Shed Transform\n";
+        let mut g = fixture("partial-top", &[("levels/arena.bsn", "#Hall\n:\"levels/hut.bsn\"\n"), ("levels/hut.bsn", hut)]);
+        g.load(&["levels/arena.bsn"]);
+        g.settle();
+        let r = write_to(&mut g, "levels/hut.bsn", vec![Op::Delete { path: p("Shed") }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(steps(&g).why.unwrap().contains("one top entity"));
+        // A rebased write: the disk's change reconciles whole first, the write's own units after.
+        let mut h = arena("rebased", true);
+        let a = h.by_name("EnemyA");
+        std::fs::write(h.dir.join("levels/arena.bsn"), ARENA.replace("x: -3.0", "x: -6.0")).unwrap();
+        let set = Op::Set { path: p("EnemyB"), component: "Transform".into(), field: p("translation/x"), value: WValue::Float { v: 5.0, f32: true }, containers: vec!["Vec3".into()] };
+        let r = write_level(h.app.world_mut(), WriteRequest { id: 1, file: "levels/arena.bsn".into(), base: content_hash(ARENA.as_bytes()), ops: vec![set] });
+        assert_eq!(r.status, "rebased", "{r:?}");
+        assert!(steps(&h).partial, "{:?}", steps(&h).why);
+        assert_eq!(h.translation(a).x, -6.0);
+    }
+
+    #[test]
+    fn a_delete_moves_the_lines_below_it() {
+        let mut f = arena("lines", true);
+        let b = f.by_name("EnemyB");
+        let r = write(&mut f, vec![Op::Delete { path: p("EnemyA") }]);
+        assert_eq!(r.status, "written", "{r:?}");
+        assert!(steps(&f).partial);
+        let line = std::fs::read_to_string(f.dir.join("levels/arena.bsn")).unwrap().lines().position(|l| l == "#EnemyB").unwrap() as u32 + 1;
+        assert_eq!(f.app.world().get::<TsxNode>(b).unwrap().source.last().unwrap().line, line);
+        assert_eq!(f.app.world().get::<LevelInstance>(b).unwrap().owners[0].line, line);
+    }
+}

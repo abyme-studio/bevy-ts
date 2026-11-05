@@ -164,3 +164,55 @@ fn a_level_places_required_components() {
     assert_eq!(health(&app, brute), (10.0, 100.0));
     assert_eq!(health(&app, tough).0, 3.0, "the level's own Health wins");
 }
+
+/// One write to a file of many instances (`touched-path-reconcile`).
+fn write_level(app: &mut App, dir: &Path, ops: Vec<bevy_ts_levels::writer::Op>) -> bevy_ts_levels::edit::EditSteps {
+    let now = std::fs::read_to_string(dir.join("assets/levels/arena.bsn")).unwrap();
+    let base = bevy_ts_levels::engine::content_hash(now.as_bytes());
+    let r = bevy_ts_levels::edit::write_level(app.world_mut(), bevy_ts_levels::edit::WriteRequest { id: 1, file: "levels/arena.bsn".into(), base, ops });
+    assert_eq!(r.status, "written", "{r:?}");
+    app.world().resource::<bevy_ts_levels::edit::EditSteps>().clone()
+}
+
+fn many(n: usize) -> String {
+    let grunts: Vec<String> = (0..n).map(|i| format!("#G{i}\n@enemies::Grunt {{ @hp: 100.0 }}\nTransform {{ translation: Vec3 {{ x: {i}.0 }} }}\n")).collect();
+    format!("{ARENA}--\n{}", grunts.join("--\n"))
+}
+
+#[test]
+fn a_write_expands_only_the_instance_it_changed() {
+    use bevy_ts_levels::writer::{Op, WValue};
+    let p = |s: &str| s.split('/').map(String::from).collect::<Vec<_>>();
+    let dir = project("levels-scene-partial", &[("package.json", "{}"), ("src/enemies.tsx", ENEMIES), ("assets/levels/arena.bsn", &many(12))]);
+    let mut app = level_app(&dir);
+    assert!(reload(&mut app, false).errors.is_empty());
+    settle_levels(&mut app);
+    let (g7, g8) = (named(&mut app, "G7"), named(&mut app, "G8"));
+    let steps = write_level(&mut app, &dir, vec![Op::SetProp { path: p("G7"), prop: "hp".into(), value: WValue::Float { v: 300.0, f32: true }, field: false }]);
+    assert!(steps.partial, "{:?}", steps.why);
+    assert_eq!(steps.expanded, 1, "G7 alone");
+    assert_eq!((named(&mut app, "G7"), health(&app, g7).1, health(&app, g8).1), (g7, 300.0, 100.0));
+    // An inner override reconciles its instance.
+    let b = named(&mut app, "GruntB");
+    let eye = |s: &str| Op::Set { path: p("GruntB/eye"), component: "Transform".into(), field: p(&format!("translation/{s}")), value: WValue::Float { v: 0.9, f32: true }, containers: vec!["Vec3".into()] };
+    let steps = write_level(&mut app, &dir, vec![eye("y")]);
+    assert!(steps.partial, "{:?}", steps.why);
+    assert_eq!(steps.expanded, 1, "GruntB alone");
+    let world = app.world_mut();
+    let y = world.query::<(&TsxNode, &Transform, &ChildOf)>().iter(world).find(|(n, _, c)| c.parent() == b && n.key_path.last().map(String::as_str) == Some("eye")).map(|(_, t, _)| t.translation.y);
+    assert_eq!(y, Some(0.9));
+    assert_eq!(named(&mut app, "GruntB"), b);
+}
+
+#[test]
+fn a_scene_with_a_binding_takes_the_whole_path() {
+    use bevy_ts_levels::writer::{Op, WValue};
+    let bound = ENEMIES.replace("<Health initialHp={hp} max={hp} />", "<Health initialHp={hp} max={() => hp} />");
+    let dir = project("levels-scene-bound", &[("package.json", "{}"), ("src/enemies.tsx", &bound), ("assets/levels/arena.bsn", ARENA)]);
+    let mut app = level_app(&dir);
+    assert!(reload(&mut app, false).errors.is_empty());
+    settle_levels(&mut app);
+    let steps = write_level(&mut app, &dir, vec![Op::SetProp { path: vec!["GruntA".into()], prop: "hp".into(), value: WValue::Float { v: 300.0, f32: true }, field: false }]);
+    assert!(!steps.partial);
+    assert!(steps.why.as_deref().is_some_and(|w| w.contains("Callbacks")), "{:?}", steps.why);
+}

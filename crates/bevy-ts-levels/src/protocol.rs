@@ -211,7 +211,7 @@ fn level_info(world: &World, path: &str) -> Option<Value> {
                 extensions.push(json!({ "code": u.extension.code(), "line": line, "column": column }));
             }
         }
-        let diagnostics: Vec<Value> = r.error.iter().chain(r.warnings.iter()).map(|e| json!({ "message": e.message, "location": e.location })).collect();
+        let diagnostics: Vec<Value> = r.error.iter().chain(r.warnings.iter().map(|(_, w)| w)).map(|e| json!({ "message": e.message, "location": e.location })).collect();
         json!({
             "path": path,
             "opener": r.opener,

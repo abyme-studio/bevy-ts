@@ -57,6 +57,39 @@ impl WriteResult {
     }
 }
 
+/// Whether a write reconciles only what it changed (`touched-path-reconcile`); on unless set
+/// off. Off, every write reconciles its levels whole, as before.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct PartialEdits(pub bool);
+
+impl Default for PartialEdits {
+    fn default() -> Self {
+        PartialEdits(true)
+    }
+}
+
+/// The last `write_level`'s time by step, in ms, and how it reconciled: for the bench, and for
+/// tests that read the counts (never the times). Not in the protocol.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct EditSteps {
+    pub writer: f64,
+    pub parse: f64,
+    pub shift: f64,
+    pub compose: f64,
+    pub expand: f64,
+    pub reconcile: f64,
+    pub stamp: f64,
+    pub total: f64,
+    /// Every affected level reconciled only the write's units.
+    pub partial: bool,
+    /// Why a level reconciled whole, when one did.
+    pub why: Option<String>,
+    /// Scene component instances the partial reconciles expanded.
+    pub expanded: usize,
+    /// Nodes the partial reconciles checked.
+    pub checked: usize,
+}
+
 /// Results for clients to collect (viewport drains them each frame).
 #[derive(Resource, Default, Debug)]
 pub struct WriteResults(pub Vec<WriteResult>);
@@ -84,11 +117,17 @@ fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
 /// Replaces the loaded asset with `text`, as a reload would: its levels reconcile.
 pub(crate) fn load_text(world: &mut World, file: &str, text: &str) -> Result<(), String> {
     let parsed = syntax::parse(text).map_err(|d| d.render(file, text))?;
+    load_parsed(world, file, text, std::sync::Arc::new(parsed));
+    Ok(())
+}
+
+/// [`load_text`] of text already parsed.
+fn load_parsed(world: &mut World, file: &str, text: &str, parsed: std::sync::Arc<ParsedFile>) {
     let mut paths = Vec::new();
     crate::engine::includes_of(&parsed.entities, &mut paths);
     let server = world.resource::<AssetServer>().clone();
     let includes = paths.iter().map(|p| server.load::<BsnLevel>(crate::compose::resolve_path(file, p))).collect();
-    let level = BsnLevel { includes, hash: content_hash(text.as_bytes()), parsed: std::sync::Arc::new(parsed) };
+    let level = BsnLevel { includes, hash: content_hash(text.as_bytes()), parsed };
     world.resource_mut::<Levels>().remember(level.hash, level.parsed.clone());
     let handle = server.get_handle::<BsnLevel>(file.to_string()).unwrap_or_else(|| server.load::<BsnLevel>(file.to_string()));
     let mut assets = world.resource_mut::<Assets<BsnLevel>>();
@@ -97,7 +136,6 @@ pub(crate) fn load_text(world: &mut World, file: &str, text: &str) -> Result<(),
     } else {
         let _ = assets.insert(&handle, level);
     }
-    Ok(())
 }
 
 /// The text of a field's value in a file, for a conflict's `disk`.
@@ -126,7 +164,11 @@ fn field_text(file: &ParsedFile, path: &[String], component: &str, field: &[Stri
 
 /// Applies a batch to a level file. The world follows the file before this returns.
 pub fn write_level(world: &mut World, req: WriteRequest) -> WriteResult {
-    let result = write_inner(world, &req);
+    let t = std::time::Instant::now();
+    let mut steps = EditSteps::default();
+    let result = write_inner(world, &req, &mut steps);
+    steps.total = t.elapsed().as_secs_f64() * 1000.0;
+    world.insert_resource(steps);
     world.resource_mut::<WriteResults>().0.push(result.clone());
     if result.status != "refused" {
         let event = if result.status == "conflict" { "conflict" } else { result.status };
@@ -137,7 +179,8 @@ pub fn write_level(world: &mut World, req: WriteRequest) -> WriteResult {
     result
 }
 
-fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
+fn write_inner(world: &mut World, req: &WriteRequest, steps: &mut EditSteps) -> WriteResult {
+    let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1000.0;
     let disk_path = world.resource::<Levels>().asset_root.join(&req.file);
     let disk = match std::fs::read_to_string(&disk_path) {
         Ok(t) => t,
@@ -177,6 +220,7 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         None => sidecar_of(world, &req.file),
     };
     let mut ops = req.ops.clone();
+    let t = std::time::Instant::now();
     let planned = {
         let registry = world.resource::<AppTypeRegistry>().clone();
         let registry = registry.read();
@@ -195,6 +239,7 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
             },
         }
     };
+    steps.writer = ms(t);
     let written = match planned {
         Ok(w) => w,
         Err(e) if status == "rebased" && e.reason == "not-found" => return WriteResult::refused(req, "conflict", "target removed", e.message),
@@ -208,7 +253,7 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
     // Where a path lands is read from the new text: an included file that now has one top
     // merges it into the including entity.
     let places = placements(world, &req.file, scene.as_deref()).unwrap_or_default();
-    let top_after = syntax::parse(&written.text).ok().and_then(|f| single_top(&f));
+    let top_after = single_top(&written.parsed);
     for p in &places {
         let after = p.after(top_after.clone());
         for (from, to) in &written.renamed {
@@ -221,10 +266,47 @@ fn write_inner(world: &mut World, req: &WriteRequest) -> WriteResult {
         open_sidecar(world, scene, &req.file);
     }
     let hash = content_hash(written.text.as_bytes());
-    if let Err(e) = load_text(world, &req.file, &written.text) {
-        return WriteResult::refused(req, "refused", "internal", e);
+    let t = std::time::Instant::now();
+    // The disk's text as it was, for what the batch changed of the file's shape.
+    let before = world.resource::<Levels>().version(disk_hash);
+    load_parsed(world, &req.file, &written.text, written.parsed.clone());
+    steps.parse = ms(t);
+    let whole = whole_because(world, &written, before.as_deref(), scene.is_some());
+    let t = std::time::Instant::now();
+    for level in world.resource::<Levels>().affected(&req.file) {
+        let root = world.resource::<Levels>().roots.get(&level).and_then(|r| r.overlay.clone()).unwrap_or_else(|| root_name(&level));
+        let mapped: Option<Vec<Vec<String>>> = places
+            .iter()
+            .filter(|p| p.root == root)
+            .map(|p| p.after(top_after.clone()))
+            .flat_map(|p| written.units.iter().map(move |(u, _)| p.key_of(u)))
+            .collect();
+        let why = match (&whole, mapped) {
+            (Some(w), _) => w.clone(),
+            (None, None) => "a unit is outside every placement".into(),
+            (None, Some(units)) if units.is_empty() => "no placement in the level".into(),
+            (None, Some(units)) => {
+                let units = bevy_ts_tsx::restore::highest(units);
+                if !written.moves.is_empty() {
+                    let s = std::time::Instant::now();
+                    crate::engine::shift_level(world, &level, &req.file, &written.moves);
+                    steps.shift += ms(s);
+                }
+                match crate::engine::reconcile_at(world, &level, &units, steps) {
+                    Ok(()) => continue,
+                    Err(why) => why,
+                }
+            }
+        };
+        steps.why.get_or_insert(why);
+        reconcile_text(world, &level);
     }
-    reconcile_affected(world, &req.file);
+    steps.partial = steps.why.is_none();
+    if steps.partial {
+        steps.reconcile = (ms(t) - steps.compose - steps.expand - steps.stamp - steps.shift).max(0.0);
+    } else {
+        steps.reconcile = ms(t);
+    }
     // What the batch added, placed as the reload placed it: in the file's own root when it is
     // open, else its first inclusion.
     let places = placements(world, &req.file, scene.as_deref()).unwrap_or_default();
@@ -428,6 +510,34 @@ fn check_world(world: &World, schema: &WorldSchema, file: &str, scene: Option<&s
         }
     }
     Ok(())
+}
+
+/// Why the batch reconciles its levels whole, if it does: the partial path is off, the batch
+/// changed the file's includes or its one top entity, the file is a sidecar or was not
+/// remembered, or a unit is the whole file.
+fn whole_because(world: &World, written: &writer::Written, before: Option<&ParsedFile>, sidecar: bool) -> Option<String> {
+    let includes = |f: &ParsedFile| {
+        let mut out = Vec::new();
+        crate::engine::includes_of(&f.entities, &mut out);
+        out
+    };
+    if !world.get_resource::<PartialEdits>().is_none_or(|p| p.0) {
+        return Some("partial edits are off".into());
+    }
+    if sidecar {
+        return Some("a sidecar".into());
+    }
+    let Some(before) = before else { return Some("the file as it was is not remembered".into()) };
+    if includes(before) != includes(&written.parsed) {
+        return Some("the batch changed the file's includes".into());
+    }
+    if single_top(before) != single_top(&written.parsed) {
+        return Some("the batch changed the file's one top entity".into());
+    }
+    if written.units.iter().any(|(u, _)| u.is_empty()) {
+        return Some("the batch renumbered unnamed top entities".into());
+    }
+    None
 }
 
 /// Reconciles every open level that is, or includes, `file`, now.

@@ -11,7 +11,7 @@ use bevy_ts::layout::FieldType;
 use bevy_ts_tsx::desc::{ComponentDesc, ComponentKind, NodeDesc, binding_id};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 /// What a field or prop holds.
@@ -235,7 +235,19 @@ pub struct Composed {
     pub missing: BTreeMap<Vec<String>, Vec<MissingComponent>>,
     /// The level and every file it includes, for reload fan-out.
     pub files: BTreeSet<String>,
-    pub warnings: Vec<ScriptError>,
+    /// Each warning with the key path of the node it arose under (empty: the file).
+    pub warnings: Vec<(Vec<String>, ScriptError)>,
+    /// A compose at units ([`prepare_at`]): per unit, its key path, its description (`None`: not
+    /// in the level) and its index among its parent's children. `nodes` is then empty, and
+    /// `owners`, `scenes`, `missing` and `warnings` hold only what is at or under a unit.
+    pub units: Option<Vec<(Vec<String>, Option<NodeDesc>, usize)>>,
+}
+
+impl Composed {
+    /// Every warning, in key path order.
+    pub fn warning_list(&self) -> impl Iterator<Item = &ScriptError> {
+        self.warnings.iter().map(|(_, w)| w)
+    }
 }
 
 /// Resolves a path written in `from` (an asset path): `./` and `../` against `from`'s directory,
@@ -331,6 +343,9 @@ struct LNode {
     children: Vec<LNode>,
     /// Placeholder entries found while reading.
     missing: Vec<MissingComponent>,
+    /// Off every unit's path in a compose at units: only its key and name are read, so its
+    /// siblings keep their places.
+    stub: bool,
     /// Every patch's saved text keyed `Component.field`, in case the node is kept as an override
     /// (tolerant only).
     kept: BTreeMap<String, String>,
@@ -353,7 +368,53 @@ struct Env<'a> {
     sites: Vec<Site>,
     stack: Vec<String>,
     seen: BTreeSet<String>,
-    warnings: Vec<ScriptError>,
+    warnings: Vec<(Vec<String>, ScriptError)>,
+    /// Scene component instances met above a unit: the units rise to them.
+    risen: Vec<Vec<String>>,
+}
+
+/// The units of a compose at units, by key path: a node is on a unit's path, or (`all`) a unit,
+/// built whole.
+#[derive(Default)]
+struct Trie {
+    all: bool,
+    kids: HashMap<String, Trie>,
+}
+
+impl Trie {
+    fn new(units: &[Vec<String>]) -> Trie {
+        let mut t = Trie::default();
+        for u in units {
+            let mut at = &mut t;
+            for seg in u {
+                at = at.kids.entry(seg.clone()).or_default();
+            }
+            at.all = true;
+        }
+        t
+    }
+}
+
+/// What of an entity a compose builds.
+#[derive(Clone, Copy)]
+enum Filter<'a> {
+    All,
+    Path(&'a Trie),
+    Stub,
+}
+
+impl<'a> Filter<'a> {
+    fn of(t: &'a Trie) -> Filter<'a> {
+        if t.all { Filter::All } else { Filter::Path(t) }
+    }
+
+    fn child(self, key: &str) -> Filter<'a> {
+        match self {
+            Filter::All => Filter::All,
+            Filter::Path(t) => t.kids.get(key).map_or(Filter::Stub, Filter::of),
+            Filter::Stub => Filter::Stub,
+        }
+    }
 }
 
 /// Missing code under `bevy-ts dev` (`tolerant`) is a placeholder entry; otherwise the error.
@@ -394,15 +455,40 @@ pub struct Prepared {
     scenes: Vec<ScenePlacement>,
     sites: Vec<Site>,
     files: BTreeSet<String>,
-    warnings: Vec<ScriptError>,
+    warnings: Vec<(Vec<String>, ScriptError)>,
+    units: Option<Vec<Vec<String>>>,
 }
 
 /// Reads and types the level at `path` and every file it includes. Only a broken file fails it
 /// when `tolerant`: a parse error, a duplicate name, a cycle or a missing include.
 pub fn prepare(path: &str, files: &mut dyn Files, schema: &dyn Schema, tolerant: bool) -> Result<Prepared, Vec<ScriptError>> {
-    let mut env = Env { files, schema, tolerant, requests: Vec::new(), scenes: Vec::new(), sites: Vec::new(), stack: Vec::new(), seen: BTreeSet::new(), warnings: Vec::new() };
-    let top = load(&mut env, path, None).map_err(|e| vec![e])?;
-    Ok(Prepared { top, tolerant, requests: env.requests, scenes: env.scenes, sites: env.sites, files: env.seen, warnings: env.warnings })
+    prepare_at(path, files, schema, tolerant, None)
+}
+
+/// [`prepare`] of only `units` (key paths, none under another): what is on a unit's path is read
+/// with its patches and frames, what is at or under one whole, the rest by key and name only.
+/// Only the units' scene component instances are requests. A unit under an instance rises to
+/// it (decision 3 of `touched-path-reconcile`), through includes. `None` reads it all.
+pub fn prepare_at(path: &str, files: &mut dyn Files, schema: &dyn Schema, tolerant: bool, units: Option<&[Vec<String>]>) -> Result<Prepared, Vec<ScriptError>> {
+    // The empty path is the whole level.
+    let mut units: Option<Vec<Vec<String>>> = units.filter(|u| !u.iter().any(Vec::is_empty)).map(<[_]>::to_vec);
+    loop {
+        let trie = units.as_deref().map(Trie::new);
+        let filter = trie.as_ref().map_or(Filter::All, Filter::of);
+        let mut env = Env { files: &mut *files, schema, tolerant, requests: Vec::new(), scenes: Vec::new(), sites: Vec::new(), stack: Vec::new(), seen: BTreeSet::new(), warnings: Vec::new(), risen: Vec::new() };
+        let top = load(&mut env, path, None, &[], filter).map_err(|e| vec![e])?;
+        if let Some(u) = units.as_mut().filter(|_| !env.risen.is_empty()) {
+            // Read again with each risen instance as the unit for what is under it.
+            for r in &env.risen {
+                u.retain(|x| !x.starts_with(r));
+                if !u.iter().any(|x| r.starts_with(x)) {
+                    u.push(r.clone());
+                }
+            }
+            continue;
+        }
+        return Ok(Prepared { top, tolerant, requests: env.requests, scenes: env.scenes, sites: env.sites, files: env.seen, warnings: env.warnings, units });
+    }
 }
 
 /// An instance's expansion with what it was placed with, taken once by [`finish`].
@@ -427,19 +513,43 @@ impl Prepared {
             let node = finish(n, None, &mut fin, &[], &[], &mut composed)?;
             composed.nodes.push(node);
         }
+        if let Some(units) = self.units {
+            let within = |p: &Vec<String>| units.iter().any(|u| p.starts_with(u));
+            composed.owners.retain(|p, _| within(p));
+            composed.scenes.retain(|p, _| within(p));
+            composed.missing.retain(|p, _| within(p));
+            composed.warnings.retain(|(p, _)| within(p));
+            let mut nodes = std::mem::take(&mut composed.nodes);
+            composed.units = Some(units.iter().map(|u| take_at(&mut nodes, u).map_or((u.clone(), None, 0), |(n, i)| (u.clone(), Some(n), i))).collect());
+        }
+        composed.warnings.sort_by(|a, b| a.0.cmp(&b.0));
         Ok(composed)
     }
+}
+
+/// The node at a key path, taken out of `nodes`, with its index among its siblings.
+fn take_at(nodes: &mut Vec<NodeDesc>, path: &[String]) -> Option<(NodeDesc, usize)> {
+    let (last, above) = path.split_last()?;
+    let mut list = nodes;
+    for seg in above {
+        list = &mut list.iter_mut().find(|n| &n.key == seg)?.children;
+    }
+    let i = list.iter().position(|n| &n.key == last)?;
+    Some((std::mem::replace(&mut list[i], empty(last, &SourceLocation { file: String::new(), line: 0, column: 0 })), i))
 }
 
 impl Composed {
     /// Each placeholder entry as a warning with its place, once its entries are final.
     pub fn warn_missing(&mut self) {
-        let warnings: Vec<ScriptError> = self.missing.values().flatten().map(MissingComponent::warning).collect();
+        let warnings: Vec<(Vec<String>, ScriptError)> = self.missing.iter().flat_map(|(p, m)| m.iter().map(|m| (p.clone(), m.warning()))).collect();
         self.warnings.extend(warnings);
+        self.warnings.sort_by(|a, b| a.0.cmp(&b.0));
     }
 }
 
-fn load(env: &mut Env, path: &str, at: Option<(&FileCtx, Span)>) -> Result<Vec<LNode>, ScriptError> {
+/// Reads the file at `path` as the entities under `keys` (an included file: under the including
+/// entity; one top entity merges into it, so has its key path).
+fn load(env: &mut Env, path: &str, at: Option<(&FileCtx, Span)>, keys: &[String], filter: Filter) -> Result<Vec<LNode>, ScriptError> {
     let locate = |m: String| match at {
         Some((ctx, span)) => ctx.err(m, span),
         None => ScriptError::new(m),
@@ -453,13 +563,17 @@ fn load(env: &mut Env, path: &str, at: Option<(&FileCtx, Span)>) -> Result<Vec<L
     let ctx = Arc::new(FileCtx { path: path.to_string(), index: LineIndex::new(&parsed.source), parsed });
     env.seen.insert(path.to_string());
     env.stack.push(path.to_string());
-    let entities = ctx.parsed.entities.clone();
-    let out = build_list(env, &ctx, &entities, &[]);
+    let merged = at.is_some() && ctx.parsed.entities.items.iter().filter(|e| !e.entries.is_empty()).count() == 1;
+    let out = build_list(env, &ctx, &ctx.parsed.entities, &[], keys, filter, merged);
     env.stack.pop();
     out
 }
 
-fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[String]) -> Result<Vec<LNode>, ScriptError> {
+/// The entities of `list`, at name path `prefix` in the file and key path `keys` in the level:
+/// each built as `filter` says for its key (`merged`: the one top entity of an include, which
+/// takes the including entity's key path, `keys`, and filter).
+#[allow(clippy::too_many_arguments)]
+fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[String], keys: &[String], filter: Filter, merged: bool) -> Result<Vec<LNode>, ScriptError> {
     let mut names = HashSet::new();
     let mut unnamed = 0;
     let mut out = Vec::new();
@@ -477,10 +591,23 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
             None => {
                 let key = format!("#{unnamed}");
                 unnamed += 1;
-                env.warnings.push(ctx.err(format!("unnamed entity, identified by position ({key}); name it, or the writer names it on its first edit"), e.span));
                 (key, None)
             }
         };
+        let (key_path, mut filter) = if merged {
+            (keys.to_vec(), filter)
+        } else {
+            (keys.iter().chain([&key]).cloned().collect::<Vec<_>>(), filter.child(&key))
+        };
+        if name.is_none() && !matches!(filter, Filter::Stub) {
+            env.warnings.push((key_path.clone(), ctx.err(format!("unnamed entity, identified by position ({key}); name it, or the writer names it on its first edit"), e.span)));
+        }
+        let stub = matches!(filter, Filter::Stub);
+        // A scene component instance above a unit is read whole, with what overrides it.
+        if matches!(filter, Filter::Path(_)) && e.entries.iter().any(|x| matches!(x, Entry::Prefab(_))) {
+            env.risen.push(key_path.clone());
+            filter = Filter::All;
+        }
         let mut name_path = prefix.to_vec();
         name_path.push(key.clone());
         let mut node = LNode {
@@ -493,14 +620,19 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
             patches: Vec::new(),
             children: Vec::new(),
             missing: Vec::new(),
+            stub,
             kept: BTreeMap::new(),
         };
+        if stub {
+            out.push(node);
+            continue;
+        }
         for entry in &e.entries {
             match entry {
                 Entry::Name(_) => {}
                 Entry::Include(i) => {
                     let target = resolve_path(&ctx.path, &i.path);
-                    node.base = Base::Include(load(env, &target, Some((ctx, i.span)))?);
+                    node.base = Base::Include(load(env, &target, Some((ctx, i.span)), &key_path, filter)?);
                 }
                 Entry::Prefab(p) => {
                     let written = p.path.joined();
@@ -611,7 +743,7 @@ fn build_list(env: &mut Env, ctx: &Arc<FileCtx>, list: &EntityList, prefix: &[St
                     if r.path.last() != "Children" {
                         return Err(ctx.err(format!("{} lists are not supported in levels; use Children [ … ]", r.path.joined()), r.path.span));
                     }
-                    node.children.extend(build_list(env, ctx, &r.list, &name_path)?);
+                    node.children.extend(build_list(env, ctx, &r.list, &name_path, &key_path, filter, false)?);
                 }
             }
         }
@@ -654,6 +786,9 @@ fn keep(l: &LNode, prefix: &[String], out: &mut Vec<KeptOverride>) {
 
 fn finish(l: LNode, key: Option<String>, fin: &mut Fin, parent: &[String], frames: &[Frame], out: &mut Composed) -> Result<NodeDesc, Vec<ScriptError>> {
     let key = key.unwrap_or_else(|| l.key.clone());
+    if l.stub {
+        return Ok(NodeDesc { name: l.name, ..empty(&key, &l.ctx.at(l.span)) });
+    }
     let mut path = parent.to_vec();
     path.push(key.clone());
     let mut chain = frames.to_vec();
@@ -767,6 +902,9 @@ fn merge_child(node: &mut NodeDesc, child: LNode, fin: &mut Fin, path: &[String]
         node.children.push(finish(child, None, fin, path, &below, out)?);
         return Ok(());
     };
+    if child.stub {
+        return Ok(());
+    }
     if !matches!(child.base, Base::None) {
         return Err(vec![child.ctx.err(format!("{} overrides an included child, so it cannot include anything itself", child.key), child.span)]);
     }

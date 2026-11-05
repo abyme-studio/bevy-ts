@@ -5,6 +5,7 @@
 
 use crate::syntax::{self, Entity, EntityList, Entry, Fields, ParsedFile, Patch, Span, ValueKind, lex::quote};
 use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
 
 /// A value the writer prints.
 #[derive(Clone, Debug, PartialEq)]
@@ -105,7 +106,7 @@ pub enum Op {
 
 /// A batch's result: the new text, the changed lines (1-based, inclusive, in the new text) and
 /// the batch that undoes it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Written {
     pub text: String,
     pub lines: Vec<(u32, u32)>,
@@ -116,6 +117,58 @@ pub struct Written {
     /// Name paths of the entities the batch added (an add or a restore), in order, as they are
     /// after the whole batch.
     pub created: Vec<Vec<String>>,
+    /// What the batch changed, as name paths in the new text, none under another, each with
+    /// whether it is gone: what a partial reconcile rebuilds. The empty path is the whole file.
+    pub units: Vec<(Vec<String>, bool)>,
+    /// The new text, parsed: the last op's verify parse.
+    pub parsed: Arc<ParsedFile>,
+    /// Where places in the old text outside the units are in the new one.
+    pub moves: Moves,
+}
+
+/// Where a place (1-based line and column, in chars) of the old text is in the new: one map per
+/// op, in order. Only a place outside what the batch changed maps to where its text went.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Moves(Vec<Vec<Anchor>>);
+
+/// Places at or after `from` in an op's old text move with it to `to`: later lines by the line
+/// difference, the rest of `from`'s line by the column difference too.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Anchor {
+    from: (u32, u32),
+    to: (u32, u32),
+}
+
+impl Moves {
+    /// Nothing moved.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn map(&self, line: u32, column: u32) -> (u32, u32) {
+        let mut at = (line, column);
+        for op in &self.0 {
+            let k = op.partition_point(|a| a.from <= at);
+            if let Some(a) = k.checked_sub(1).map(|k| op[k]) {
+                at = if at.0 == a.from.0 { (a.to.0, a.to.1 + at.1 - a.from.1) } else { (at.0 + a.to.0 - a.from.0, at.1) };
+            }
+        }
+        at
+    }
+
+    /// An op's map, from its splices on `old` that made `new`; none when it moves nothing.
+    fn push(&mut self, old: &str, new: &str, splices: &[(usize, usize, String)]) {
+        let (oi, ni) = (syntax::LineIndex::new(old), syntax::LineIndex::new(new));
+        let mut ends: Vec<usize> = splices.iter().map(|(_, e, _)| *e).collect();
+        ends.sort();
+        ends.dedup();
+        // An anchor followed by only whitespace up to the next one moves no place.
+        let next: Vec<usize> = ends.iter().skip(1).copied().chain([old.len()]).collect();
+        let anchors: Vec<Anchor> = ends.iter().zip(next).filter(|(e, n)| !old[**e..*n].trim().is_empty()).map(|(&e, _)| Anchor { from: oi.line_col(old, e), to: ni.line_col(new, shift(splices, e)) }).collect();
+        if anchors.iter().any(|a| a.from != a.to) {
+            self.0.push(anchors);
+        }
+    }
 }
 
 /// Why a batch was refused.
@@ -152,6 +205,9 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
     let mut changed: Vec<(usize, usize)> = Vec::new();
     let mut renamed = Vec::new();
     let mut created: Vec<Vec<String>> = Vec::new();
+    let mut units: Vec<(Vec<String>, bool)> = Vec::new();
+    let mut moves = Moves::default();
+    let mut last = None;
     // Paths earlier ops changed, and lists whose positional ids they shifted.
     let mut claimed: Vec<Vec<String>> = Vec::new();
     let mut shifted: Vec<Vec<String>> = Vec::new();
@@ -183,7 +239,7 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
         // What earlier ops added moves with this one's renames, and with unnamed siblings put
         // back or taken out before it.
         for (from, to) in &renames {
-            for c in created.iter_mut().filter(|c| c.starts_with(from)) {
+            for c in created.iter_mut().chain(units.iter_mut().map(|(u, _)| u)).filter(|c| c.starts_with(from)) {
                 *c = to.iter().chain(&c[from.len()..]).cloned().collect();
             }
             claimed.extend([from.clone(), to.clone()]);
@@ -191,23 +247,26 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
         }
         match op {
             Op::Add { .. } | Op::Restore { .. } => {
-                shift_places(&mut created, &touched[0], 1);
+                shift_places(created.iter_mut().chain(units.iter_mut().map(|(u, _)| u)), &touched[0], 1);
                 created.push(touched[0].clone());
                 claimed.push(touched[0].clone());
                 shifted.push(touched[0][..touched[0].len() - 1].to_vec());
             }
             Op::Delete { path } => {
                 created.retain(|c| !c.starts_with(path));
-                shift_places(&mut created, path, -1);
+                shift_places(created.iter_mut().chain(units.iter_mut().map(|(u, _)| u)), path, -1);
                 claimed.push(path.clone());
                 shifted.push(path[..path.len() - 1].to_vec());
             }
             _ => {}
         }
+        units.extend(op_units(op, &touched, &renames));
         renamed.extend(renames);
         let (next, ranges) = splice(&text, &splices);
         let parsed = syntax::parse(&next).map_err(|d| at_op(refuse("internal", format!("the edit would not parse: {} ({op:?})", d.message))))?;
         verify(&file, &parsed, &touched).map_err(at_op)?;
+        moves.push(&text, &next, &splices);
+        last = Some(parsed);
         // Earlier changed ranges move with this op's splices.
         changed = changed.into_iter().map(|(s, e)| (shift(&splices, s), shift(&splices, e))).collect();
         changed.extend(ranges);
@@ -218,15 +277,51 @@ pub fn apply(src: &str, ops: &[Op], sidecar: bool, resolve: Option<Resolve>) -> 
     let mut lines: Vec<(u32, u32)> = changed.iter().map(|&(s, e)| (index.line(s), index.line(e.max(s + 1) - 1).max(index.line(s)))).collect();
     lines.sort();
     lines.dedup();
-    Ok(Written { text, lines, inverse, renamed, created })
+    let parsed = match last {
+        Some(p) => p,
+        None => syntax::parse(&text).map_err(|d| refuse("internal", format!("the file does not parse: {}", d.message)))?,
+    };
+    Ok(Written { text, lines, inverse, renamed, created, units: highest(units), parsed: Arc::new(parsed), moves })
+}
+
+/// What one op changed, as name paths in its new text, each with whether it is gone (decision 1
+/// of `touched-path-reconcile`). Putting in, taking out or renaming an unnamed entity renumbers
+/// the unnamed siblings after it: their parent is the unit.
+fn op_units(op: &Op, touched: &[Vec<String>], renames: &Renames) -> Vec<(Vec<String>, bool)> {
+    let place = |p: &[String]| p.last().is_some_and(|s| s.starts_with('#'));
+    let parent = |p: &[String]| (p[..p.len() - 1].to_vec(), false);
+    match op {
+        Op::Add { .. } | Op::Restore { .. } if place(&touched[0]) => vec![parent(&touched[0])],
+        Op::Delete { path } | Op::Rename { path, .. } if place(path) => vec![parent(path)],
+        Op::Delete { path } => vec![(path.clone(), true)],
+        _ => {
+            let mut out: Vec<(Vec<String>, bool)> = renames.iter().flat_map(|(from, to)| [(from.clone(), true), (to.clone(), false)]).collect();
+            out.extend(touched.iter().filter(|t| !renames.iter().any(|(from, _)| from == *t)).map(|t| (t.clone(), false)));
+            out
+        }
+    }
+}
+
+/// Units reduced to the highest: none under another; a path both gone and present is present.
+fn highest(mut units: Vec<(Vec<String>, bool)>) -> Vec<(Vec<String>, bool)> {
+    units.sort();
+    let mut out: Vec<(Vec<String>, bool)> = Vec::new();
+    for (path, gone) in units {
+        match out.last_mut() {
+            Some((p, g)) if *p == path => *g &= gone,
+            Some((p, _)) if path.starts_with(p) => {}
+            _ => out.push((path, gone)),
+        }
+    }
+    out
 }
 
 /// Moves the `#n` of `created` entries at or after `at`'s place in its list by `by`, when `at` is
 /// an unnamed entity put in (1) or taken out (-1).
-fn shift_places(created: &mut [Vec<String>], at: &[String], by: isize) {
+fn shift_places<'a>(paths: impl Iterator<Item = &'a mut Vec<String>>, at: &[String], by: isize) {
     let Some((last, list)) = at.split_last() else { return };
     let Some(k) = last.strip_prefix('#').and_then(|n| n.parse::<isize>().ok()) else { return };
-    for c in created.iter_mut().filter(|c| c.len() > list.len() && c.starts_with(list)) {
+    for c in paths.filter(|c| c.len() > list.len() && c.starts_with(list)) {
         let seg = &mut c[list.len()];
         if let Some(j) = seg.strip_prefix('#').and_then(|n| n.parse::<isize>().ok())
             && (j > k || (j == k && by > 0))
@@ -940,6 +1035,11 @@ fn written_index(list: &EntityList, raw: usize) -> usize {
 /// Whether some proper ancestor on `path` is an instance: what is below it is its prefab's.
 fn under_instance(file: &ParsedFile, path: &[String]) -> bool {
     (1..path.len()).any(|n| find(file, &path[..n]).is_some_and(|a| a.entity.inclusion().is_some()))
+}
+
+/// Whether the entity at `path` is written in the file: what [`written_paths`] holds, for one.
+pub fn is_written(file: &ParsedFile, path: &[String]) -> bool {
+    !under_instance(file, path) && find(file, path).is_some()
 }
 
 /// The name paths of the entities written in the file, rather than coming from a prefab or an
