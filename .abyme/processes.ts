@@ -208,6 +208,8 @@ const processes = {
   android: { cmd: "bash -c 'set -o pipefail; mkdir -p target; scripts/android 2>&1 | grep --line-buffered -v ld64 | tee target/android.log | tail -40'" },
   // Task 4.6: the library on a headless emulator, from bench/android-smoke (no window on screen).
   "android-smoke": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/android-smoke/run.sh 2>&1 | tee target/android-smoke.log | tail -40'" },
+  // Change touched-path-reconcile, task 6.2: one write's time by step, 2,000 and 20,000 entities; $RUNS runs. run.sh takes its slot.
+  "edit-split-bench": { cmd: "bash -c 'set -o pipefail; mkdir -p target; bench/edit-split/run.sh ${RUNS:-3} 2>&1 | grep -v ld64 | tee target/edit-split-bench.log | tail -40'" },
   // The same for agent town's two worlds, against its stand-in abymed (bench/android-smoke/abyme-game.mjs).
   "android-agent-town": { cmd: "bash -c 'set -o pipefail; mkdir -p target; node bench/android-smoke/abyme-game.mjs town 2>&1 | tee target/android-agent-town.log | tail -40'" },
   "android-learn": { cmd: "bash -c 'set -o pipefail; mkdir -p target; node bench/android-smoke/abyme-game.mjs learn 2>&1 | tee target/android-learn.log | tail -40'" },

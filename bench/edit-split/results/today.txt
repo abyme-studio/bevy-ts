@@ -1,0 +1,32 @@
+19:01  up 7 days, 13:40, 1 user, load averages: 69.00 69.25 70.68
+RESULT n=2000 arm=today op=move total=206.62
+RESULT n=2000 arm=today op=prop total=325.50
+RESULT n=2000 arm=today op=add total=443.96
+RESULT n=2000 arm=today op=delete total=867.31
+RESULT n=2000 arm=today op=rename total=869.01
+RESULT n=20000 arm=today op=move total=5606.07
+RESULT n=20000 arm=today op=prop total=2676.89
+RESULT n=20000 arm=today op=add total=3584.66
+RESULT n=20000 arm=today op=delete total=9323.74
+RESULT n=20000 arm=today op=rename total=9674.41
+RESULT n=2000 arm=today op=move total=437.49
+RESULT n=2000 arm=today op=prop total=1008.50
+RESULT n=2000 arm=today op=add total=231.37
+RESULT n=2000 arm=today op=delete total=360.02
+RESULT n=2000 arm=today op=rename total=185.16
+RESULT n=20000 arm=today op=move total=9296.75
+RESULT n=20000 arm=today op=prop total=6911.27
+RESULT n=20000 arm=today op=add total=6567.38
+RESULT n=20000 arm=today op=delete total=3314.29
+RESULT n=20000 arm=today op=rename total=6727.08
+RESULT n=2000 arm=today op=move total=920.23
+RESULT n=2000 arm=today op=prop total=1110.01
+RESULT n=2000 arm=today op=add total=198.89
+RESULT n=2000 arm=today op=delete total=220.36
+RESULT n=2000 arm=today op=rename total=1113.06
+RESULT n=20000 arm=today op=move total=1912.52
+RESULT n=20000 arm=today op=prop total=1473.08
+RESULT n=20000 arm=today op=add total=2299.65
+RESULT n=20000 arm=today op=delete total=1053.41
+RESULT n=20000 arm=today op=rename total=2001.78
+19:13  up 7 days, 13:52, 1 user, load averages: 70.60 89.59 85.83

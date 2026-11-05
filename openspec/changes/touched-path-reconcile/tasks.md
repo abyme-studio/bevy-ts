@@ -1,13 +1,15 @@
 ## 0. Before
 
 - [x] 0.1 compose-regression has landed on main and this branch is rebased on it; check `compose.rs` still has `prepare`/`finish` and `build_list`, else adapt decision 4 to its structure first. compose-regression never landed (no branch, no commit on main, 2026-11-05); `compose.rs` has `prepare`/`finish` and `build_list` as decision 4 assumes. The full path keeps today's compose cost
-- [ ] 0.2 Bench first (6.1, 6.2): record today's split, before any change
+- [x] 0.2 Bench first (6.1, 6.2): record today's split, before any change (bench/edit-split/results/today.txt, 3 runs at load 70-90: 0.2-1.0 s per write at 2,000 entities, 2.7-6.7 s at 20,000; step split comes with EditSteps)
 
 ## 1. Writer (`crates/bevy-ts-levels/src/writer.rs`)
 
 - [ ] 1.1 `Written.units`: each op's touched name paths and whether removed (design, decision 1), positional renames included, reduced to the highest
 - [ ] 1.2 `Written.parsed`: the verify step's parse of the new text
 - [ ] 1.3 Unit tests in `writer.rs`: units of each op kind, a reparent's two, a rename's shifted siblings, units under one another reduced
+- [ ] 1.4 `Written.shifts`: per op, the line and delta where a splice changes the line count with content after it. Any shift takes the full path at first (sources, owners, kept-tree locations below the edit would be stale)
+- [ ] 1.5 Required (lead): shift lines in place instead (`TsxNode.source`, component sources and overrides, `LevelInstance` owner lines, `LevelRoot` owners and diagnostics, kept-tree locations), so a delete or reparent stays partial
 
 ## 2. Compose (`crates/bevy-ts-levels/src/compose.rs`)
 
@@ -40,15 +42,15 @@
 - [ ] 5.2 Same file: the equivalence test. Each op kind on the same files with `PartialEdits` on and off; `tsx_tree`, components and `LevelInstance`s equal
 - [ ] 5.3 Same file: the full-path cases: an include added, a single top changed, a level that failed its last reconcile, a rebased write (disk change whole, the write partial)
 - [ ] 5.4 `crates/bevy-ts-cli/tests/it/levels_scene.rs` (V8): one of many `Grunt`s edited expands one instance; an inner `eye` override reconciles its instance; a scene with `onClick` takes the full path
-- [ ] 5.5 Existing levels, levels_protocol, levels_walk, play_stop and dev_edit tests pass unchanged
+- [x] 5.5 ~~Existing levels, levels_protocol, levels_walk, play_stop and dev_edit tests pass unchanged~~ Dropped (operator, 2026-11-05: tests opt-in; only 5.1-5.4 run)
 
 ## 6. Bench (`bench/edit-split/`)
 
-- [ ] 6.1 New crate outside the workspace, as `bench/world-saves`: `Cargo.toml` with path deps on `bevy-ts`, `bevy-ts-v8`, `bevy-ts-tsx`, `bevy-ts-levels`, `bevy-ts-cli`; `run.sh [runs]`; `src/main.rs` builds `levels_bench`'s app and level
+- [x] 6.1 New crate outside the workspace, as `bench/world-saves`: `Cargo.toml` with path deps on `bevy-ts`, `bevy-ts-v8`, `bevy-ts-tsx`, `bevy-ts-levels`, `bevy-ts-cli`; `run.sh [runs]`; `src/main.rs` builds `levels_bench`'s app and level
 - [ ] 6.2 At 1,000 and 10,000 instances (2,000 and 20,000 entities), 3 runs, medians: for a move, a prop edit, an add, a delete and a rename, `PartialEdits` off then on; print `EditSteps` per step (compose, expand, reconcile, other = total less those) as a markdown table
 - [ ] 6.3 `docs/research/touched-path-reconcile.md`: the table, today against the plan, with the targets: under 50 ms per write at 20,000 entities and under 8 at 2,000; compose, expand and reconcile each under 2 ms at 20,000
 
 ## 7. Docs
 
 - [ ] 7.1 `docs/levels.md`: a write reconciles what it touched; when it reconciles the whole level; external changes still whole
-- [ ] 7.2 Workspace gate once, last: build, tests, clippy
+- [x] 7.2 ~~Workspace gate once, last: build, tests, clippy~~ Dropped (operator, 2026-11-05: checks cut; land's check runs on the batch)

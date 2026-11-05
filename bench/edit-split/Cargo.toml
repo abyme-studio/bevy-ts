@@ -1,0 +1,26 @@
+[package]
+name = "edit-split-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Where one level write's time goes, by step, with partial reconciles off and on (openspec change
+# `touched-path-reconcile`, tasks 6.1 and 6.2). Out of the workspace, so the gate never builds it
+# (docs/testing.md, rule 8). Release, Bevy linked statically, as what ships. `run.sh [runs]`.
+[dependencies]
+bevy = { version = "=0.20.0", default-features = false }
+bevy-ts = { path = "../../crates/bevy-ts", default-features = false }
+bevy-ts-v8 = { path = "../../crates/bevy-ts-v8" }
+bevy-ts-tsx = { path = "../../crates/bevy-ts-tsx" }
+bevy-ts-levels = { path = "../../crates/bevy-ts-levels" }
+bevy-ts-cli = { path = "../../crates/bevy-ts-cli" }
+serde_json = "1"
+
+# As the engine builds Bevy (the workspace's patch).
+[patch.crates-io]
+bevy_render = { path = "../../vendor/bevy_render" }
+
+[profile.release]
+debug = false
+
+[workspace]
