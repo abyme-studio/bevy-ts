@@ -56,4 +56,5 @@ dylib for tests).
 
 Tests are opt-in; nothing is required before landing. To run the tests of what a branch changed,
 use the `scoped` process, `TESTS` naming the `tests/it` filters it touched (docs/check-slots.md,
-"Scoped tests"). No workspace run is asked of a branch, and never a failed run again unchanged. A red main is fixed forward.
+"Scoped tests"). No workspace run is asked of a branch, and never a failed run again unchanged. A red main is fixed
+forward.

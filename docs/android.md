@@ -84,7 +84,7 @@ fat LTO, stripped, unwinding kept for the engine's panic guard).
 - deno_core 0.412 does not compile for Android as published (bionic's errno). The script patches a
   copy (`scripts/android-patches/`) in for its build only and puts `Cargo.lock` back after. The patch
   is carried here, not sent upstream (operator, 2026-10-28): a deno_core upgrade re-checks it.
-- CI builds the library on every push and checks its JNI exports (`ci.yml`, `android`).
+- No CI builds the library on a push. Run `scripts/android` by hand to build it and check its JNI exports.
 
 `bench/android-smoke/run.sh` plays a game on a headless arm64 emulator through a minimal Java host,
 loading the library from `filesDir`, and records sizes and the first-frame time in
