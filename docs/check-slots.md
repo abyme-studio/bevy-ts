@@ -36,7 +36,8 @@ script asks for its own slot, and `ABYME_GATE_HELD` or a missing gate-slot skips
 
 ## Scoped tests
 
-The rule (operator, 2026-10-28): a branch runs the tests of what it changed, and then lands.
+Tests are opt-in (operator, 2026-11-05): nothing is required before landing. When you judge a test
+worth running, run `scoped`, and nothing wider.
 
 - Run `scoped`: `abyme call processes start name=scoped`. It runs `scripts/scoped-test.sh`: `cargo
   test` and clippy on the crates whose files the branch changed since its merge base with
@@ -49,7 +50,7 @@ The rule (operator, 2026-10-28): a branch runs the tests of what it changed, and
 - Generated files have their own entries: `gen-bevy-types`, `gen-protocol`. `npm-test` runs the
   package's vitest suite.
 - No per-team gate entry in `.abyme/processes.ts`: pass `env` to `scoped`. No full-workspace run,
-  load-flake sweep or hour-long gate before landing. `.abyme/land.ts` checks nothing.
+  load-flake sweep or hour-long gate is asked of a branch. `.abyme/land.ts` checks nothing.
 - Never rerun a failed run unchanged. Read its log, change something, then run it again.
 - A red main is fixed forward, by whoever's change it names, never reverted.
 

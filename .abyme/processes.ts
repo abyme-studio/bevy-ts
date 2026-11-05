@@ -5,8 +5,9 @@ import type { ProcessFile } from "@abyme/processes";
 // long-running server holds a slot for its build only, so its entry wraps that step in gate-slot itself.
 // A run on a slot lives 30 min at most (`gated`); an entry that needs longer sets `limit` and says why.
 //
-// A branch is tested by `scoped` and nothing wider (docs/check-slots.md, "Scoped tests"). Add no
-// per-team gate here: pass `env` to `scoped` instead. A bench or a tool that is not a gate may have
+// Tests are opt-in: nothing here is required before landing. To test a branch, `scoped` is the one
+// to use and nothing wider (docs/check-slots.md, "Scoped tests"). Add no per-team gate here: pass
+// `env` to `scoped` instead. A bench or a tool that is not a gate may have
 // an entry; it goes when its team ends, unless a doc names it.
 // A bench that builds the workspace cold, per arm, over several arms: 2 h on a quiet machine.
 const LONG_BENCH = 2 * 3600;
