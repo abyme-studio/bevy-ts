@@ -1464,7 +1464,7 @@ game::Health { max: 900.0 }
         assert!(warnings(&f).iter().any(|w| w == "levels/arena.bsn:9:1 levels: warning: unknown component Transfrom (did you mean Transform?)"), "{:?}", warnings(&f));
         let root = &f.app.world().resource::<Levels>().roots["levels/arena.bsn"];
         assert!(root.error.is_none());
-        assert!(root.warnings.iter().any(|w| w.message.starts_with("warning: unknown component Transfrom")));
+        assert!(root.warnings.iter().any(|(_, w)| w.message.starts_with("warning: unknown component Transfrom")));
         // An entity with nothing missing carries no marker.
         let a = f.by_name("EnemyA");
         assert!(f.app.world().get::<MissingComponents>(a).is_none());
@@ -1648,9 +1648,13 @@ mod partial {
         f.app.world().resource::<EditSteps>().clone()
     }
 
+    /// The change ticks of an entity's components, but for the two that hold source places, which a
+    /// write that moved lines moves (`shift_level`).
     fn ticks(f: &Fixture, e: Entity) -> Vec<bevy::ecs::change_detection::Tick> {
-        let er = f.app.world().entity(e);
-        er.archetype().iter_components().filter_map(|c| er.get_change_ticks_by_id(c)).map(|t| t.changed).collect()
+        let world = f.app.world();
+        let places = [world.component_id::<TsxNode>(), world.component_id::<LevelInstance>()];
+        let er = world.entity(e);
+        er.archetype().iter_components().filter(|c| !places.contains(&Some(*c))).filter_map(|c| er.get_change_ticks_by_id(c)).map(|t| t.changed).collect()
     }
 
     /// Every level entity: its key path, node, `LevelInstance`, `Transform`, parent's key path and

@@ -463,7 +463,7 @@ fn one_of_many_instances_expands_alone() {
     assert_eq!(ex.calls.iter().map(Vec::len).collect::<Vec<_>>(), [1], "one request");
     assert_eq!(ex.calls[0][0].props["hp"], json!(103.0));
     assert_eq!(c.units.as_ref().unwrap()[0].2, 3, "its index among the tops");
-    assert_eq!(c.owners.keys().cloned().collect::<Vec<_>>(), [key(&["G3"]), key(&["G3", "eye"])]);
+    assert_eq!(c.owners.keys().cloned().collect::<Vec<_>>(), [key(&["G3"])]);
     same_as_whole(&list, &c);
 }
 

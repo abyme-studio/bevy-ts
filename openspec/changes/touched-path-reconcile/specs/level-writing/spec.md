@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: A write reconciles only what it touched
-After a write, levels SHALL reconcile, in each open level the file is in, only the subtrees at the name paths the batch touched: an edited entity, an added or restored one, a deleted one, a reparented one's old and new place, and a renamed one under its new name with the positional names the write shifted. A touched path inside a scene component instance SHALL reconcile the whole instance. Every other entity of the level SHALL keep its entity, its components and its change ticks, and SHALL NOT be composed, expanded or resolved again. The world after the write SHALL be the one a reconcile of the whole level makes.
+After a write, levels SHALL reconcile, in each open level the file is in, only the subtrees at the name paths the batch touched: an edited entity, an added or restored one, a deleted one, a reparented one's old and new place, and a renamed one under its new name with the positional names the write shifted. A touched path inside a scene component instance SHALL reconcile the whole instance. Every other entity of the level SHALL keep its entity, its components and its change ticks (but for the source places a write moved: its node's and its `LevelInstance`'s lines), and SHALL NOT be composed, expanded or resolved again. The world after the write SHALL be the one a reconcile of the whole level makes.
 
 #### Scenario: Moving one of ten thousand enemies
 - **WHEN** a level holds 10,000 `Grunt` instances and the viewport writes `G7`'s `Transform.translation.x`

@@ -427,11 +427,11 @@ pub fn rekey(world: &mut World, root: &str, from: &[String], to: &[String]) -> u
     if moves.iter().any(|(_, _, p)| tree.entities.contains_key(&desc::node_id(root, p)) && !moves.iter().any(|(_, old, _)| *old == desc::node_id(root, p))) {
         return 0;
     }
+    let from_list = (root.to_string(), tree.parent_row(root, from));
     rekey_kept(world, root, from, to);
     if moves.is_empty() {
         return 0;
     }
-    let from_list = (root.to_string(), tree.parent_row(root, from));
     let mut ids = std::collections::HashMap::new();
     if moves.iter().any(|(_, _, p)| p == to) {
         world.resource_mut::<TsxTree>().moved.insert(desc::node_id(root, to), root.to_string());
@@ -496,8 +496,22 @@ fn rekey_kept(world: &mut World, root: &str, from: &[String], to: &[String]) {
             Some((first, rest)) => list(&mut nodes.iter_mut().find(|n| n.path.last() == Some(first))?.children, rest),
         }
     }
+    fn ids(n: &reconcile::RNode, out: &mut Vec<u64>) {
+        out.push(n.id);
+        n.children.iter().for_each(|c| ids(c, out));
+    }
+    // Each node's index among its siblings, under `n` and in `l`: what a whole reconcile records.
+    fn record(order: &mut std::collections::HashMap<u64, u32>, nodes: &[reconcile::RNode], deep: bool) {
+        for (i, n) in nodes.iter().enumerate() {
+            order.insert(n.id, i as u32);
+            if deep {
+                record(order, &n.children, true);
+            }
+        }
+    }
     let mut tree = world.resource_mut::<TsxTree>();
-    let Some(kept) = tree.roots.get_mut(root).and_then(|s| s.resolved.as_mut()) else { return };
+    let Some(state) = tree.roots.get_mut(root) else { return };
+    let (order, Some(kept)) = (&mut state.order, state.resolved.as_mut()) else { return };
     let (Some((_, fp)), Some((_, tp))) = (from.split_last(), to.split_last()) else { return };
     if reconcile::find_node(kept, from).is_none() {
         return;
@@ -506,12 +520,23 @@ fn rekey_kept(world: &mut World, root: &str, from: &[String], to: &[String]) {
     let Some(l) = list(kept, fp) else { return };
     let Some(i) = l.iter().position(|n| n.path.last() == from.last()) else { return };
     let mut n = l.remove(i);
+    let mut old = Vec::new();
+    ids(&n, &mut old);
+    old.iter().for_each(|i| {
+        order.remove(i);
+    });
     rewrite(&mut n, root, from.len(), to);
+    record(order, &n.children, true);
     if fp == tp {
         l.insert(i, n);
-    } else if let Some(l) = list(kept, tp) {
-        l.retain(|c| c.path.last() != to.last());
-        l.push(n);
+        record(order, l, false);
+    } else {
+        record(order, l, false);
+        if let Some(l) = list(kept, tp) {
+            l.retain(|c| c.path.last() != to.last());
+            l.push(n);
+            record(order, l, false);
+        }
     }
 }
 
@@ -590,7 +615,8 @@ pub fn shift_sources(world: &mut World, root: &str, file: &str, map: &dyn Fn(u32
         });
     }
     if let Some(k) = tree.roots.get_mut(root).and_then(|s| s.resolved.as_mut()) {
-        walk(std::sync::Arc::make_mut(k), &moved);
+        let k: &mut Vec<reconcile::RNode> = std::sync::Arc::make_mut(k);
+        walk(k, &moved);
     }
 }
 
